@@ -9,26 +9,46 @@ jobs:
     runs-on: self-hosted 
 
     steps:
-      - name: Checkout del codi
+      - name: 1. Checkout del codi
         uses: actions/checkout@v4
 
-      - name: Preparar y Executar
+      - name: 2. Configurar Entorn Virtual
         run: |
-          # 1. Crear venv si no existe
           if [ ! -d "venv" ]; then
             python3 -m venv venv
           fi
-          
-          # 2. ACTIVAR i INSTALAR 
+
+      - name: 3. Actualitzar Dependències (Opcional)
+        # Aquest pas només s'executa si poses "[update]" al missatge del commit
+        # o si el fitxer requirements.txt ha estat modificat.
+        if: contains(github.event.head_commit.message, '[update]') || steps.check_files.outputs.changed == 'true'
+        run: |
           source venv/bin/activate
           python -m pip install --upgrade pip
-          
           pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
           pip install torch-geometric
-          
           pip install -r requirements.txt
-          
-          echo "Desplegant canvis..."
+
+      - name: 4. Aturar Procés Anterior
+        run: |
+          # Matem el procés pel nom del fitxer
           pkill -f test.py || true
-          
-          nohup python test.py -u > log.txt 2>&1 &
+
+      - name: 5. Executar Aplicació
+        run: |
+          source venv/bin/activate
+          # Useu python -u per evitar el buffer del log
+          nohup python -u test.py > log.txt 2>&1 &
+
+      - name: 6. Verificar Estat de l'Arrencada
+        run: |
+          sleep 5
+          if pgrep -f test.py > /dev/null; then
+            echo "✅ L'aplicació s'està executant correctament."
+            echo "Últims logs:"
+            tail -n 10 log.txt
+          else
+            echo "❌ ERROR: L'aplicació ha fallat en arrencar."
+            cat log.txt
+            exit 1
+          fi
