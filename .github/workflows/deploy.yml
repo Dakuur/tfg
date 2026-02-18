@@ -40,6 +40,7 @@ jobs:
         run: |
           source venv/bin/activate
           # Useu python -u per evitar el buffer del log
+          export RUNNER_TRACKING_ID=0
           nohup python -u test.py > log.txt 2>&1 &
 
       - name: 6. Verificar Estat de l'Arrencada
