@@ -12,14 +12,19 @@ jobs:
       - name: Checkout del codi
         uses: actions/checkout@v4
 
-      - name: Actualitzar y arrencar el codi
+      - name: Configurar venv
+        run: |
+          source venv/bin/activate
+
+      - name: Instal·lar dependències
+        run: |
+          pip install -r requirements.txt
+
+      - name: Arrencar el codi
         run: |
           echo "Desplegant canvis..."
           # Detenir procès anterior
           pkill -f test.py || true
-          
-          # Instalar dependències
-          pip install -r requirements.txt
           
           #Executar codi en segon pla
           nohup python3 text.py > log.txt 2>&1 &
