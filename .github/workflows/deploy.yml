@@ -12,14 +12,14 @@ jobs:
       - name: Checkout del codi
         uses: actions/checkout@v4
 
-      - name: Preparar y Ejecutar
+      - name: Preparar y Executar
         run: |
           # 1. Crear venv si no existe
           if [ ! -d "venv" ]; then
             python3 -m venv venv
           fi
           
-          # 2. ACTIVAR e INSTALAR (Todo en el mismo bloque)
+          # 2. ACTIVAR i INSTALAR 
           source venv/bin/activate
           python -m pip install --upgrade pip
           
@@ -28,9 +28,7 @@ jobs:
           
           pip install -r requirements.txt
           
-          # 3. REINICIAR PROCESO
           echo "Desplegant canvis..."
           pkill -f test.py || true
           
-          # 4. EJECUTAR (Asegúrate de que el nombre del archivo es correcto: pusiste text.py y test.py)
-          nohup python test.py > log.txt 2>&1 &
+          nohup python test.py -u > log.txt 2>&1 &
