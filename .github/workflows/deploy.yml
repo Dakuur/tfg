@@ -1,0 +1,29 @@
+name: Auto Deploy CVC
+
+# El proceso se activa al hacer "push" a la rama main
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    # IMPORTANTE: Esto le dice a GitHub que use TU pc, no sus servidores
+    runs-on: self-hosted 
+
+    steps:
+      # 1. Baja el código nuevo al servidor
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      # 2. Ejecuta tus comandos
+      - name: Actualizar y arrancar app
+        run: |
+          echo "Desplegando cambios..."
+          # Detener versión anterior (ejemplo si usas python)
+          pkill -f mi_script.py || true
+          
+          # Instalar dependencias si es necesario
+          pip install -r requirements.txt
+          
+          # Ejecutar el código en segundo plano
+          nohup python3 mi_script.py > log.txt 2>&1 &
