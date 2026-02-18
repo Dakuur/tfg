@@ -43,6 +43,7 @@ class GATWithPooling(torch.nn.Module):
         return self.lin(x)
 
 print("estoy aquí")
+print("estoy aqu123213í")
 
 # --------- Datos sintéticos ----------
 edge_index = erdos_renyi_graph(num_nodes, num_edges_prob)
