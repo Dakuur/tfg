@@ -1,5 +1,8 @@
 print("Test!!!")
 
+import sys
+print(f"Intérprete de Python en uso: {sys.executable}")
+
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GATConv, TopKPooling, global_mean_pool
