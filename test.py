@@ -42,17 +42,19 @@ class GATWithPooling(torch.nn.Module):
         x = global_mean_pool(x, batch)
         return self.lin(x)
 
+print("estoy aquí")
+
 # --------- Datos sintéticos ----------
 edge_index = erdos_renyi_graph(num_nodes, num_edges_prob)
 x = torch.randn((num_nodes, in_channels))
 batch = torch.zeros(num_nodes, dtype=torch.long)
-
+print("estoy aquí2")
 data = Data(x=x, edge_index=edge_index, batch=batch).to(device)
-
+print("estoy aquí3")
 # --------- Run ----------
 model = GATWithPooling().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
+print("estoy aquí4")
 torch.cuda.synchronize()
 for step in range(20):
     optimizer.zero_grad()
@@ -62,5 +64,5 @@ for step in range(20):
     optimizer.step()
     torch.cuda.synchronize()
     print(f"Step {step} | Loss {loss.item():.4f}")
-
+print("estoy aquí5")
 print("Done.")
