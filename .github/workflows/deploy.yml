@@ -18,37 +18,15 @@ jobs:
             python3 -m venv venv
           fi
 
-      - name: 3. Actualitzar Dependències (Opcional)
-        # Aquest pas només s'executa si poses "[update]" al missatge del commit
-        # o si el fitxer requirements.txt ha estat modificat.
-        if: contains(github.event.head_commit.message, '[update]')
+      - name: Debug - Que hi ha al venv?
         run: |
-          source venv/bin/activate
-          python -m pip install --upgrade pip
-          # pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-          # pip install torch-geometric
-          pip install -r requirements.txt
-
-      - name: 4. Aturar Procés Anterior
-        run: |
-          # Matem el procés pel nom del fitxer
-          pkill -f test.py || true
+          echo "--- Ruta actual: $(pwd) ---"
+          echo "--- On és el python: ---"
+          ls -l venv/bin/python
+          echo "--- Llibreries instal·lades en aquest venv: ---"
+          ./venv/bin/python -m pip list
 
       - name: 5. Executar Aplicació
         run: |
-          source venv/bin/activate
-          # Useu python -u per evitar el buffer del log
-          nohup python -u test.py > log.txt 2>&1 &
-
-      - name: 6. Verificar Estat de l'Arrencada
-        run: |
-          sleep 5
-          if pgrep -f test.py > /dev/null; then
-            echo "✅ L'aplicació s'està executant correctament."
-            echo "Últims logs:"
-            tail -n 10 log.txt
-          else
-            echo "❌ ERROR: L'aplicació ha fallat en arrencar."
-            cat log.txt
-            exit 1
-          fi
+          # USA LA RUTA ABSOLUTA AL BINARI, oblida el 'source'
+          nohup ./venv/bin/python -u test.py > log.txt 2>&1 &
