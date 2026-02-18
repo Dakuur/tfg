@@ -1,3 +1,5 @@
+print("Test!!!")
+
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GATConv, TopKPooling, global_mean_pool
@@ -49,7 +51,7 @@ model = GATWithPooling().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
 torch.cuda.synchronize()
-for step in range(2):
+for step in range(20):
     optimizer.zero_grad()
     out = model(data.x, data.edge_index, data.batch)
     loss = out.mean()
