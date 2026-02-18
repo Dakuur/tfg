@@ -11,30 +11,38 @@ jobs:
     steps:
       - name: 1. Checkout del codi
         uses: actions/checkout@v4
+        with:
+          clean: false
 
-      - name: 2. Actualitzar Dependències (Opcional)
+      - name: 2. Configurar Entorn Virtual
+        run: |
+          if [ ! -d "venv" ]; then
+            python3 -m venv venv
+          fi
+
+      - name: 3. Actualitzar Dependències (Opcional)
         # Aquest pas només s'executa si poses "[update]" al missatge del commit
         # o si el fitxer requirements.txt ha estat modificat.
         if: contains(github.event.head_commit.message, '[update]')
         run: |
           source venv/bin/activate
           python -m pip install --upgrade pip
-          pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-          pip install torch-geometric
+          # pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+          # pip install torch-geometric
           pip install -r requirements.txt
 
-      - name: 3. Aturar Procés Anterior
+      - name: 4. Aturar Procés Anterior
         run: |
           # Matem el procés pel nom del fitxer
           pkill -f test.py || true
 
-      - name: 4. Executar Aplicació
+      - name: 5. Executar Aplicació
         run: |
           source venv/bin/activate
           # Useu python -u per evitar el buffer del log
           nohup python -u test.py > log.txt 2>&1 &
 
-      - name: 5. Verificar Estat de l'Arrencada
+      - name: 6. Verificar Estat de l'Arrencada
         run: |
           sleep 5
           if pgrep -f test.py > /dev/null; then
