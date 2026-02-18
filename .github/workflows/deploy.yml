@@ -27,8 +27,8 @@ jobs:
         run: |
           source venv/bin/activate
           python -m pip install --upgrade pip
-          # pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-          # pip install torch-geometric
+          pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+          pip install torch-geometric
           pip install -r requirements.txt
 
       - name: 4. Aturar Procés Anterior
