@@ -366,12 +366,23 @@ if __name__ == "__main__":
     print(" Graph Attention Network + Pooling")
     print("=" * 55)
 
+    # Dispositivo
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\nDispositivo: {device}")
+    if device.type == "cuda":
+        print(f"  GPU: {torch.cuda.get_device_name(0)}")
+        print(f"  VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+
     # Cargar grafo
     X, pos, labels, edge_index, edge_weight, meta = load_graph(args.input)
     N, num_features = X.shape
     num_classes = labels.unique().numel()
     print(f"\nGrafo cargado: {N} nodos, {num_features} features, {num_classes} clases")
     print(f"Aristas: {edge_index.shape[1]}")
+
+    X = X.to(device)
+    labels = labels.to(device)
+    edge_index = edge_index.to(device)
 
     # Modelo
     model = GAT(
@@ -380,7 +391,7 @@ if __name__ == "__main__":
         out_classes=num_classes,
         heads=args.heads,
         dropout=args.dropout,
-    )
+    ).to(device)
     print(f"\nModelo GAT: {sum(p.numel() for p in model.parameters())} parámetros")
     print(f"  Capa 1: GATLayer({F} → {args.hidden}, heads={args.heads})")
     print(f"  Capa 2: GATLayer({args.hidden * args.heads} → {num_classes}, heads=1)")
@@ -400,17 +411,20 @@ if __name__ == "__main__":
     acc = (pred == labels).float().mean().item()
     print(f"\nAccuracy final: {acc:.2%}")
 
+    node_emb_cpu = node_emb.cpu()
+    pos_cpu = pos.cpu()
+
     # Pooling
     print("\n--- Embeddings de grafo (pooling) ---")
     if args.pooling == "all":
-        pooling_results = GraphPooling.all_poolings(node_emb, pos)
+        pooling_results = GraphPooling.all_poolings(node_emb_cpu, pos_cpu)
     else:
         fn_map = {
-            "max":          lambda: {"max": GraphPooling.max_pool(node_emb)},
-            "mean":         lambda: {"mean": GraphPooling.mean_pool(node_emb)},
-            "sum":          lambda: {"sum": GraphPooling.sum_pool(node_emb)},
-            "topk":         lambda: {"topk_3": GraphPooling.topk_pool(node_emb)},
-            "hierarchical": lambda: {"hierarchical": GraphPooling.hierarchical_pool(node_emb, pos)},
+            "max":          lambda: {"max": GraphPooling.max_pool(node_emb_cpu)},
+            "mean":         lambda: {"mean": GraphPooling.mean_pool(node_emb_cpu)},
+            "sum":          lambda: {"sum": GraphPooling.sum_pool(node_emb_cpu)},
+            "topk":         lambda: {"topk_3": GraphPooling.topk_pool(node_emb_cpu)},
+            "hierarchical": lambda: {"hierarchical": GraphPooling.hierarchical_pool(node_emb_cpu, pos_cpu)},
         }
         pooling_results = fn_map[args.pooling]()
 
