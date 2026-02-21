@@ -34,19 +34,19 @@ jobs:
       - name: 4. Aturar Procés Anterior
         run: |
           # Matem el procés pel nom del fitxer
-          pkill -f test.py || true
+          pkill -f alive_test.py || true
 
       - name: 5. Executar Aplicació
         run: |
           source venv/bin/activate
           # Useu python -u per evitar el buffer del log
           export RUNNER_TRACKING_ID=0
-          nohup python -u test.py > log.txt 2>&1 &
+          nohup python -u alive_test.py > log.txt 2>&1 &
 
       - name: 6. Verificar Estat de l'Arrencada
         run: |
           sleep 5
-          if pgrep -f test.py > /dev/null; then
+          if pgrep -f alive_test.py > /dev/null; then
             echo "✅ L'aplicació s'està executant correctament."
             echo "Últims logs:"
             tail -n 10 log.txt
