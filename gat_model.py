@@ -173,12 +173,12 @@ class GAT(nn.Module):
                                num_heads=heads, dropout=dropout, concat=True)
         self.layer2 = GATLayer(hidden * heads, out_classes,
                                num_heads=1, dropout=dropout, concat=False)
-        self.dropout_p = dropout
+        self._drop_rate = dropout  # renombrado para evitar conflicto con nn.Module
 
     def forward(self, x, edge_index):
-        x = F.dropout(x, p=self.dropout_p, training=self.training)
+        x = F.dropout(x, p=self._drop_rate, training=self.training)
         x = self.layer1(x, edge_index)
-        x = F.dropout(x, p=self.dropout_p, training=self.training)
+        x = F.dropout(x, p=self._drop_rate, training=self.training)
         x = self.layer2(x, edge_index)
         return x   # logits por nodo [N, out_classes]
 
