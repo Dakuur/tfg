@@ -368,14 +368,14 @@ if __name__ == "__main__":
 
     # Cargar grafo
     X, pos, labels, edge_index, edge_weight, meta = load_graph(args.input)
-    N, F = X.shape
+    N, num_features = X.shape
     num_classes = labels.unique().numel()
-    print(f"\nGrafo cargado: {N} nodos, {F} features, {num_classes} clases")
+    print(f"\nGrafo cargado: {N} nodos, {num_features} features, {num_classes} clases")
     print(f"Aristas: {edge_index.shape[1]}")
 
     # Modelo
     model = GAT(
-        in_features=F,
+        in_features=num_features,
         hidden=args.hidden,
         out_classes=num_classes,
         heads=args.heads,
