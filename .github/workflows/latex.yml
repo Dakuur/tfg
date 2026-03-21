@@ -1,0 +1,36 @@
+name: Compilar LaTeX y guardar PDF
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/latex.yml'
+      - 'article/**'
+
+jobs:
+  build-latex:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Compilar LaTeX
+        run: |
+          cd article
+          latexmk -pdf -pdflatex="pdflatex -interaction=nonstopmode -shell-escape %O %S" TFG.tex
+
+      - name: Mover PDF a carpeta de salida
+        run: |
+          mkdir -p output
+          cp article/TFG.pdf output/tfg_davidmorillo.pdf
+
+      - name: Commit y push del PDF
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/tfg_davidmorillo.pdf
+          git diff --staged --quiet || git commit -m "docs: actualizar PDF compilado [skip ci]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
