@@ -21,9 +21,8 @@ jobs:
           fi
 
       - name: 3. Actualitzar Dependències (Opcional)
-        # Aquest pas només s'executa si poses "[update]" al missatge del commit
-        # o si el fitxer requirements.txt ha estat modificat.
-        if: contains(github.event.head_commit.message, '[update]')
+        # S'executa si poses "[update]" al commit o si el venv és nou (no té torch)
+        if: contains(github.event.head_commit.message, '[update]') || hashFiles('venv/lib/*/site-packages/torch/__init__.py') == ''
         run: |
           source venv/bin/activate
           python -m pip install --upgrade pip
