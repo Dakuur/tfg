@@ -178,23 +178,22 @@ El procés de selecció és restrictiu: només es generen nodes per a aquelles r
 
 \section{Construcció i Topologia del Graf}
 
-Un cop extrets els nodes amb característiques, el pas crític és determinar la topologia del graf, és a dir, com s'estableixen les connexions (arestes) entre els nodes per formar la matriu d'adjacència. En aquesta recerca, hem considerat i comparat dues estratègies diferenciades:
+Un cop extrets els nodes amb característiques, el pas crític és determinar la topologia del graf, és a dir, com s’estableixen les connexions (arestes) entre els nodes per formar la matriu d’adjacència.
 
 \subsection{Distàncies posicionals}
 
-Per la manera com s'extreuen les dades (\textit{sliding window}), s'obtindria inicialment un graf en forma de quadrícula en el qual podríem connectar totes les parelles i obtenir una matriu d'adjacència amb distàncies posicionals reals. El problema de connectar tots els nodes entre ells sense considerar la morfologia del pòlip és que es poden crear connexions entre nodes separats per espais buits (aire), com passa en els extrems d'una forma en «U». Per combatre aquest problema, vam plantejar dues solucions inicials:
+Per la manera com s’extreuen les dades (\textit{sliding window}), s’obtindria inicialment un graf en forma de quadrícula en el qual podríem connectar totes les parelles i obtenir una matriu d’adjacència amb distàncies posicionals reals. El problema de connectar tots els nodes entre ells sense considerar la morfologia del pòlip és que es poden crear connexions entre nodes separats per espais buits (aire), com passa en els extrems d’una forma en «U». Per combatre aquest problema, s’aplica primer una màscara binària del teixit que descarta els \textit{patches} invàlids, i posteriorment una triangulació de Delaunay sobre els nodes restants.
 
-\subsubsection{Malla Delaunay}
+\subsubsection{Malla Delaunay amb filtratge per màscara}
 
-S’aplica una triangulació de Delaunay sobre les coordenades dels centres dels \textit{patches} per establir una connectivitat basada en la proximitat espacial. A diferència de la quadrícula rígida, aquesta malla s'adapta millor a distribucions de nodes irregulars (després de la neteja de \textit{patches} invàlids). Tot i així, per evitar connexions en zones buides, cal aplicar un criteri de distància màxima que elimini les arestes excessivament llargues que no representen continuïtat en el teixit.
+El procés comença aplicant una màscara binària sobre la imatge original per retenir únicament els \textit{patches} que corresponen a teixit real, eliminant les regions de fons blanc. Sobre el conjunt de nodes resultant s’aplica una triangulació de Delaunay, que estableix una connectivitat basada en la proximitat espacial i s’adapta a distribucions irregulars de nodes. Finalment, s’eliminen les arestes excessivament llargues mitjançant un criteri de distància màxima, evitant connexions espúries entre zones de teixit no contigus.
 
-\subsubsection{Eliminació d'arestes per màscara}
-
-Aquest mètode utilitza una màscara binària del teixit per filtrar la matriu d'adjacència. Una aresta entre dos nodes només es manté si el camí que els uneix passa per una zona classificada com a «teixit» en la imatge original. Això soluciona el problema de les geometries còncaves, ja que qualsevol connexió que intenti travessar fons blanc queda automàticament descartada, assegurant que el graf respecti la morfologia real del pòlip.
-
-\subsection{Distàncies de característiques}
-
-A partir dels nodes, es comparen totes les parelles per determinar el valor de les arestes segons el seu grau de similitud, basant-se en les característiques extretes de cada \textit{patch} corresponent. Amb aquesta opció de representació, es perdria tota la informació espacial.
+\begin{figure}[h]
+    \centering
+    \fbox{\parbox{0.9\textwidth}{\centering\vspace{2cm}\textit{[Imatge de demostració. esquerra: nodes sense connectar; dreta: malla Delaunay resultant]}\vspace{2cm}}}
+    \caption{Demostració de l'aplicació d'una triangulació de Delaunay.}
+    \label{delunay-demo}
+\end{figure}
 
 \section{Arquitectura del Model}
 
