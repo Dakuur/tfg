@@ -443,16 +443,19 @@ def main() -> None:
         )
     print(f"[INFO] Loaded   : {len(images)} patch images")
 
-    # ── WSI extent (from full unsampled slide metadata) ───────────────────────
-    wsi_w = float(df_slide["j"].max() + 2048)
-    wsi_h = float(df_slide["i"].max() + 2048)
-
-    # ── load low-resolution full-slide image ──────────────────────────────────
+    # TODO: low-res overlay desactivado — alineamiento de coordenadas sin resolver
+    # # ── WSI extent (from full unsampled slide metadata) ───────────────────────
+    # wsi_w = float(df_slide["j"].max() + 2048)
+    # wsi_h = float(df_slide["i"].max() + 2048)
+    #
+    # # ── load low-resolution full-slide image ──────────────────────────────────
+    # low_res_img = None
+    # if rgb_dir is not None:
+    #     low_res_img = load_low_res_slide(rgb_dir, hospital, patient_id, slide_id)
+    #     if low_res_img is None:
+    #         print("[WARN] Low-res image not found — falling back to canvas reconstruction.")
     low_res_img = None
-    if rgb_dir is not None:
-        low_res_img = load_low_res_slide(rgb_dir, hospital, patient_id, slide_id)
-        if low_res_img is None:
-            print("[WARN] Low-res image not found — falling back to canvas reconstruction.")
+    wsi_w, wsi_h = 0.0, 0.0
 
     # ── random feature placeholder (128-dim per node) ─────────────────────────
     features  = torch.randn(len(images), 128)
