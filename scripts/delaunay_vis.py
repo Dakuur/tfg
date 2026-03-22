@@ -284,8 +284,7 @@ def render(
         color="black",
         s=node_sizes,
         alpha=0.85,
-        linewidths=0.4,
-        edgecolors="white",
+        linewidths=0,
         zorder=3,
     )
     # # Nodes (coloured by first feature dimension)
