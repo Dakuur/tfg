@@ -81,8 +81,8 @@ def select_best_slide(df: pd.DataFrame) -> tuple[str, str]:
 # ── patch loading ─────────────────────────────────────────────────────────────
 
 def _patch_filename(hospital: str, patient: str, slide: str,
-                    section: int, window: int) -> str:
-    return f"{hospital}_{patient}_{slide}_{section}_{window}.png"
+                    i: int, j: int) -> str:
+    return f"{hospital}_{patient}_{slide}_{i}_{j}.jpg"
 
 
 def load_patches(
@@ -114,7 +114,7 @@ def load_patches(
     for _, row in df_slide.iterrows():
         fname = _patch_filename(
             hospital, str(row["patient_ID"]), str(row["slide_ID"]),
-            int(row["section_ID"]), int(row["window_ID"]),
+            int(row["i"]), int(row["j"]),
         )
         img_path = slide_dir / fname
         if not img_path.exists():
