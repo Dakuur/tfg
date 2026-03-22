@@ -75,7 +75,7 @@ def load_low_res_slide(
     rgb_dir: Path, hospital: str, patient: str, slide: str
 ) -> np.ndarray | None:
     """Load the low-resolution full slide image ({hospital}_{patient}_{slide}_low.png)."""
-    path = rgb_dir / hospital / patient / f"{hospital}_{patient}_{slide}_low.png"
+    path = rgb_dir / hospital / patient / f"{hospital}_{slide}_low.png"
     print(f"[DEBUG] Low-res path: {path}")
     print(f"[DEBUG] Exists      : {path.exists()}")
     if not path.exists():
