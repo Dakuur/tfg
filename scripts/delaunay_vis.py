@@ -250,8 +250,10 @@ def render(
     cx = (coords[:, 0] - j_min) * scale + half_patch
     cy = (coords[:, 1] - i_min) * scale + half_patch
 
-    # Node sizes proportional to tissue content
-    node_sizes = 5 + 10 * np.clip(non_white, 0.0, 1.0)
+    # Node size — fixed
+    node_sizes = 4
+    # # Node sizes proportional to tissue content
+    # node_sizes = 5 + 10 * np.clip(non_white, 0.0, 1.0)
 
     fig, axes = plt.subplots(1, 2, figsize=(22, 10))
     fig.patch.set_facecolor("#1a1a2e")
