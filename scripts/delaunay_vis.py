@@ -82,7 +82,8 @@ def select_best_slide(df: pd.DataFrame) -> tuple[str, str]:
 
 def _patch_filename(hospital: str, patient: str, slide: str,
                     i: int, j: int) -> str:
-    return f"{hospital}_{patient}_{slide}_{i}_{j}.jpg"
+    # Files on disk are named {j}_{i} (column-coord first, row-coord second)
+    return f"{hospital}_{patient}_{slide}_{j}_{i}.jpg"
 
 
 def load_patches(
@@ -111,7 +112,17 @@ def load_patches(
     coords_list: list[tuple[float, float]] = []
     non_white_list: list[float] = []
 
+    _debug_printed = False
     for _, row in df_slide.iterrows():
+        if not _debug_printed:
+            _first_fname = _patch_filename(
+                hospital, str(row["patient_ID"]), str(row["slide_ID"]),
+                int(row["i"]), int(row["j"]),
+            )
+            _first_path = slide_dir / _first_fname
+            print(f"[DEBUG] First path: {_first_path}")
+            print(f"[DEBUG] Exists    : {_first_path.exists()}")
+            _debug_printed = True
         fname = _patch_filename(
             hospital, str(row["patient_ID"]), str(row["slide_ID"]),
             int(row["i"]), int(row["j"]),
