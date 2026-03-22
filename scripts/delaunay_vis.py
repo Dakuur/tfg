@@ -37,6 +37,9 @@ from scipy.spatial import Delaunay
 PATCHES_SUBPATH = (
     "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON/Images/Patches_2048"
 )
+RGB_IMAGES_SUBPATH = (
+    "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON/Images/RGB_Images"
+)
 
 
 def find_patches_dir(iam_path: Path) -> Path:
@@ -53,6 +56,31 @@ def find_patches_dir(iam_path: Path) -> Path:
         "Pass --iam_path pointing to the dataset root (/mnt/iam) or the "
         "Images/ folder."
     )
+
+
+def find_rgb_images_dir(iam_path: Path) -> Path:
+    """Locate the RGB_Images directory starting from iam_path."""
+    for candidate in [
+        iam_path / "RGB_Images",
+        iam_path / RGB_IMAGES_SUBPATH,
+    ]:
+        if candidate.is_dir():
+            return candidate
+    raise FileNotFoundError(
+        f"Cannot find an 'RGB_Images' directory under '{iam_path}'."
+    )
+
+
+def load_low_res_slide(
+    rgb_dir: Path, hospital: str, patient: str, slide: str
+) -> np.ndarray | None:
+    """Load the low-resolution full slide image ({hospital}_{patient}_{slide}_low.png)."""
+    path = rgb_dir / hospital / patient / f"{hospital}_{patient}_{slide}_low.png"
+    print(f"[DEBUG] Low-res path: {path}")
+    print(f"[DEBUG] Exists      : {path.exists()}")
+    if not path.exists():
+        return None
+    return np.array(Image.open(path).convert("RGB"))
 
 
 def load_metadata(patches_dir: Path, hospital: str) -> pd.DataFrame:
@@ -242,13 +270,26 @@ def render(
     patch_size: int,
     title: str,
     out_path: Path,
+    low_res_img: np.ndarray | None = None,
+    wsi_w: float = 0.0,
+    wsi_h: float = 0.0,
 ) -> None:
     """Draw the two-panel figure and save it."""
     half_patch = (patch_size * scale) / 2
 
-    # Canvas-space centre of each patch (for node plotting)
+    # Canvas-space centre of each patch (for reconstructed-canvas panel)
     cx = (coords[:, 0] - j_min) * scale + half_patch
     cy = (coords[:, 1] - i_min) * scale + half_patch
+
+    # Low-res image space centre of each patch (for overlay panel)
+    if low_res_img is not None and wsi_w > 0 and wsi_h > 0:
+        lr_h, lr_w = low_res_img.shape[:2]
+        sx = lr_w / wsi_w
+        sy = lr_h / wsi_h
+        cx_lr = (coords[:, 0] + patch_size / 2) * sx
+        cy_lr = (coords[:, 1] + patch_size / 2) * sy
+    else:
+        cx_lr, cy_lr = cx, cy
 
     # Node size — fixed
     node_sizes = 4
@@ -268,19 +309,20 @@ def render(
     axes[0].set_title("Slide Reconstruction", color="white", fontsize=12, pad=6)
 
     # ── right panel: Delaunay overlay ─────────────────────────────────────────
-    axes[1].imshow(canvas, origin="upper")
+    overlay_img = low_res_img if low_res_img is not None else canvas
+    axes[1].imshow(overlay_img, origin="upper")
     axes[1].set_title("Delaunay Graph Overlay", color="white", fontsize=12, pad=6)
 
     # Edges
     for u, v in edges:
         axes[1].plot(
-            [cx[u], cx[v]], [cy[u], cy[v]],
+            [cx_lr[u], cx_lr[v]], [cy_lr[u], cy_lr[v]],
             color="black", alpha=0.8, linewidth=1.0, zorder=2,
         )
 
     # Nodes — black
     axes[1].scatter(
-        cx, cy,
+        cx_lr, cy_lr,
         color="black",
         s=node_sizes,
         alpha=0.85,
@@ -338,8 +380,13 @@ def main() -> None:
     args = parse_args()
     iam_path = Path(args.iam_path)
 
-    # ── locate Patches directory ──────────────────────────────────────────────
+    # ── locate Patches and RGB_Images directories ─────────────────────────────
     patches_dir = find_patches_dir(iam_path)
+    try:
+        rgb_dir = find_rgb_images_dir(iam_path)
+    except FileNotFoundError as e:
+        print(f"[WARN] {e} — falling back to canvas reconstruction for overlay.")
+        rgb_dir = None
 
     # ── select hospital ───────────────────────────────────────────────────────
     hospitals = sorted(p.name for p in patches_dir.iterdir() if p.is_dir())
@@ -396,6 +443,17 @@ def main() -> None:
         )
     print(f"[INFO] Loaded   : {len(images)} patch images")
 
+    # ── WSI extent (from full unsampled slide metadata) ───────────────────────
+    wsi_w = float(df_slide["j"].max() + 2048)
+    wsi_h = float(df_slide["i"].max() + 2048)
+
+    # ── load low-resolution full-slide image ──────────────────────────────────
+    low_res_img = None
+    if rgb_dir is not None:
+        low_res_img = load_low_res_slide(rgb_dir, hospital, patient_id, slide_id)
+        if low_res_img is None:
+            print("[WARN] Low-res image not found — falling back to canvas reconstruction.")
+
     # ── random feature placeholder (128-dim per node) ─────────────────────────
     features  = torch.randn(len(images), 128)
     feat_dim0 = features[:, 0].numpy()
@@ -425,6 +483,9 @@ def main() -> None:
         patch_size=2048,
         title=title,
         out_path=out_path,
+        low_res_img=low_res_img,
+        wsi_w=wsi_w,
+        wsi_h=wsi_h,
     )
 
 
