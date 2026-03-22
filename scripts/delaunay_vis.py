@@ -251,7 +251,7 @@ def render(
     cy = (coords[:, 1] - i_min) * scale + half_patch
 
     # Node sizes proportional to tissue content
-    node_sizes = 5 + 20 * np.clip(non_white, 0.0, 1.0)
+    node_sizes = 5 + 10 * np.clip(non_white, 0.0, 1.0)
 
     fig, axes = plt.subplots(1, 2, figsize=(22, 10))
     fig.patch.set_facecolor("#1a1a2e")
@@ -273,24 +273,34 @@ def render(
     for u, v in edges:
         axes[1].plot(
             [cx[u], cx[v]], [cy[u], cy[v]],
-            color="black", alpha=0.8, linewidth=1.5, zorder=2,
+            color="black", alpha=0.8, linewidth=1.0, zorder=2,
         )
 
-    # Nodes (coloured by first feature dimension)
-    sc = axes[1].scatter(
+    # Nodes — black
+    axes[1].scatter(
         cx, cy,
-        c=feat_dim0,
-        cmap="plasma",
+        color="black",
         s=node_sizes,
         alpha=0.85,
         linewidths=0.4,
         edgecolors="white",
         zorder=3,
     )
-    cbar = fig.colorbar(sc, ax=axes[1], fraction=0.03, pad=0.02)
-    cbar.set_label("Feature dim 0 (random placeholder)", color="white", fontsize=8)
-    cbar.ax.yaxis.set_tick_params(color="white")
-    plt.setp(cbar.ax.yaxis.get_ticklabels(), color="white")
+    # # Nodes (coloured by first feature dimension)
+    # sc = axes[1].scatter(
+    #     cx, cy,
+    #     c=feat_dim0,
+    #     cmap="plasma",
+    #     s=node_sizes,
+    #     alpha=0.85,
+    #     linewidths=0.4,
+    #     edgecolors="white",
+    #     zorder=3,
+    # )
+    # cbar = fig.colorbar(sc, ax=axes[1], fraction=0.03, pad=0.02)
+    # cbar.set_label("Feature dim 0 (random placeholder)", color="white", fontsize=8)
+    # cbar.ax.yaxis.set_tick_params(color="white")
+    # plt.setp(cbar.ax.yaxis.get_ticklabels(), color="white")
 
     plt.tight_layout(rect=[0, 0, 1, 0.995])
 
