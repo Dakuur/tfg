@@ -251,7 +251,7 @@ def render(
     cy = (coords[:, 1] - i_min) * scale + half_patch
 
     # Node sizes proportional to tissue content
-    node_sizes = 15 + 70 * np.clip(non_white, 0.0, 1.0)
+    node_sizes = 5 + 20 * np.clip(non_white, 0.0, 1.0)
 
     fig, axes = plt.subplots(1, 2, figsize=(22, 10))
     fig.patch.set_facecolor("#1a1a2e")
@@ -273,7 +273,7 @@ def render(
     for u, v in edges:
         axes[1].plot(
             [cx[u], cx[v]], [cy[u], cy[v]],
-            color="white", alpha=0.4, linewidth=0.5, zorder=2,
+            color="black", alpha=0.8, linewidth=1.5, zorder=2,
         )
 
     # Nodes (coloured by first feature dimension)
