@@ -271,7 +271,7 @@ def filter_edges_by_mask(
     slide_w: float,
     slide_h: float,
     patch_size: int,
-    n_samples: int = 20,
+    n_samples: int = 10,
 ) -> np.ndarray:
     """
     Remove edges whose line between patch centres passes through a black
@@ -295,7 +295,7 @@ def filter_edges_by_mask(
     cx_m = (coords[:, 0] + patch_size / 2 - j_base) * sx
     cy_m = (coords[:, 1] + patch_size / 2 - i_base) * sy
 
-    kept = []
+    kept, removed = [], []
     for u, v in edges:
         xs = np.linspace(cx_m[u], cx_m[v], n_samples)
         ys = np.linspace(cy_m[u], cy_m[v], n_samples)
@@ -303,8 +303,61 @@ def filter_edges_by_mask(
         yi = np.clip(ys.astype(int), 0, mask_h - 1)
         if np.all(tissue[yi, xi]):
             kept.append((u, v))
+        else:
+            removed.append((u, v))
 
-    return np.array(kept, dtype=np.int64) if kept else np.empty((0, 2), dtype=np.int64)
+    kept_arr    = np.array(kept,    dtype=np.int64) if kept    else np.empty((0, 2), dtype=np.int64)
+    removed_arr = np.array(removed, dtype=np.int64) if removed else np.empty((0, 2), dtype=np.int64)
+    return kept_arr, removed_arr
+
+
+# ── graph export ───────────────────────────────────────────────────────────────
+
+def export_graph(
+    coords: np.ndarray,
+    edges: np.ndarray,
+    out_path: Path,
+    feature_dim: int = 1536,
+) -> None:
+    """
+    Export the graph to a .pt file ready for torch_geometric.
+
+    The file contains a dict with:
+      x          : (N, feature_dim) float32 — artificial node features
+      edge_index : (2, 2*M) int64  — bidirectional edge list (undirected graph)
+      pos        : (N, 2) float32  — (j, i) WSI level-0 coordinates per node
+      num_nodes  : int
+
+    Load example::
+
+        data_dict = torch.load("graph.pt")
+        from torch_geometric.data import Data
+        data = Data(**data_dict)
+    """
+    n_nodes = len(coords)
+    x = torch.randn(n_nodes, feature_dim)
+    pos = torch.tensor(coords, dtype=torch.float32)
+
+    if len(edges) > 0:
+        ei = torch.tensor(edges, dtype=torch.long).t().contiguous()  # (2, M)
+        edge_index = torch.cat([ei, ei.flip(0)], dim=1)              # (2, 2M)
+    else:
+        edge_index = torch.zeros((2, 0), dtype=torch.long)
+
+    data = {
+        "x": x,
+        "edge_index": edge_index,
+        "pos": pos,
+        "num_nodes": n_nodes,
+    }
+
+    graph_path = out_path.with_suffix(".pt")
+    graph_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(data, graph_path)
+    print(
+        f"[INFO] Graph export : {graph_path.resolve()}"
+        f"  ({n_nodes} nodes, {edge_index.shape[1]} directed edges, {feature_dim} features/node)"
+    )
 
 
 # ── canvas reconstruction ──────────────────────────────────────────────────────
@@ -385,6 +438,7 @@ def render(
     has_patch: np.ndarray,
     coords: np.ndarray,
     edges: np.ndarray,
+    removed_edges: np.ndarray,
     feat_dim0: np.ndarray,
     non_white: np.ndarray,
     j_min: float,
@@ -449,13 +503,21 @@ def render(
         axes[1].imshow(
             bg_img, extent=ext, origin="upper", aspect="auto", alpha=0.5, zorder=2,
         )
+    axes[1].set_aspect("equal")  # restore after aspect="auto" from bg overlay
     axes[1].set_xlim(-0.5, canvas_w - 0.5)
     axes[1].set_ylim(canvas_h - 0.5, -0.5)
     axes[1].set_title(
         f"Delaunay Graph  [{overlay_mode} overlay]", color="white", fontsize=12, pad=6
     )
 
-    # Edges
+    # Removed edges (crossed non-tissue mask region) — drawn in red
+    for u, v in removed_edges:
+        axes[1].plot(
+            [cx[u], cx[v]], [cy[u], cy[v]],
+            color="red", alpha=0.6, linewidth=0.8, zorder=3,
+        )
+
+    # Kept edges
     for u, v in edges:
         axes[1].plot(
             [cx[u], cx[v]], [cy[u], cy[v]],
@@ -584,8 +646,8 @@ def main() -> None:
     # RGB image for left panel (and right panel if OVERLAY_MODE == "rgb")
     rgb_img  = load_rgb_image(iam_path, hospital, patient_id, slide_id)
 
-    # ── random feature placeholder (128-dim per node) ─────────────────────────
-    features  = torch.randn(len(images), 128)
+    # ── random feature placeholder (1536-dim per node) ────────────────────────
+    features  = torch.randn(len(images), 1536)
     feat_dim0 = features[:, 0].numpy()
 
     # ── build Delaunay graph ───────────────────────────────────────────────────
@@ -593,20 +655,18 @@ def main() -> None:
     print(f"[INFO] Graph    : {len(images)} nodes | {len(edges)} edges (before mask filter)")
 
     # ── filter edges that cross non-tissue mask regions ────────────────────────
+    removed_edges = np.empty((0, 2), dtype=np.int64)
     if mask_img is not None and slide_meta is not None:
-        edges_before = len(edges)
-        edges = filter_edges_by_mask(
+        edges, removed_edges = filter_edges_by_mask(
             edges, coords, mask_img,
             j_base=slide_meta["j_base"],
             i_base=slide_meta["i_base"],
             slide_w=slide_meta["w"],
             slide_h=slide_meta["h"],
             patch_size=2048,
-            n_samples=20,
         )
         print(
-            f"[INFO] Edges after mask filter: {len(edges)} "
-            f"(removed {edges_before - len(edges)})"
+            f"[INFO] Edges after mask filter: {len(edges)} kept, {len(removed_edges)} removed"
         )
     else:
         if mask_img is None:
@@ -614,13 +674,17 @@ def main() -> None:
         if slide_meta is None:
             print("[WARN] Slide metadata not available — skipping edge mask filter.")
 
+    # ── export graph for torch_geometric ──────────────────────────────────────
+    export_graph(coords, edges, out_path=Path(args.output))
+
     # ── build slide canvas ─────────────────────────────────────────────────────
     canvas, has_patch, j_min, i_min, scale = build_canvas(images, coords)
 
     # ── render & save ──────────────────────────────────────────────────────────
     title = (
         f"Hospital: {hospital}  |  Patient: {patient_id}  |  Slide: {slide_id}  |  "
-        f"{len(images)} nodes  |  {len(edges)} edges  |  overlay: {OVERLAY_MODE}"
+        f"{len(images)} nodes  |  {len(edges)} edges kept  |  {len(removed_edges)} removed  |  "
+        f"overlay: {OVERLAY_MODE}"
     )
     out_path = Path(args.output)
     render(
@@ -628,6 +692,7 @@ def main() -> None:
         has_patch=has_patch,
         coords=coords,
         edges=edges,
+        removed_edges=removed_edges,
         feat_dim0=feat_dim0,
         non_white=non_white,
         j_min=j_min,
