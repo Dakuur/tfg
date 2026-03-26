@@ -1,0 +1,3 @@
+[submodule "pt1diagnosis"]
+	path = pt1diagnosis
+	url = https://github.com/IAM-CVC/PT1Diagnosis
