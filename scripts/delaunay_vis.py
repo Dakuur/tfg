@@ -403,7 +403,8 @@ def main() -> None:
 
     # ── load & quality-filter metadata ───────────────────────────────────────
     df = load_metadata(patches_dir, hospital)
-    df_filtered = filter_patches(df)
+    #df_filtered = filter_patches(df)
+    df_filtered = df
     print(f"[INFO] Patches after quality filter: {len(df_filtered)}")
     if df_filtered.empty:
         sys.exit("[ERROR] No patches passed the quality filter.")
