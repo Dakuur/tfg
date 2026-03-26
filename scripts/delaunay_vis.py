@@ -36,7 +36,7 @@ import torch
 from PIL import Image
 from scipy.spatial import Delaunay
 
-Image.MAX_IMAGE_PIXELS = 40_000_000
+Image.MAX_IMAGE_PIXELS = 400_000_000
 
 
 # ── dataset paths ──────────────────────────────────────────────────────────────
