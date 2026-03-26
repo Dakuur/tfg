@@ -36,6 +36,9 @@ import torch
 from PIL import Image
 from scipy.spatial import Delaunay
 
+Image.MAX_IMAGE_PIXELS = 40_000_000
+
+
 # ── dataset paths ──────────────────────────────────────────────────────────────
 PATCHES_SUBPATH = (
     "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON/Images/Patches_2048"
