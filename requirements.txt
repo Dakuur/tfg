@@ -3,3 +3,5 @@ matplotlib
 scipy
 pandas
 pillow
+tqdm
+scikit-learn
