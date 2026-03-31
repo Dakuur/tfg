@@ -17,6 +17,8 @@
 \addbibresource{references.bib}
 \captionsetup[table]{textfont=sc}
 \usepackage[hidelinks]{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
 
 \author{\LARGE\sffamily David Morillo Massagué}
 \title{\Huge{\sffamily Predicció de Metàstasis en Histopatologia en Càncer Colorrectal usant
@@ -180,18 +182,24 @@ El procés de selecció és restrictiu: només es generen nodes per a aquelles r
 
 Un cop extrets els nodes amb característiques, el pas crític és determinar la topologia del graf, és a dir, com s’estableixen les connexions (arestes) entre els nodes per formar la matriu d’adjacència.
 
+\subsection{Extracció de nodes}
+
+L’extracció de nodes parteix d’una finestra lliscant (\textit{sliding window}) sense solapament que divideix cada imatge WSI en \textit{patches} de $2048 \times 2048$ píxels. Cada \textit{patch} constitueix un node del graf. No obstant això, la distribució resultant no és perfectament regular: la màscara de segmentació exclou les regions de fons blanc i artefactes, de manera que el conjunt de nodes actius trenca la simetria de la quadrícula inicial. En aquest sentit, una connectivitat fixa de tipus reixeta no seria adequada, ja que assumiria una distribució uniforme que la màscara invalida. Per aquest motiu, s’aplica una triangulació de Delaunay sobre els nodes restants, que s’adapta orgànicament a la distribució irregular resultant.
+
+Pel que fa a les característiques de cada node, en aquesta fase inicial s’utilitzen \textit{embeddings} del token \textit{CLS} de 1.536 dimensions generats prèviament i proporcionats al inici del projecte. Al llarg del projecte, aquests \textit{embeddings} seran substituïts pels que obtinguin els companys de l’equip que treballen en la creació d’autoencoders i en la representació de l’espai latent del teixit histopatològic.
+
 \subsection{Distàncies posicionals}
 
 Per la manera com s’extreuen les dades (\textit{sliding window}), s’obtindria inicialment un graf en forma de quadrícula en el qual podríem connectar totes les parelles i obtenir una matriu d’adjacència amb distàncies posicionals reals. El problema de connectar tots els nodes entre ells sense considerar la morfologia del pòlip és que es poden crear connexions entre nodes separats per espais buits (aire), com passa en els extrems d’una forma en «U». Per combatre aquest problema, s’aplica primer una màscara binària del teixit que descarta els \textit{patches} invàlids, i posteriorment una triangulació de Delaunay sobre els nodes restants.
 
-\subsubsection{Malla Delaunay amb filtratge per màscara}
+\subsubsection{Malla Delaunay amb filtratge d’arestes llargues}
 
-El procés comença aplicant una màscara binària sobre la imatge original per retenir únicament els \textit{patches} que corresponen a teixit real, eliminant les regions de fons blanc. Sobre el conjunt de nodes resultant s’aplica una triangulació de Delaunay, que estableix una connectivitat basada en la proximitat espacial i s’adapta a distribucions irregulars de nodes. Finalment, s’eliminen les arestes excessivament llargues mitjançant un criteri de distància màxima, evitant connexions espúries entre zones de teixit no contigus.
+El procés comença aplicant una màscara binària sobre la imatge original per retenir únicament els \textit{patches} que corresponen a teixit real, eliminant les regions de fons blanc. Sobre el conjunt de nodes resultant s’aplica una triangulació de Delaunay, que estableix una connectivitat basada en la proximitat espacial i s’adapta a distribucions irregulars de nodes. A continuació, s’aplica un segon criteri de filtratge: s’eliminen totes les arestes la línia de les quals travessa píxels de valor zero (negre) en les imatges de màscara de segmentació anotades per la patòloga especialista. Això impedeix que el graf connecti regions de teixit que, tot i ser pròximes en coordenades, es troben separades per zones de fons. Finalment, s’eliminen també les arestes excessivament llargues mitjançant un criteri de distància màxima: es descarten les arestes la longitud de les quals supera el doble de la longitud mitjana del conjunt (\texttt{DISTANCE\_FACTOR} $= 2{,}0$), evitant connexions espúries entre zones de teixit no contigus.
 
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.45\textwidth]{img/delaunay-demo.png}
-    \caption{Demostració de l'aplicació d'una triangulació de Delaunay en una figura simple. Abans (esquerra) i després (dreta).}
+    \caption{Demostració de l’aplicació d’una triangulació de Delaunay en una figura simple. Abans (esquerra) i després (dreta).}
     \label{delunay-demo}
 \end{figure}
 
@@ -255,7 +263,92 @@ En el meu cas, depenc de la creació d'un \textit{autoencoder} per part d'altres
 
 \section{Implementació}
 
-El codi font d'aquest projecte es troba en el següent repositori de GitHub \cite{morillo2026codi}.
+El codi font d'aquest projecte es troba en el següent repositori de GitHub \cite{morillo2026codi}. La implementació s'estructura en un conjunt de scripts Python que cobreixen des de la càrrega de dades fins a l'entrenament del model.
+
+\subsection{Descripció dels scripts}
+
+\texttt{graph\_utils.py} conté les utilitats compartides de construcció del graf. A partir d'un conjunt de coordenades de nodes, aplica una \textit{triangulació de Delaunay} i filtra les arestes la longitud de les quals supera el doble de la longitud mitjana (factor $2{,}0\times$, constant \texttt{DISTANCE\_FACTOR}). El mòdul proporciona també la conversió al format \texttt{edge\_index} bidireccional de \textit{PyTorch Geometric} i una funció d'exportació del graf en format \texttt{.pt} amb \textit{placeholders} aleatoris de 1.536 dimensions.
+
+\texttt{wsi\_io.py} centralitza tota la lògica d'entrada/sortida del conjunt de dades. Localitza els directoris de \textit{patches}, imatges RGB i màscares de segmentació, carrega els metadades per \textit{patch} —coordenades $(i, j)$, \texttt{blurriness} i \texttt{non\_white\_area}— des de fitxers CSV per hospital, i llegeix les etiquetes de metàstasi (N0/N1) des d'un fitxer Excel diagnòstic, descartant els casos NX. No obstant això, la funció principal del mòdul és la càrrega dels fitxers \textit{.npz} amb els \textit{embeddings} CLS de \textit{UNI2} i les coordenades de cada \textit{bag} de 256 \textit{patches}.
+
+\texttt{build\_dataset.py} construeix el conjunt de dades de grafs per a l'entrenament en quatre fases. En primer lloc, uneix les dades \textit{.npz} amb les etiquetes i genera un índex de seccions vàlides (mínim de 3 \textit{bags} per secció). En segon lloc, realitza una divisió estratificada 80/20 a nivell de pacient per evitar filtracions de dades entre conjunts. Posteriorment, construeix un objecte \texttt{torch\_geometric.data.Data} per a cada secció —amb \textit{embeddings} CLS reals com a característiques dels nodes, posicions centroide i connectivitat Delaunay— i l'exporta com a fitxer \texttt{.pt}. Finalment, genera fitxers d'índex CSV per als conjunts d'entrenament i validació.
+
+\texttt{delaunay\_vis.py} genera una visualització del graf de Delaunay sobre una làmina WSI. A partir dels metadades CSV, carrega fins a un màxim configurable de \textit{patches} de $2048 \times 2048$ píxels d'un pacient i làmina seleccionats, construeix el graf de Delaunay i renderitza un panell doble: a l'esquerra la reconstrucció de la làmina i a la dreta el graf superposat sobre la màscara de segmentació o la imatge RGB. Les arestes eliminades pel filtratge de màscara es mostren en vermell. El resultat s'exporta com a imatge PNG i el graf com a fitxer \texttt{.pt}.
+
+\texttt{generate\_graph.py} és un script auxiliar de prova que genera un graf sintètic totalment connectat amb nodes distribuïts en cercle amb soroll gaussià. Accepta per arguments el nombre de nodes, la dimensió de les característiques i la llavor aleatòria, i exporta el graf en format JSON. Cal destacar que aquest script serveix per verificar el funcionament del model GAT sense necessitat de dades reals.
+
+\texttt{gat\_model.py} implementa des de zero, sense \textit{PyTorch Geometric}, una capa d'atenció sobre grafs (\textit{GAT Layer}) i un model GAT de dues capes, i les aplica al graf JSON generat per \texttt{generate\_graph.py}. Inclou múltiples estratègies de \textit{pooling} global (\textit{max}, \textit{mean}, \textit{sum}, \textit{top-k} i jeràrquic per \textit{k-means}) que permeten comparar empíricament la norma de l'incrustació resultant. El script entrena el model a nivell de node i genera una figura amb la corba de pèrdua i la comparació de \textit{poolings}.
+
+\texttt{train.py} és l'script principal d'entrenament del model final. Carrega els grafs \texttt{.pt} generats per \texttt{build\_dataset.py} i entrena un classificador GAT de tres capes (\textit{GATConv}) amb \textit{batch normalization} i un capçal MLP per a la classificació binària N0/N1. El \textit{pooling} emprat concatena \texttt{global\_mean\_pool} i \texttt{global\_max\_pool} per obtenir una representació global del graf. L'entrenament inclou precisió mixta (\textit{AMP}), pesos de classe invers-freqüència, un mostreig balancejat (\textit{WeightedRandomSampler}), aturada primerenca i un planificador de taxa d'aprenentatge cosinus. Les mètriques (AUC, F1, precisió i \textit{recall} per a N0 i N1) es registren a \textit{Weights \& Biases} i el millor model es desa com a \textit{checkpoint}.
+
+\subsection{Diagrama de flux del pipeline}
+
+La figura~\ref{fig:pipeline} mostra el flux complet del sistema, des del processament de les imatges originals fins a la predicció final. Els blocs en blau representen les contribucions pròpies d'aquest TFG, mentre que els blocs en gris corresponen a les etapes realitzades pels companys de l'equip.
+
+\begin{figure*}[h]
+\centering
+\begin{tikzpicture}[
+    node distance=0.35cm and 0.22cm,
+    box/.style={rectangle, rounded corners=3pt, draw,
+                minimum width=1.9cm, minimum height=0.65cm,
+                align=center, font=\small},
+    ext/.style={box, draw=gray!55, fill=gray!12},
+    own/.style={box, draw=blue!65!black, line width=1.3pt, fill=blue!7},
+    arr/.style={->, >=stealth, thick},
+    lbl/.style={font=\small\bfseries, align=right},
+]
+
+%% --- Carril 1: Preparació de dades (gris) ---
+\node[ext] (wsi)  {WSI};
+\node[ext, right=of wsi] (sw)   {\textit{Sliding}\\window};
+\node[ext, right=of sw]  (pat)  {Patches\\$2048{\times}2048$};
+\node[ext, right=of pat] (fil)  {Filtratge\\blur + white};
+\node[ext, right=of fil] (uni)  {\textit{UNI2}};
+\node[ext, right=of uni] (cls)  {\textit{CLS}\\1536-dim};
+\draw[arr] (wsi)--(sw); \draw[arr] (sw)--(pat);
+\draw[arr] (pat)--(fil); \draw[arr] (fil)--(uni); \draw[arr] (uni)--(cls);
+
+%% --- Carril 2: Construcció del graf (blau) ---
+\node[own, below=1.7cm of wsi] (coo) {Coord.\\$(i,j)$};
+\node[own, right=of coo]       (del) {Delaunay};
+\node[own, right=of del]       (pru) {Filtratge\\$>2{\times}\bar{d}$};
+\node[own, right=of pru]       (gra) {\textit{Data}(x,\\edge\_index)};
+\draw[arr] (coo)--(del); \draw[arr] (del)--(pru); \draw[arr] (pru)--(gra);
+\draw[arr] (fil.south) to[out=255,in=90] (coo.north);
+\draw[arr] (cls.south) to[out=270,in=70] (gra.north);
+
+%% --- Carril 3: Model i classificació (blau) ---
+\node[own, below=1.7cm of coo] (g1) {GATConv 1\\+ BN};
+\node[own, right=of g1]        (g2) {GATConv 2\\+ BN};
+\node[own, right=of g2]        (g3) {GATConv 3\\+ BN};
+\node[own, right=of g3]        (po) {\textit{Pooling}\\mult. estrat.};
+\node[own, right=of po]        (ml) {MLP};
+\node[own, right=of ml]        (pr) {N0\,/\,N1};
+\draw[arr] (g1)--(g2); \draw[arr] (g2)--(g3);
+\draw[arr] (g3)--(po); \draw[arr] (po)--(ml); \draw[arr] (ml)--(pr);
+\draw[arr] (gra.south) to[out=255,in=90] (g1.north);
+
+%% --- Validació ---
+\node[ext, below=0.8cm of pr] (exc) {Excel\\(\textit{ground truth})};
+\draw[arr] (exc.north)--(pr.south);
+
+%% --- Etiquetes de carril ---
+\node[lbl, left=0.25cm of wsi, anchor=east]
+    {\footnotesize Preparació\\de dades};
+\node[lbl, left=0.25cm of coo, anchor=east]
+    {\footnotesize Construcció\\del graf};
+\node[lbl, left=0.25cm of g1,  anchor=east]
+    {\footnotesize Model i\\classificació};
+
+\end{tikzpicture}
+\caption{Diagrama de flux del \textit{pipeline} complet. Els blocs en blau (vora gruixuda)
+representen les contribucions pròpies d'aquest TFG; els blocs en gris corresponen a etapes
+realitzades pels companys de l'equip. Cal destacar que el bloc \textit{Pooling} és un eix
+central de la recerca: s'avaluen múltiples estratègies (\texttt{global\_mean\_pool},
+\textit{DiffPool}, \textit{SAGPool} i concatenació de capes per capa) per determinar
+quina preserva millor l'estructura global del teixit per a la classificació N0/N1.}
+\label{fig:pipeline}
+\end{figure*}
 
 \printbibliography
 
