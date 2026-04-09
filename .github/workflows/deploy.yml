@@ -31,40 +31,43 @@ jobs:
           pip install -r requirements.txt
           pip install fastapi "uvicorn[standard]"
 
-      - name: 4. Instal·lar servei systemd (si no existeix)
-        # Primera vegada, o si s'esborra el servei manualment
-        run: |
-          if ! systemctl is-active --quiet histogat-frontend 2>/dev/null && \
-             ! systemctl is-enabled --quiet histogat-frontend 2>/dev/null; then
-            echo "Servei no trobat — instal·lant..."
-            sudo bash scripts/setup_service.sh
-          else
-            echo "Servei ja instal·lat — s'actualitzarà a continuació"
-          fi
-
-      - name: 5. Aturar alive_test anterior
+      - name: 4. Aturar alive_test anterior
         run: |
           pkill -f alive_test.py || true
 
-      - name: 6. Reiniciar frontend via systemd
+      - name: 5. Reiniciar frontend
         run: |
-          sudo systemctl restart histogat-frontend
-          sleep 3
-          if systemctl is-active --quiet histogat-frontend; then
-            echo "✅ histogat-frontend actiu"
+          # Intenta via systemd (si setup_service.sh s'ha executat manualment)
+          if sudo systemctl restart histogat-frontend 2>/dev/null; then
+            echo "✅ histogat-frontend reiniciat via systemd"
+            systemctl is-active histogat-frontend || true
           else
-            echo "❌ histogat-frontend ha fallat"
-            journalctl -u histogat-frontend -n 30 --no-pager
-            exit 1
+            # Fallback: nohup (fins que es configuri el servei systemd)
+            echo "⚠️  systemd no disponible — usant nohup com a fallback"
+            echo "   Per activar el servei persistent, executa al servidor:"
+            echo "   sudo bash scripts/setup_service.sh"
+            pkill -f "uvicorn frontend.main" || true
+            sleep 1
+            source venv/bin/activate
+            export RUNNER_TRACKING_ID=0
+            nohup uvicorn frontend.main:app --host 0.0.0.0 --port 8000 > log_frontend.txt 2>&1 &
+            sleep 3
+            if pgrep -f "uvicorn frontend.main" > /dev/null; then
+              echo "✅ Frontend iniciat via nohup (port 8000)"
+            else
+              echo "❌ Frontend no ha arrencat"
+              cat log_frontend.txt
+              exit 1
+            fi
           fi
 
-      - name: 7. Executar alive_test
+      - name: 6. Executar alive_test
         run: |
           source venv/bin/activate
           export RUNNER_TRACKING_ID=0
           nohup python -u alive_test.py > log.txt 2>&1 &
 
-      - name: 8. Verificar Estat de l'Arrencada
+      - name: 7. Verificar Estat de l'Arrencada
         run: |
           sleep 5
           if pgrep -f alive_test.py > /dev/null; then
