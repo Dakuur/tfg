@@ -66,6 +66,7 @@ STATE = _State()
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 def _find_latest_checkpoint() -> Optional[Path]:
+    print(f"Buscant el últim checkpoint a {ROOT / 'outputs' / 'checkpoints'}…")
     ckpt_dir = ROOT / "outputs" / "checkpoints"
     if not ckpt_dir.exists():
         return None
