@@ -107,7 +107,7 @@ export function renderGraph(container, data, opts = {}) {
       n.fx = n.x;
       n.fy = n.y;
     });
-    drawGraph();
+    // drawGraph() es cridarà després que edgeLines i nodeGroup estiguin declarats
   } else {
     // Force simulation fallback
     sim = d3.forceSimulation(nodes)
@@ -179,6 +179,11 @@ export function renderGraph(container, data, opts = {}) {
       .attr("x1", d => nodes[d.source].x).attr("y1", d => nodes[d.source].y)
       .attr("x2", d => nodes[d.target].x).attr("y2", d => nodes[d.target].y);
     nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
+  }
+
+  // Si hi ha posicions reals, dibuixar ara que edgeLines i nodeGroup estan declarats
+  if (node_positions && node_positions.length === num_nodes) {
+    drawGraph();
   }
 
   // Tooltip
