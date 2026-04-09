@@ -98,6 +98,14 @@ export async function renderDashboard(container) {
       </div>
     </div>
 
+    <!-- Rutes de cerca -->
+    <div class="section">
+      <div class="section-title"><i data-lucide="folder-search"></i> Rutes de cerca</div>
+      <div class="card" style="padding:14px">
+        ${renderSearchPaths(status.search_paths)}
+      </div>
+    </div>
+
     ${!modelLoaded ? `
       <div class="notice">
         <i data-lucide="alert-triangle"></i>
@@ -120,6 +128,38 @@ export async function renderDashboard(container) {
   container.querySelector("#goto-stats-btn")?.addEventListener("click", () => {
     document.querySelector('.nav-item[data-page="statistics"]')?.click();
   });
+}
+
+function renderSearchPaths(sp) {
+  if (!sp) return `<span style="color:var(--text3);font-size:12px">No disponible</span>`;
+
+  const ckptOk = sp.checkpoints_dir_exists;
+  const graphsOk = sp.graphs_dir_exists;
+  const ckpts = sp.all_checkpoints || [];
+
+  return `
+    <div class="stat-list">
+      <div class="stat-row">
+        <span class="stat-key" style="display:flex;align-items:center;gap:6px">
+          <span style="color:${ckptOk ? "var(--green)" : "var(--red)"}">●</span> Checkpoints
+        </span>
+        <span class="stat-val mono" style="font-size:11px;color:var(--text2)">${sp.checkpoints_dir}</span>
+      </div>
+      ${ckpts.length > 0
+        ? ckpts.map((name, i) => `
+          <div class="stat-row" style="padding-left:16px">
+            <span class="stat-key" style="font-size:11.5px">${i === 0 ? "▶ actiu" : `#${i + 1}`}</span>
+            <span class="stat-val mono" style="font-size:11px;color:${i === 0 ? "var(--accent-light)" : "var(--text3)"}">${name}</span>
+          </div>`).join("")
+        : `<div style="padding-left:16px;font-size:11.5px;color:var(--red);margin-top:4px">Cap fitxer .pt trobat</div>`
+      }
+      <div class="stat-row" style="margin-top:8px">
+        <span class="stat-key" style="display:flex;align-items:center;gap:6px">
+          <span style="color:${graphsOk ? "var(--green)" : "var(--red)"}">●</span> Grafs
+        </span>
+        <span class="stat-val mono" style="font-size:11px;color:var(--text2)">${sp.graphs_dir}</span>
+      </div>
+    </div>`;
 }
 
 function archLayer(name, desc, meta) {

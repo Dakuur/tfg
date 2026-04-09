@@ -65,12 +65,14 @@ STATE = _State()
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
+CKPT_DIR   = ROOT / "outputs" / "checkpoints"
+GRAPHS_DIR = ROOT / "outputs" / "graphs"
+
+
 def _find_latest_checkpoint() -> Optional[Path]:
-    print(f"Buscant el últim checkpoint a {ROOT / 'outputs' / 'checkpoints'}…")
-    ckpt_dir = ROOT / "outputs" / "checkpoints"
-    if not ckpt_dir.exists():
+    if not CKPT_DIR.exists():
         return None
-    ckpts = sorted(ckpt_dir.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    ckpts = sorted(CKPT_DIR.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
     return ckpts[0] if ckpts else None
 
 
@@ -115,7 +117,7 @@ def _load_pt(path: Path) -> Optional[Data]:
 
 
 def _scan_graphs() -> Dict[str, List[Dict]]:
-    graphs_dir = ROOT / "outputs" / "graphs"
+    graphs_dir = GRAPHS_DIR
     result: Dict[str, List[Dict]] = {"train": [], "val": []}
     for split in ("train", "val"):
         split_dir = graphs_dir / split
@@ -224,6 +226,9 @@ async def index():
 
 @app.get("/api/status")
 async def status():
+    all_ckpts = sorted(CKPT_DIR.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True) \
+        if CKPT_DIR.exists() else []
+
     return {
         "model_loaded": STATE.model is not None,
         "checkpoint": STATE.checkpoint_info,
@@ -231,6 +236,13 @@ async def status():
         "num_train_graphs": len(STATE.graphs["train"]),
         "num_val_graphs": len(STATE.graphs["val"]),
         "val_stats_ready": STATE.val_stats is not None,
+        "search_paths": {
+            "checkpoints_dir": str(CKPT_DIR),
+            "graphs_dir": str(GRAPHS_DIR),
+            "checkpoints_dir_exists": CKPT_DIR.exists(),
+            "graphs_dir_exists": GRAPHS_DIR.exists(),
+            "all_checkpoints": [p.name for p in all_ckpts],
+        },
     }
 
 
@@ -435,24 +447,63 @@ async def stats():
 
 @app.post("/api/reload")
 async def reload():
+    reload_log: List[str] = []
+
+    # ── Netejar estat anterior ─────────────────────────────────────────────────
+    STATE.model = None
+    STATE.checkpoint_info = None
+    STATE.val_stats = None
+
+    # ── Buscar checkpoint ──────────────────────────────────────────────────────
+    reload_log.append(f"📁 Directori checkpoints: {CKPT_DIR}")
+    reload_log.append(f"   Existeix: {CKPT_DIR.exists()}")
+
+    if CKPT_DIR.exists():
+        all_ckpts = sorted(CKPT_DIR.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+        reload_log.append(f"   Fitxers .pt trobats: {len(all_ckpts)}")
+        for p in all_ckpts:
+            reload_log.append(f"     • {p.name}")
+    else:
+        reload_log.append("   ⚠️  El directori no existeix")
+
     ckpt = _find_latest_checkpoint()
     if ckpt:
+        reload_log.append(f"✅ Carregant: {ckpt.name}")
         try:
             model, info = _load_model(ckpt)
             STATE.model = model.to(STATE.device)
             STATE.checkpoint_info = info
+            reload_log.append(f"   epoch={info['epoch']}  val_auc={info.get('val_auc')}  params={info['num_params']:,}")
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            reload_log.append(f"❌ Error carregant model: {e}")
+            log.error(f"Reload: model load failed: {e}")
+            return {"success": False, "error": str(e), "log": reload_log}
+    else:
+        reload_log.append("❌ Cap checkpoint trobat")
+
+    # ── Buscar grafs ───────────────────────────────────────────────────────────
+    reload_log.append(f"📁 Directori grafs: {GRAPHS_DIR}")
+    reload_log.append(f"   Existeix: {GRAPHS_DIR.exists()}")
 
     STATE.graphs = _scan_graphs()
-    STATE.val_stats = None
+    n_tr, n_va = len(STATE.graphs["train"]), len(STATE.graphs["val"])
+    reload_log.append(f"   Grafs train: {n_tr}  |  val: {n_va}")
 
+    # ── Estadístiques ──────────────────────────────────────────────────────────
     if STATE.model and STATE.graphs["val"]:
+        reload_log.append("📊 Calculant estadístiques de validació…")
         STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device)
+        if STATE.val_stats:
+            acc = STATE.val_stats.get("accuracy", 0)
+            auc = STATE.val_stats.get("auc")
+            reload_log.append(f"   acc={acc:.3f}  auc={auc:.4f}" if auc else f"   acc={acc:.3f}")
 
+    log.info(f"Reload: model={'OK' if STATE.model else 'NO'}  graphs={n_tr+n_va}")
     return {
         "success": True,
         "model_loaded": STATE.model is not None,
-        "num_train": len(STATE.graphs["train"]),
-        "num_val": len(STATE.graphs["val"]),
+        "num_train": n_tr,
+        "num_val": n_va,
+        "checkpoint": STATE.checkpoint_info,
+        "log": reload_log,
     }

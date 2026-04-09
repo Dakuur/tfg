@@ -115,21 +115,39 @@ reloadBtn.addEventListener("click", async () => {
   icon?.classList.add("spinning");
   reloadBtn.disabled = true;
 
-  if (STATE.debug) appendDebugLog({ level: "info", msg: "Recarregant model i grafs…", t: Date.now() });
+  // El log del reload sempre es mostra (no cal mode debug)
+  const showLog = (lines) => {
+    if (!lines?.length) return;
+    if (STATE.debug) {
+      lines.forEach(msg => appendDebugLog({ level: "info", msg, t: Date.now() }));
+    } else {
+      // Obre el panell de debug temporalment per mostrar el log de recàrrega
+      debugPanel.classList.remove("hidden");
+      lines.forEach(msg => appendDebugLog({ level: "info", msg, t: Date.now() }));
+    }
+  };
+
+  appendDebugLog({ level: "info", msg: "── Recarregant model i grafs… ──", t: Date.now() });
+  debugPanel.classList.remove("hidden");
 
   try {
     const res = await API.reload();
-    if (STATE.debug) appendDebugLog({
-      level: res.success ? "success" : "error",
-      msg: res.success
-        ? `Recàrrega OK — ${res.num_train} train, ${res.num_val} val`
-        : `Error: ${res.error}`,
+
+    // Mostrar log detallat del servidor
+    showLog(res.log);
+
+    appendDebugLog({
+      level: res.success && res.model_loaded ? "success" : "warn",
+      msg: res.model_loaded
+        ? `✅ Model carregat | ${res.num_train} train, ${res.num_val} val`
+        : `⚠️  Sense model | ${res.num_train} train, ${res.num_val} val`,
       t: Date.now(),
     });
+
     await refreshStatus();
-    navigate(STATE.page); // re-render current page
+    navigate(STATE.page);
   } catch (e) {
-    if (STATE.debug) appendDebugLog({ level: "error", msg: `Reload failed: ${e.message}`, t: Date.now() });
+    appendDebugLog({ level: "error", msg: `Error en recàrrega: ${e.message}`, t: Date.now() });
   }
 
   icon?.classList.remove("spinning");
