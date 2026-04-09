@@ -1,2 +1,7 @@
 .venv
 .idea
+__pycache__/
+*.pyc
+*.pyo
+log.txt
+log_frontend.txt

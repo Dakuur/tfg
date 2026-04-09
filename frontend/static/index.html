@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HistoGAT Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── Sidebar ─────────────────────────────────────────────────── -->
+    <aside id="sidebar">
+      <div class="logo">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+          <polygon points="11,2 20,7 20,15 11,20 2,15 2,7" stroke="var(--accent)" stroke-width="1.5" fill="none"/>
+          <polygon points="11,6 16,9 16,13 11,16 6,13 6,9" fill="var(--accent)" opacity="0.3"/>
+          <circle cx="11" cy="11" r="2" fill="var(--accent)"/>
+        </svg>
+        <span class="logo-text">Histo<span class="accent">GAT</span></span>
+      </div>
+
+      <nav id="nav">
+        <button class="nav-item active" data-page="dashboard">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Dashboard</span>
+        </button>
+        <button class="nav-item" data-page="inference">
+          <i data-lucide="play-circle"></i>
+          <span>Inferencia</span>
+        </button>
+        <button class="nav-item" data-page="statistics">
+          <i data-lucide="bar-chart-2"></i>
+          <span>Estadísticas</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="debug-row">
+          <span class="debug-label"><i data-lucide="bug"></i> Debug</span>
+          <label class="toggle">
+            <input type="checkbox" id="debug-toggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <button class="btn-icon-text" id="reload-btn" title="Recargar modelo y grafos">
+          <i data-lucide="refresh-cw"></i>
+          <span>Recargar</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ── Main area ───────────────────────────────────────────────── -->
+    <main id="main">
+      <header id="header">
+        <div id="status-bar"><!-- populated by JS --></div>
+      </header>
+
+      <div id="content" class="page-container">
+        <div class="loading-spinner">
+          <div class="spinner"></div>
+          <p>Cargando…</p>
+        </div>
+      </div>
+
+      <!-- Debug console (shown when debug mode on) -->
+      <div id="debug-panel" class="debug-panel hidden">
+        <div class="debug-panel-header">
+          <span><i data-lucide="terminal"></i>&nbsp;Debug Console</span>
+          <button id="clear-debug-btn" title="Limpiar consola"><i data-lucide="trash-2"></i></button>
+        </div>
+        <div id="debug-log" class="debug-log"></div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- CDN libraries -->
+  <script src="https://cdn.plot.ly/plotly-2.26.0.min.js" charset="utf-8"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <!-- App -->
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

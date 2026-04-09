@@ -29,18 +29,19 @@ jobs:
           pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
           pip install torch-geometric
           pip install -r requirements.txt
+          pip install fastapi "uvicorn[standard]"
 
       - name: 4. Aturar Procés Anterior
         run: |
-          # Matem el procés pel nom del fitxer
           pkill -f alive_test.py || true
+          pkill -f "uvicorn frontend.main" || true
 
       - name: 5. Executar Aplicació
         run: |
           source venv/bin/activate
-          # Useu python -u per evitar el buffer del log
           export RUNNER_TRACKING_ID=0
           nohup python -u alive_test.py > log.txt 2>&1 &
+          nohup uvicorn frontend.main:app --host 0.0.0.0 --port 8000 > log_frontend.txt 2>&1 &
 
       - name: 6. Verificar Estat de l'Arrencada
         run: |
@@ -54,3 +55,5 @@ jobs:
             cat log.txt
             exit 1
           fi
+          echo "Frontend logs:"
+          tail -n 5 log_frontend.txt || true
