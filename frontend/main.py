@@ -286,14 +286,14 @@ async def inference(req: InferenceRequest):
     def dlog(msg: str, level: str = "info"):
         debug_log.append({"t": round(time.time() * 1000), "level": level, "msg": msg})
 
-    dlog(f"Cargando grafo: {entry['id']}")
+    dlog(f"Carregant graf: {entry['id']}")
     g = _load_pt(Path(entry["path"]))
     if g is None:
         raise HTTPException(500, "Failed to load graph")
 
     num_nodes = int(g.num_nodes) if g.num_nodes is not None else int(g.x.shape[0])
     num_edges = int(g.edge_index.shape[1])
-    dlog(f"Grafo cargado: {num_nodes} nodos, {num_edges} aristas dirigidas")
+    dlog(f"Graf carregat: {num_nodes} nodes, {num_edges} arestes dirigides")
 
     g = g.to(STATE.device)
     model = STATE.model
@@ -302,33 +302,33 @@ async def inference(req: InferenceRequest):
     attention_layers: Dict[str, Dict] = {}
     node_embeddings_pca: Dict[str, Dict] = {}
 
-    dlog("Iniciando forward pass con extracción de atención…")
+    dlog("Iniciant forward pass amb extracció d'atenció…")
 
     with torch.no_grad():
         x, ei = g.x, g.edge_index
 
         # ── Layer 1 ────────────────────────────────────────────────────────────
-        dlog(f"GAT Layer 1 — heads={model.conv1.heads}, concat=True")
+        dlog(f"GAT Capa 1 — heads={model.conv1.heads}, concat=True")
         x1_raw, (ei1, a1) = model.conv1(x, ei, return_attention_weights=True)
         x1 = F.elu(model.bn1(x1_raw))
         x1 = F.dropout(x1, p=model.dropout, training=False)
         a1_mean = a1.mean(dim=1).cpu().float()
-        dlog(f"  → {ei1.shape[1]} aristas (incl. self-loops), {a1.shape[1]} cabezas de atención")
+        dlog(f"  → {ei1.shape[1]} arestes (incl. self-loops), {a1.shape[1]} caps d'atenció")
 
         # ── Layer 2 ────────────────────────────────────────────────────────────
-        dlog(f"GAT Layer 2 — heads={model.conv2.heads}, concat=True")
+        dlog(f"GAT Capa 2 — heads={model.conv2.heads}, concat=True")
         x2_raw, (ei2, a2) = model.conv2(x1, ei, return_attention_weights=True)
         x2 = F.elu(model.bn2(x2_raw))
         x2 = F.dropout(x2, p=model.dropout, training=False)
         a2_mean = a2.mean(dim=1).cpu().float()
-        dlog(f"  → {ei2.shape[1]} aristas, {a2.shape[1]} cabezas de atención")
+        dlog(f"  → {ei2.shape[1]} arestes, {a2.shape[1]} caps d'atenció")
 
         # ── Layer 3 ────────────────────────────────────────────────────────────
-        dlog(f"GAT Layer 3 — heads={model.conv3.heads}, concat=False")
+        dlog(f"GAT Capa 3 — heads={model.conv3.heads}, concat=False")
         x3_raw, (ei3, a3) = model.conv3(x2, ei, return_attention_weights=True)
         x3 = F.elu(model.bn3(x3_raw))
         a3_mean = a3.mean(dim=1).cpu().float()
-        dlog(f"  → {ei3.shape[1]} aristas, {a3.shape[1]} cabezas de atención")
+        dlog(f"  → {ei3.shape[1]} arestes, {a3.shape[1]} caps d'atenció")
 
         # ── Aggregate per-node attention ───────────────────────────────────────
         for name, ei_l, a_mean in [
@@ -358,7 +358,7 @@ async def inference(req: InferenceRequest):
             }
 
         # ── PCA of node embeddings ─────────────────────────────────────────────
-        dlog("Reducción PCA de embeddings de nodos (→ 2D)…")
+        dlog("Reducció PCA dels embeddings de nodes (→ 2D)…")
         for name, emb in [("layer1", x1), ("layer2", x2), ("layer3", x3)]:
             arr = emb.cpu().float().numpy()
             N, D = arr.shape
@@ -377,7 +377,7 @@ async def inference(req: InferenceRequest):
             node_embeddings_pca[name] = {"coords": coords_2d, "variance_explained": var_exp}
 
         # ── Global pooling + MLP ───────────────────────────────────────────────
-        dlog("Global pooling (mean + max) → MLP head…")
+        dlog("Global pooling (mean + max) → cap MLP…")
         h = torch.cat([global_mean_pool(x3, batch), global_max_pool(x3, batch)], dim=1)
         logits = model.mlp(h)
         probs = F.softmax(logits, dim=1)
@@ -389,10 +389,10 @@ async def inference(req: InferenceRequest):
     correct = (pred == true_label) if true_label >= 0 else None
 
     label_names = {0: "N0", 1: "N1"}
-    dlog(f"Predicción: {label_names.get(pred, '?')} — P(N0)={prob_n0:.3f}, P(N1)={prob_n1:.3f}")
+    dlog(f"Predicció: {label_names.get(pred, '?')} — P(N0)={prob_n0:.3f}, P(N1)={prob_n1:.3f}")
     if true_label >= 0:
         dlog(
-            f"Etiqueta real: {label_names.get(true_label, '?')} → {'✓ CORRECTO' if correct else '✗ INCORRECTO'}",
+            f"Etiqueta real: {label_names.get(true_label, '?')} → {'✓ CORRECTE' if correct else '✗ INCORRECTE'}",
             level="success" if correct else "error",
         )
 

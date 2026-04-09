@@ -188,8 +188,8 @@ export function renderGraph(container, data, opts = {}) {
 
   function showTooltip(event, d) {
     tooltip.style("display", "block").html(
-      `<strong>Nodo ${d.id}</strong><br>` +
-      `Atención: ${(d.attn * 100).toFixed(1)}%<br>` +
+      `<strong>Node ${d.id}</strong><br>` +
+      `Atenció: ${(d.attn * 100).toFixed(1)}%<br>` +
       `‖feat‖: ${d.norm?.toFixed(2) ?? "—"}`
     );
     moveTooltip(event);
@@ -229,7 +229,7 @@ export function renderPCA(container, pcaData, nodeAttention = null, title = "") 
       color: colors,
       line: { width: 0.5, color: "#333" },
     },
-    hovertemplate: "Nodo %{text}<br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<extra></extra>",
+    hovertemplate: "Node %{text}<br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<extra></extra>",
   };
 
   const layout = {
@@ -270,7 +270,7 @@ export function renderAttentionBars(container, nodeAttention, title = "") {
     y: nodeAttention,
     type: "bar",
     marker: { color: colors },
-    hovertemplate: "Nodo %{x}<br>Atención: %{y:.4f}<extra></extra>",
+    hovertemplate: "Node %{x}<br>Atenció: %{y:.4f}<extra></extra>",
   };
 
   const layout = {
@@ -278,8 +278,8 @@ export function renderAttentionBars(container, nodeAttention, title = "") {
     paper_bgcolor: "#1c1c1c",
     plot_bgcolor: "#1c1c1c",
     font: { color: "#888", family: "Inter, sans-serif", size: 11 },
-    xaxis: { title: "Nodo", gridcolor: "#2a2a2a", color: "#555" },
-    yaxis: { title: "Peso de atención (media)", gridcolor: "#2a2a2a", color: "#555" },
+    xaxis: { title: "Node", gridcolor: "#2a2a2a", color: "#555" },
+    yaxis: { title: "Pes d'atenció (mitjana)", gridcolor: "#2a2a2a", color: "#555" },
     margin: { l: 50, r: 16, t: 36, b: 50 },
     height: 220,
   };

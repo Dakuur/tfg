@@ -31,7 +31,7 @@ async function navigate(page) {
     el.classList.toggle("active", el.dataset.page === page);
   });
 
-  content.innerHTML = `<div class="loading-spinner"><div class="spinner"></div><p>Cargando…</p></div>`;
+  content.innerHTML = `<div class="loading-spinner"><div class="spinner"></div><p>Carregant…</p></div>`;
 
   switch (page) {
     case "dashboard":  await renderDashboard(content); break;
@@ -48,14 +48,14 @@ async function refreshStatus() {
     STATE.status = await API.status();
     renderStatusBar(STATE.status);
   } catch {
-    statusBar.innerHTML = pill("error", "Backend offline");
+    statusBar.innerHTML = pill("error", "Backend fora de línia");
   }
 }
 
 function renderStatusBar(s) {
   const modelPill = s.model_loaded
-    ? pill("ok", `Modelo cargado · epoch ${s.checkpoint?.epoch ?? "?"}`)
-    : pill("warn", "Sin modelo");
+    ? pill("ok", `Model carregat · epoch ${s.checkpoint?.epoch ?? "?"}`)
+    : pill("warn", "Sense model");
 
   const aucPill = s.checkpoint?.val_auc != null
     ? pill("info", `AUC ${s.checkpoint.val_auc.toFixed(3)}`)
@@ -65,7 +65,7 @@ function renderStatusBar(s) {
 
   const graphsPill = pill(
     s.num_train_graphs + s.num_val_graphs > 0 ? "ok" : "warn",
-    `${s.num_train_graphs + s.num_val_graphs} grafos`
+    `${s.num_train_graphs + s.num_val_graphs} grafs`
   );
 
   statusBar.innerHTML = `
@@ -91,10 +91,10 @@ function setDebug(on) {
   debugPanel.classList.toggle("hidden", !on);
 
   if (on) {
-    appendDebugLog({ level: "info", msg: "Debug mode activado", t: Date.now() });
-    appendDebugLog({ level: "info", msg: `Dispositivo: ${STATE.status?.device?.toUpperCase() || "?"}`, t: Date.now() });
-    appendDebugLog({ level: "info", msg: `Modelo: ${STATE.status?.checkpoint?.name || "sin checkpoint"}`, t: Date.now() });
-    appendDebugLog({ level: "info", msg: `Grafos: ${(STATE.status?.num_train_graphs ?? 0) + (STATE.status?.num_val_graphs ?? 0)} totales`, t: Date.now() });
+    appendDebugLog({ level: "info", msg: "Mode depuració activat", t: Date.now() });
+    appendDebugLog({ level: "info", msg: `Dispositiu: ${STATE.status?.device?.toUpperCase() || "?"}`, t: Date.now() });
+    appendDebugLog({ level: "info", msg: `Model: ${STATE.status?.checkpoint?.name || "sense checkpoint"}`, t: Date.now() });
+    appendDebugLog({ level: "info", msg: `Grafs: ${(STATE.status?.num_train_graphs ?? 0) + (STATE.status?.num_val_graphs ?? 0)} totals`, t: Date.now() });
   }
 }
 
@@ -115,14 +115,14 @@ reloadBtn.addEventListener("click", async () => {
   icon?.classList.add("spinning");
   reloadBtn.disabled = true;
 
-  if (STATE.debug) appendDebugLog({ level: "info", msg: "Recargando modelo y grafos…", t: Date.now() });
+  if (STATE.debug) appendDebugLog({ level: "info", msg: "Recarregant model i grafs…", t: Date.now() });
 
   try {
     const res = await API.reload();
     if (STATE.debug) appendDebugLog({
       level: res.success ? "success" : "error",
       msg: res.success
-        ? `Recarga OK — ${res.num_train} train, ${res.num_val} val`
+        ? `Recàrrega OK — ${res.num_train} train, ${res.num_val} val`
         : `Error: ${res.error}`,
       t: Date.now(),
     });
