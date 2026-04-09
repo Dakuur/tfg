@@ -80,8 +80,28 @@ def _load_model(ckpt_path: Path):
     ckpt = torch.load(ckpt_path, weights_only=False, map_location="cpu")
     sd = ckpt["model"]
 
-    # Auto-detect architecture from state dict shapes
-    in_channels = sd["conv1.lin_src.weight"].shape[1]
+    # Auto-detect architecture from state dict shapes.
+    # GATConv key names differ across PyG versions:
+    #   PyG >= 2.0 (int in_channels): conv1.lin_src.weight  shape (heads*out, in)
+    #   Some PyG versions:            conv1.lin.weight       shape (heads*out, in)
+    #   Older PyG:                    conv1.weight           shape (heads*out, in)
+    _in_ch_candidates = [
+        ("conv1.lin_src.weight", 1),
+        ("conv1.lin.weight", 1),
+        ("conv1.weight", 1),
+        ("conv1.lin_src.weight", 0),  # fallback with transposed shape
+    ]
+    in_channels = None
+    for key, dim in _in_ch_candidates:
+        if key in sd:
+            in_channels = sd[key].shape[dim]
+            break
+    if in_channels is None:
+        conv1_keys = [k for k in sd if "conv1" in k and "weight" in k]
+        raise KeyError(
+            f"No s'ha pogut detectar in_channels. Claus de conv1 disponibles: {conv1_keys}"
+        )
+
     # bn3 output = hidden (conv3 has heads=1, concat=False)
     hidden = sd["bn3.weight"].shape[0]
     # bn1 output = hidden * heads (conv1 has concat=True)

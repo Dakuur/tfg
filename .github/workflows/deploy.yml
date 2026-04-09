@@ -38,6 +38,9 @@ jobs:
 
       - name: 5. Reiniciar frontend
         run: |
+          # Matar qualsevol uvicorn nohup que pugui estar ocupant el port
+          pkill -f "uvicorn frontend.main" || true
+          sleep 1
           # Intenta via systemd (si setup_service.sh s'ha executat manualment)
           if sudo systemctl restart histogat-frontend 2>/dev/null; then
             echo "✅ histogat-frontend reiniciat via systemd"
