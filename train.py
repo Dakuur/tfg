@@ -143,7 +143,7 @@ def train_one(cfg: dict, run_name: str | None) -> None:
     wandb.config.update({"n_params": n_params, "in_channels": in_ch}, allow_val_change=True)
 
     # ── Optimiser & scheduler ─────────────────────────────────────────────────
-    optimizer = torch.optim.Adam(model.parameters(), lr=t["lr"])
+    optimizer = torch.optim.Adam(model.parameters(), lr=t["lr"], weight_decay=1e-3)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=t["t_max"], eta_min=1e-6
     )

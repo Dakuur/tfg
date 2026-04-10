@@ -16,9 +16,9 @@ data:
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 model:
-  hidden:  128          # Hidden dim per GAT head  (int or list)
-  heads:   4            # Number of attention heads (int or list)
-  dropout: 0.3          # Dropout rate              (float or list)
+  hidden:  64          # Hidden dim per GAT head  (int or list)
+  heads:   2            # Number of attention heads (int or list)
+  dropout: 0.5          # Dropout rate              (float or list)
 
   # Readout pooling strategy (str or list):
   #   mean_max — concat(global_mean_pool, global_max_pool)  [default]
@@ -36,7 +36,7 @@ training:
   batch_size: 16
   t_max:      50        # CosineAnnealingLR period (set = epochs if unsure)
   warm_up:    10        # Epochs before early stopping activates
-  patience:   20        # Early stopping patience (epochs without improvement)
+  patience:   5         # Early stopping patience (epochs without improvement)
   seed:       123
 
   # Metric used for checkpointing (saving best model):
