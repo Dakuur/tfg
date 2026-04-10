@@ -16,8 +16,8 @@ data:
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 model:
-  hidden:  64          # Hidden dim per GAT head  (int or list)
-  heads:   2            # Number of attention heads (int or list)
+  hidden:  128          # Hidden dim per GAT head  (int or list)
+  heads:   4            # Number of attention heads (int or list)
   dropout: 0.5          # Dropout rate              (float or list)
 
   # Readout pooling strategy (str or list):
@@ -26,14 +26,14 @@ model:
   #   max      — global_max_pool
   #   sum      — global_add_pool
   #   diff     — Differential Hierarchical Pooling (DiffPool)
-  pooling:       ["mean", "mean_max", "diff", "sum", "max"]
-  diff_clusters: 10     # Number of DiffPool super-nodes (only used if pooling=diff)
+  pooling:       ["mean", "mean_max", "diff"]
+  diff_clusters: 25     # Number of DiffPool super-nodes (only used if pooling=diff)
 
 # ── Training ───────────────────────────────────────────────────────────────────
 training:
   lr:         1.0e-4
   epochs:     100
-  batch_size: 16
+  batch_size: 64
   t_max:      100       # CosineAnnealingLR period (set = epochs if unsure)
   warm_up:    15        # Epochs before early stopping activates
   patience:   10        # Early stopping patience (epochs without improvement)
