@@ -33,7 +33,7 @@ model:
 training:
   lr:         1.0e-4
   epochs:     100
-  batch_size: 64
+  batch_size: 128
   t_max:      100       # CosineAnnealingLR period (set = epochs if unsure)
   warm_up:    15        # Epochs before early stopping activates
   patience:   10        # Early stopping patience (epochs without improvement)
