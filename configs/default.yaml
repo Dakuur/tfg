@@ -34,9 +34,9 @@ training:
   lr:         1.0e-4
   epochs:     100
   batch_size: 16
-  t_max:      50        # CosineAnnealingLR period (set = epochs if unsure)
-  warm_up:    10        # Epochs before early stopping activates
-  patience:   5         # Early stopping patience (epochs without improvement)
+  t_max:      100       # CosineAnnealingLR period (set = epochs if unsure)
+  warm_up:    15        # Epochs before early stopping activates
+  patience:   15        # Early stopping patience (epochs without improvement)
   seed:       123
 
   # Metric used for checkpointing (saving best model):
