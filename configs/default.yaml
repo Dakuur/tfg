@@ -42,7 +42,7 @@ training:
   # Metric used for checkpointing (saving best model):
   #   val_auc      — validation ROC-AUC          [default]
   #   val_f1_macro — macro-averaged F1 (N0 + N1)
-  monitor: "val_f1_macro"
+  monitor: "val_auc"
 
 # ── W&B ────────────────────────────────────────────────────────────────────────
 wandb:
