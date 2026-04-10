@@ -26,7 +26,7 @@ model:
   #   max      — global_max_pool
   #   sum      — global_add_pool
   #   diff     — Differential Hierarchical Pooling (DiffPool)
-  pooling:       "diff"
+  pooling:       ["mean", "mean_max", "diff", "sum", "max"]
   diff_clusters: 10     # Number of DiffPool super-nodes (only used if pooling=diff)
 
 # ── Training ───────────────────────────────────────────────────────────────────
@@ -36,13 +36,13 @@ training:
   batch_size: 16
   t_max:      100       # CosineAnnealingLR period (set = epochs if unsure)
   warm_up:    15        # Epochs before early stopping activates
-  patience:   15        # Early stopping patience (epochs without improvement)
+  patience:   10        # Early stopping patience (epochs without improvement)
   seed:       123
 
   # Metric used for checkpointing (saving best model):
   #   val_auc      — validation ROC-AUC          [default]
   #   val_f1_macro — macro-averaged F1 (N0 + N1)
-  monitor: "val_auc"
+  monitor: "val_f1_macro"
 
 # ── W&B ────────────────────────────────────────────────────────────────────────
 wandb:
