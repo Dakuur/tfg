@@ -26,7 +26,7 @@ model:
   #   max      — global_max_pool
   #   sum      — global_add_pool
   #   diff     — Differential Hierarchical Pooling (DiffPool)
-  pooling:       "mean_max"
+  pooling:       "diff"
   diff_clusters: 10     # Number of DiffPool super-nodes (only used if pooling=diff)
 
 # ── Training ───────────────────────────────────────────────────────────────────
