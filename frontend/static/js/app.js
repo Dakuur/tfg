@@ -156,6 +156,19 @@ reloadBtn.addEventListener("click", async () => {
 
 // ── Additional CSS for arch diagram & animations ───────────────────────────────
 const extraCSS = `
+.model-select {
+  padding: 8px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.model-select:focus { outline: none; border-color: var(--accent); }
+.model-select option { background: var(--bg2); color: var(--text); }
+
 .arch-layer {
   display: flex;
   align-items: center;

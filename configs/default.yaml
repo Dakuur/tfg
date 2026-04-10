@@ -1,0 +1,50 @@
+# HistoGAT — Training Configuration
+#
+# Any scalar value can be replaced by a list to run a grid search.
+# train.py will execute one training run per combination.
+#
+# Example grid search:
+#   model:
+#     hidden: [64, 128, 256]
+#     heads:  [2, 4]
+#   → 6 runs total
+
+# ── Data ───────────────────────────────────────────────────────────────────────
+data:
+  graphs_dir:     "outputs/graphs"
+  checkpoint_dir: "outputs/checkpoints"
+
+# ── Model ──────────────────────────────────────────────────────────────────────
+model:
+  hidden:  128          # Hidden dim per GAT head  (int or list)
+  heads:   4            # Number of attention heads (int or list)
+  dropout: 0.3          # Dropout rate              (float or list)
+
+  # Readout pooling strategy (str or list):
+  #   mean_max — concat(global_mean_pool, global_max_pool)  [default]
+  #   mean     — global_mean_pool
+  #   max      — global_max_pool
+  #   sum      — global_add_pool
+  #   diff     — Differential Hierarchical Pooling (DiffPool)
+  pooling:       "mean_max"
+  diff_clusters: 10     # Number of DiffPool super-nodes (only used if pooling=diff)
+
+# ── Training ───────────────────────────────────────────────────────────────────
+training:
+  lr:         1.0e-4
+  epochs:     100
+  batch_size: 16
+  t_max:      50        # CosineAnnealingLR period (set = epochs if unsure)
+  warm_up:    10        # Epochs before early stopping activates
+  patience:   20        # Early stopping patience (epochs without improvement)
+  seed:       123
+
+  # Metric used for checkpointing (saving best model):
+  #   val_auc      — validation ROC-AUC          [default]
+  #   val_f1_macro — macro-averaged F1 (N0 + N1)
+  monitor: "val_auc"
+
+# ── W&B ────────────────────────────────────────────────────────────────────────
+wandb:
+  project:  "colon-cancer-gnn"
+  run_name: null        # null → W&B auto-generates a name
