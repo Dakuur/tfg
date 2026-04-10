@@ -22,15 +22,16 @@ export async function renderStatistics(container) {
     return;
   }
 
-  const acc = data.accuracy != null ? (data.accuracy * 100).toFixed(1) + "%" : "—";
-  const auc = data.auc != null ? data.auc.toFixed(4) : "—";
+  const acc   = data.accuracy != null ? (data.accuracy * 100).toFixed(1) + "%" : "—";
+  const auc   = data.auc != null ? data.auc.toFixed(4) : "—";
   const total = data.total_samples ?? 0;
-  const dist = data.class_distribution || {};
+  const level = data.level === "patient" ? "pacients" : "mostres";
+  const dist  = data.class_distribution || {};
 
   container.innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Estadístiques del model</h1>
-      <p class="page-sub">Avaluat sobre el split de validació (${total} mostres)</p>
+      <p class="page-sub">Avaluat sobre el split de validació (${total} ${level})</p>
     </div>
 
     <div class="grid-4 section">
@@ -131,6 +132,8 @@ export async function renderStatistics(container) {
     const labels = ["N0", "N1"];
     const zMax = Math.max(...cm.flat()) || 1;
 
+    // Note: use EITHER texttemplate OR annotations — never both (causes overlap).
+    // Annotations are preferred: they allow adaptive text colour per cell.
     Plotly.react(container.querySelector("#chart-cm"), [{
       z: cm,
       x: labels,
@@ -138,23 +141,23 @@ export async function renderStatistics(container) {
       type: "heatmap",
       colorscale: [[0, "#1c1c1c"], [1, "#cc00a8"]],
       showscale: false,
-      text: cm.map(row => row.map(v => String(v))),
-      texttemplate: "<b>%{text}</b>",
       hovertemplate: "Real: %{y}<br>Predit: %{x}<br>Count: %{z}<extra></extra>",
     }], {
       paper_bgcolor: "#1c1c1c",
       plot_bgcolor: "#1c1c1c",
       font: { color: "#888", family: "Inter, sans-serif", size: 12 },
-      xaxis: { title: "Predit", color: "#888" },
-      yaxis: { title: "Real", color: "#888", autorange: "reversed" },
+      xaxis: { title: "Predit", color: "#888", tickfont: { size: 13 } },
+      yaxis: { title: "Real",   color: "#888", tickfont: { size: 13 }, autorange: "reversed" },
       margin: { l: 60, r: 20, t: 20, b: 60 },
       height: 280,
       annotations: cm.flatMap((row, i) =>
         row.map((v, j) => ({
           x: labels[j], y: labels[i],
           text: `<b>${v}</b>`,
-          font: { color: v / zMax > 0.5 ? "#fff" : "#888", size: 16 },
+          font: { color: v / zMax > 0.5 ? "#fff" : "#aaa", size: 18, family: "Inter, sans-serif" },
           showarrow: false,
+          xanchor: "center",
+          yanchor: "middle",
         }))
       ),
     }, { displayModeBar: false, responsive: true });

@@ -13,12 +13,14 @@ async function _req(method, path, body) {
 }
 
 export const API = {
-  status:      ()              => _req("GET",  "/api/status"),
-  graphs:      (split)         => _req("GET",  `/api/graphs${split ? `?split=${split}` : ""}`),
-  graphData:   (id)            => _req("GET",  `/api/graphs/${encodeURIComponent(id)}`),
-  inference:   (graphId, debug) => _req("POST", "/api/inference", { graph_id: graphId, debug }),
-  stats:       ()              => _req("GET",  "/api/stats"),
-  reload:      ()              => _req("POST", "/api/reload"),
-  checkpoints: ()              => _req("GET",  "/api/checkpoints"),
-  selectModel: (name)          => _req("POST", "/api/select_model", { name }),
+  status:           ()                    => _req("GET",  "/api/status"),
+  graphs:           (split)               => _req("GET",  `/api/graphs${split ? `?split=${split}` : ""}`),
+  graphData:        (id)                  => _req("GET",  `/api/graphs/${encodeURIComponent(id)}`),
+  patients:         ()                    => _req("GET",  "/api/patients"),
+  inference:        (graphId, debug)      => _req("POST", "/api/inference",         { graph_id:   graphId,    debug }),
+  inferencePatient: (patientId, debug)    => _req("POST", "/api/inference_patient",  { patient_id: patientId,  debug }),
+  stats:            ()                    => _req("GET",  "/api/stats"),
+  reload:           ()                    => _req("POST", "/api/reload"),
+  checkpoints:      ()                    => _req("GET",  "/api/checkpoints"),
+  selectModel:      (name)               => _req("POST", "/api/select_model", { name }),
 };
