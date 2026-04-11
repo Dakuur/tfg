@@ -34,9 +34,18 @@ import yaml
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
-from scripts.data     import load_graphs, compute_class_weights, make_loaders  # noqa: E402
-from scripts.model    import GATClassifier                                       # noqa: E402
-from scripts.training import fix_seeds, EarlyStopping, train_epoch, val_epoch, save_checkpoint  # noqa: E402
+from scripts.data     import (  # noqa: E402
+    load_graphs,
+    compute_class_weights, make_loaders,
+    compute_patient_class_weights, make_patient_loaders,
+)
+from scripts.model    import GATClassifier, PatientAggregator                    # noqa: E402
+from scripts.training import (  # noqa: E402
+    fix_seeds, EarlyStopping,
+    train_epoch,         val_epoch,
+    train_epoch_patient, val_epoch_patient,
+    save_checkpoint,
+)
 
 DEFAULT_CONFIG = ROOT / "configs" / "default.yaml"
 
@@ -102,6 +111,9 @@ def train_one(cfg: dict, run_name: str | None) -> None:
     d   = cfg["data"]
     w   = cfg["wandb"]
 
+    patient_level = bool(t.get("patient_level", False))
+    aggregation   = t.get("aggregation", "noisy_or")
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     fix_seeds(t["seed"])
 
@@ -122,11 +134,21 @@ def train_one(cfg: dict, run_name: str | None) -> None:
     train_graphs = load_graphs(graphs_dir / "train")
     val_graphs   = load_graphs(graphs_dir / "val")
 
-    class_weights = compute_class_weights(train_graphs).to(device)
-    train_loader, val_loader = make_loaders(train_graphs, val_graphs, t["batch_size"])
-
     in_ch = train_graphs[0].x.shape[1]
     print(f"[INFO] Train: {len(train_graphs)}  Val: {len(val_graphs)}  Features: {in_ch}")
+    print(f"[INFO] Mode: {'patient-level MIL' if patient_level else 'slide-level'}  "
+          f"aggregation={aggregation if patient_level else 'n/a'}")
+
+    if patient_level:
+        class_weights = compute_patient_class_weights(train_graphs).to(device)
+        train_loader, val_loader = make_patient_loaders(
+            train_graphs, val_graphs, t["batch_size"]
+        )
+    else:
+        class_weights = compute_class_weights(train_graphs).to(device)
+        train_loader, val_loader = make_loaders(
+            train_graphs, val_graphs, t["batch_size"]
+        )
 
     # ── Model ─────────────────────────────────────────────────────────────────
     model = GATClassifier(
@@ -138,16 +160,30 @@ def train_one(cfg: dict, run_name: str | None) -> None:
         diff_clusters = m.get("diff_clusters", 10),
     ).to(device)
 
+    # PatientAggregator only for attention MIL
+    patient_aggregator = None
+    if patient_level and aggregation == "attention":
+        pool_out = m["hidden"] * 2 if m["pooling"] in ("mean_max", "diff") else m["hidden"]
+        patient_aggregator = PatientAggregator(embed_dim=pool_out).to(device)
+        print(f"[INFO] PatientAggregator: embed_dim={pool_out}")
+
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"[INFO] Model: {n_params:,} params  |  pooling={m['pooling']}")
+    if patient_aggregator is not None:
+        n_params += sum(p.numel() for p in patient_aggregator.parameters())
+    print(f"[INFO] Total params: {n_params:,}  |  pooling={m['pooling']}")
     wandb.config.update({"n_params": n_params, "in_channels": in_ch}, allow_val_change=True)
 
     # ── Optimiser & scheduler ─────────────────────────────────────────────────
-    optimizer = torch.optim.Adam(model.parameters(), lr=t["lr"], weight_decay=1e-3)
+    all_params = list(model.parameters())
+    if patient_aggregator is not None:
+        all_params += list(patient_aggregator.parameters())
+
+    optimizer = torch.optim.Adam(all_params, lr=t["lr"], weight_decay=1e-3)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=t["t_max"], eta_min=1e-6
     )
-    criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+    # slide-level criterion (CrossEntropy) only used in non-patient mode
+    criterion = torch.nn.CrossEntropyLoss(weight=class_weights) if not patient_level else None
     scaler    = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
 
     # ── Training state ────────────────────────────────────────────────────────
@@ -168,10 +204,20 @@ def train_one(cfg: dict, run_name: str | None) -> None:
     t0 = time.time()
 
     for epoch in range(1, t["epochs"] + 1):
-        tr = train_epoch(model, train_loader, optimizer, criterion, scaler, device)
-        va = val_epoch(model, val_loader, criterion, device)
-        scheduler.step()
+        if patient_level:
+            tr = train_epoch_patient(
+                model, train_loader, optimizer, class_weights, scaler, device,
+                aggregation=aggregation, patient_aggregator=patient_aggregator,
+            )
+            va = val_epoch_patient(
+                model, val_loader, class_weights, device,
+                aggregation=aggregation, patient_aggregator=patient_aggregator,
+            )
+        else:
+            tr = train_epoch(model, train_loader, optimizer, criterion, scaler, device)
+            va = val_epoch(model, val_loader, criterion, device)
 
+        scheduler.step()
         lr_now = scheduler.get_last_lr()[0]
 
         wandb.log({
@@ -204,7 +250,10 @@ def train_one(cfg: dict, run_name: str | None) -> None:
         if score > best_score:
             best_score = score
             best_epoch = epoch
-            save_checkpoint(model, optimizer, epoch, va, ckpt_path)
+            save_checkpoint(
+                model, optimizer, epoch, va, ckpt_path,
+                patient_aggregator=patient_aggregator,
+            )
             # Save a config copy alongside the weights
             run_cfg = copy.deepcopy(cfg)
             run_cfg["_run"] = {"name": run.name, "url": run.url}

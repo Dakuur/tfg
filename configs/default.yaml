@@ -44,6 +44,20 @@ training:
   #   val_f1_macro — macro-averaged F1 (N0 + N1)
   monitor: "val_auc"
 
+  # Patient-level Multiple Instance Learning (MIL):
+  #   patient_level: true  — backpropagate from a single patient-level label
+  #                          (all slides of a patient contribute to one loss)
+  #   patient_level: false — standard slide-level training
+  patient_level: true
+
+  # How to aggregate per-slide P(N1) into a patient probability:
+  #   noisy_or   — P(pat=N1) = 1 - Π(1-P(slide_i=N1))  [default]
+  #   max        — max(P(slide_i=N1))
+  #   lse        — log-sum-exp smooth maximum
+  #   mean       — mean(P(slide_i=N1))
+  #   attention  — Gated Attention MIL (Ilse et al., 2018)
+  aggregation: "noisy_or"
+
 # ── W&B ────────────────────────────────────────────────────────────────────────
 wandb:
   project:  "colon-cancer-gnn"
