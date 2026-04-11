@@ -179,8 +179,12 @@ def train_one(cfg: dict, run_name: str | None) -> None:
         all_params += list(patient_aggregator.parameters())
 
     optimizer = torch.optim.Adam(all_params, lr=t["lr"], weight_decay=1e-3)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=t["t_max"], eta_min=1e-6
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=t.get("scheduler_factor", 0.5),
+        patience=t.get("scheduler_patience", 5),
+        min_lr=t.get("scheduler_min_lr", 1e-6),
     )
     # slide-level criterion (CrossEntropy) only used in non-patient mode
     criterion = torch.nn.CrossEntropyLoss(weight=class_weights) if not patient_level else None
@@ -217,8 +221,8 @@ def train_one(cfg: dict, run_name: str | None) -> None:
             tr = train_epoch(model, train_loader, optimizer, criterion, scaler, device)
             va = val_epoch(model, val_loader, criterion, device)
 
-        scheduler.step()
-        lr_now = scheduler.get_last_lr()[0]
+        scheduler.step(va["loss"])
+        lr_now = optimizer.param_groups[0]["lr"]
 
         wandb.log({
             "epoch":            epoch,

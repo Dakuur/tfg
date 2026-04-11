@@ -27,14 +27,19 @@ model:
   #   sum      — global_add_pool
   #   diff     — Differential Hierarchical Pooling (DiffPool)
   pooling:       ["mean", "mean_max", "diff", "max", "sum"]
-  diff_clusters: [10, 20]     # Number of DiffPool super-nodes (only used if pooling=diff)
+  diff_clusters: [5, 10, 20]     # Number of DiffPool super-nodes (only used if pooling=diff)
 
 # ── Training ───────────────────────────────────────────────────────────────────
 training:
-  lr:         [1.0e-4, 5.0e-5]
+  lr:         [1.0e-4, 5.0e-5, 1.0e-5]
   epochs:     100
   batch_size: 128
-  t_max:      100       # CosineAnnealingLR period (set = epochs if unsure)
+
+  # ReduceLROnPlateau: reduces LR when val_loss stops improving
+  scheduler_factor:   0.5   # Multiplicative factor applied to LR on plateau
+  scheduler_patience: 5     # Epochs without val_loss improvement before reducing LR
+  scheduler_min_lr:   1.0e-6  # Lower bound on LR
+
   warm_up:    10        # Epochs before early stopping activates
   patience:   15        # Early stopping patience (epochs without improvement)
   seed:       123
