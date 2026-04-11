@@ -14,7 +14,7 @@ data:
 # ── Model ──────────────────────────────────────────────────────────────────────
 model:
   hidden:  128
-  heads:   2
+  heads:   [2, 4]
   dropout: 0.5
 
   # Readout pooling strategy (str or list):
@@ -23,12 +23,12 @@ model:
   #   max      — global_max_pool
   #   sum      — global_add_pool
   #   diff     — Differential Hierarchical Pooling (DiffPool)
-  pooling:       ["mean", "mean_max", "sum", "diff"]
-  diff_clusters: 25     # only used if pooling=diff
+  pooling:       "diff"
+  diff_clusters: [25, 50, 75]     # only used if pooling=diff
 
 # ── Training ───────────────────────────────────────────────────────────────────
 training:
-  lr:         [1.0e-4, 1.0e-5]
+  lr:         1.0e-4
   epochs:     100
   batch_size: 128
 
@@ -39,7 +39,7 @@ training:
 
   warm_up:  10
   patience: 15
-  seed:     123
+  seed:     [42, 123, 456, 789, 1234]
 
   # Metric used for checkpointing:
   #   val_auc      — validation ROC-AUC
