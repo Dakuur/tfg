@@ -16,9 +16,9 @@ data:
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 model:
-  hidden:  128          # Hidden dim per GAT head  (int or list)
-  heads:   4            # Number of attention heads (int or list)
-  dropout: 0.5          # Dropout rate              (float or list)
+  hidden:  [32, 64, 128, 256]          # Hidden dim per GAT head  (int or list)
+  heads:   [1, 2, 4]            # Number of attention heads (int or list)
+  dropout: [0.25, 0.5]          # Dropout rate              (float or list)
 
   # Readout pooling strategy (str or list):
   #   mean_max — concat(global_mean_pool, global_max_pool)  [default]
@@ -26,8 +26,8 @@ model:
   #   max      — global_max_pool
   #   sum      — global_add_pool
   #   diff     — Differential Hierarchical Pooling (DiffPool)
-  pooling:       ["mean", "mean_max", "diff"]
-  diff_clusters: 25     # Number of DiffPool super-nodes (only used if pooling=diff)
+  pooling:       ["mean", "mean_max", "diff", "max", "sum"]
+  diff_clusters: [10, 25]     # Number of DiffPool super-nodes (only used if pooling=diff)
 
 # ── Training ───────────────────────────────────────────────────────────────────
 training:
