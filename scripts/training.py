@@ -201,16 +201,17 @@ def train_epoch_patient(
             pat_probs = _forward_patient(
                 model, pyg_batch, slide_counts, aggregation, patient_aggregator, device
             )
+            aux_loss = model.aux_loss.to(device)
 
-            labels_float = labels.float()
-            sample_w = torch.where(
-                labels.bool(),
-                class_weights[1].to(device),
-                class_weights[0].to(device),
-            )
-            main_loss = F.binary_cross_entropy(pat_probs, labels_float, weight=sample_w)
-            aux_loss  = model.aux_loss.to(device)
-            loss      = main_loss + aux_loss
+        # BCE is unsafe inside autocast (requires float32 inputs)
+        labels_float = labels.float()
+        sample_w = torch.where(
+            labels.bool(),
+            class_weights[1].to(device),
+            class_weights[0].to(device),
+        )
+        main_loss = F.binary_cross_entropy(pat_probs.float(), labels_float, weight=sample_w)
+        loss = main_loss + aux_loss
 
         scaler.scale(loss).backward()
         scaler.step(optimizer)
@@ -258,7 +259,7 @@ def val_epoch_patient(
             class_weights[1].to(device),
             class_weights[0].to(device),
         )
-        loss = F.binary_cross_entropy(pat_probs, labels_float, weight=sample_w)
+        loss = F.binary_cross_entropy(pat_probs.float(), labels_float, weight=sample_w)
 
         total_loss += loss.item()
         all_true.extend(labels.cpu().tolist())
