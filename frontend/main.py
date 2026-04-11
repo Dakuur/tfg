@@ -40,7 +40,8 @@ from torch_geometric.data import Data
 # ── bootstrap ──────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
-from scripts.model import GATClassifier  # noqa: E402
+from scripts.model    import GATClassifier           # noqa: E402
+from scripts.training import aggregate_patient_probs  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ class _State:
     graphs:          Dict[str, List[Dict]]   = {"train": [], "val": []}
     val_stats:       Optional[Dict]          = None
     device:          str                     = "cpu"
+    aggregation:     str                     = "noisy_or"
 
 
 STATE = _State()
@@ -113,6 +115,10 @@ def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
         diff_clusters = 10
         dropout       = 0.3
 
+    aggregation = "noisy_or"
+    if cfg and "training" in cfg:
+        aggregation = cfg["training"].get("aggregation", "noisy_or")
+
     model = GATClassifier(
         in_channels=in_channels, hidden=hidden, heads=heads,
         dropout=dropout, pooling=pooling, diff_clusters=diff_clusters,
@@ -131,6 +137,7 @@ def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
         "heads":        heads,
         "dropout":      dropout,
         "pooling":      pooling,
+        "aggregation":  aggregation,
         "num_params":   sum(p.numel() for p in model.parameters()),
         "has_config":   cfg is not None,
     }
@@ -412,11 +419,12 @@ def _compute_val_stats(
     model:       GATClassifier,
     val_entries: List[Dict],
     device:      str,
+    aggregation: str = "noisy_or",
 ) -> Dict:
     """Compute validation metrics aggregated at patient level.
 
-    Aggregation rule: if ANY slide of a patient is predicted N1 → patient = N1.
-    Score used for AUC: max P(N1) across all slides of the patient.
+    Uses aggregate_patient_probs with the given aggregation method (same as training).
+    Attention is not supported here (no PatientAggregator); falls back to noisy_or.
     """
     model.eval()
 
@@ -444,8 +452,10 @@ def _compute_val_stats(
         if not slide_probs_n1:
             continue
 
-        patient_score = max(slide_probs_n1)                   # soft score for AUC
-        patient_pred  = 1 if any(p > 0.5 for p in slide_probs_n1) else 0
+        _eff_agg = aggregation if aggregation != "attention" else "noisy_or"
+        probs_t = torch.tensor(slide_probs_n1)
+        patient_score = float(aggregate_patient_probs(probs_t, method=_eff_agg).item())
+        patient_pred  = 1 if patient_score > 0.5 else 0
 
         all_true.append(pdata["true_label"])
         all_pred.append(patient_pred)
@@ -473,6 +483,7 @@ def _compute_val_stats(
             "N1": sum(1 for t in all_true if t == 1),
         },
         "total_samples":    len(all_true),
+        "aggregation":      aggregation,
         "level":            "patient",
     }
 
@@ -490,8 +501,10 @@ async def _startup():
             model, info           = _load_model(ckpt)
             STATE.model           = model.to(STATE.device)
             STATE.checkpoint_info = info
+            STATE.aggregation     = info.get("aggregation", "noisy_or")
             log.info(f"Model: {info['name']}  epoch={info['epoch']}  "
-                     f"val_auc={info.get('val_auc'):.4f}  pooling={info['pooling']}")
+                     f"val_auc={info.get('val_auc'):.4f}  pooling={info['pooling']}  "
+                     f"aggregation={STATE.aggregation}")
         except Exception as e:
             log.warning(f"Model load failed: {e}")
     else:
@@ -503,7 +516,7 @@ async def _startup():
 
     if STATE.model and STATE.graphs["val"]:
         log.info("Pre-computing patient-level validation statistics…")
-        STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device)
+        STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device, STATE.aggregation)
         if STATE.val_stats:
             log.info(f"  acc={STATE.val_stats['accuracy']:.3f}  auc={STATE.val_stats.get('auc', 'n/a')}"
                      f"  patients={STATE.val_stats['total_samples']}")
@@ -524,6 +537,7 @@ async def status():
         "model_loaded":     STATE.model is not None,
         "checkpoint":       STATE.checkpoint_info,
         "device":           STATE.device,
+        "aggregation":      STATE.aggregation,
         "num_train_graphs": len(STATE.graphs["train"]),
         "num_val_graphs":   len(STATE.graphs["val"]),
         "val_stats_ready":  STATE.val_stats is not None,
@@ -559,12 +573,13 @@ async def select_model(req: SelectModelRequest):
         model, info           = _load_model(ckpt_path)
         STATE.model           = model.to(STATE.device)
         STATE.checkpoint_info = info
+        STATE.aggregation     = info.get("aggregation", "noisy_or")
         STATE.val_stats       = None
-        log.info(f"Model switched to: {info['name']}  pooling={info['pooling']}")
+        log.info(f"Model switched to: {info['name']}  pooling={info['pooling']}  aggregation={STATE.aggregation}")
     except Exception as e:
         raise HTTPException(500, f"Failed to load model: {e}")
     if STATE.graphs["val"]:
-        STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device)
+        STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device, STATE.aggregation)
     return {"success": True, "checkpoint": STATE.checkpoint_info, "val_stats": STATE.val_stats}
 
 
@@ -652,9 +667,11 @@ async def inference_patient(req: PatientInferenceRequest):
     if not slide_results:
         raise HTTPException(500, "Failed to run inference on any slide")
 
-    # Patient-level aggregation: any N1 → N1
-    patient_pred  = 1 if any(s["pred"] == 1 for s in slide_results) else 0
-    patient_score = max(s["prob_n1"] for s in slide_results)
+    # Patient-level aggregation using the same method as training
+    _eff_agg = STATE.aggregation if STATE.aggregation != "attention" else "noisy_or"
+    probs_t = torch.tensor([s["prob_n1"] for s in slide_results])
+    patient_score = float(aggregate_patient_probs(probs_t, method=_eff_agg).item())
+    patient_pred  = 1 if patient_score > 0.5 else 0
 
     # Sort slides: N1 predictions first, then by P(N1) descending
     slide_results.sort(key=lambda s: (-s["pred"], -s["prob_n1"]))
@@ -701,6 +718,24 @@ async def inference_patient(req: PatientInferenceRequest):
     }
 
 
+_VALID_AGGREGATIONS = {"noisy_or", "max", "lse", "mean"}
+
+
+class SetAggregationRequest(BaseModel):
+    method: str
+
+
+@app.post("/api/set_aggregation")
+async def set_aggregation(req: SetAggregationRequest):
+    if req.method not in _VALID_AGGREGATIONS:
+        raise HTTPException(400, f"Mètode invàlid: {req.method!r}. Vàlids: {sorted(_VALID_AGGREGATIONS)}")
+    STATE.aggregation = req.method
+    STATE.val_stats   = None
+    if STATE.model and STATE.graphs["val"]:
+        STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device, STATE.aggregation)
+    return {"success": True, "aggregation": STATE.aggregation, "val_stats": STATE.val_stats}
+
+
 @app.get("/api/stats")
 async def stats():
     if STATE.val_stats is not None:
@@ -709,7 +744,7 @@ async def stats():
         return JSONResponse({"error": "No model loaded"}, status_code=503)
     if not STATE.graphs["val"]:
         return JSONResponse({"error": "No validation graphs found"}, status_code=404)
-    STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device)
+    STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device, STATE.aggregation)
     return STATE.val_stats or JSONResponse({"error": "Could not compute statistics"}, status_code=500)
 
 
@@ -736,9 +771,10 @@ async def reload():
             model, info           = _load_model(ckpt)
             STATE.model           = model.to(STATE.device)
             STATE.checkpoint_info = info
+            STATE.aggregation     = info.get("aggregation", "noisy_or")
             reload_log.append(
                 f"   epoch={info['epoch']}  val_auc={info.get('val_auc')}  "
-                f"pooling={info['pooling']}  params={info['num_params']:,}"
+                f"pooling={info['pooling']}  aggregation={STATE.aggregation}  params={info['num_params']:,}"
             )
         except Exception as e:
             reload_log.append(f"❌ Error carregant model: {e}")
@@ -752,7 +788,7 @@ async def reload():
 
     if STATE.model and STATE.graphs["val"]:
         reload_log.append("📊 Calculant estadístiques de validació (per pacient)…")
-        STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device)
+        STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device, STATE.aggregation)
         if STATE.val_stats:
             acc, auc = STATE.val_stats.get("accuracy", 0), STATE.val_stats.get("auc")
             n_pat    = STATE.val_stats.get("total_samples", 0)

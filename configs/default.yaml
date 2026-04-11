@@ -3,11 +3,8 @@
 # Any scalar value can be replaced by a list to run a grid search.
 # train.py will execute one training run per combination.
 #
-# Example grid search:
-#   model:
-#     hidden: [64, 128, 256]
-#     heads:  [2, 4]
-#   → 6 runs total
+# Current grid: 4 poolings × 5 aggregations × 2 lr × 2 monitors = 80 runs
+# Fixed from prior experiments: hidden=128, heads=2, dropout=0.5, diff_clusters=25
 
 # ── Data ───────────────────────────────────────────────────────────────────────
 data:
@@ -16,52 +13,48 @@ data:
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 model:
-  hidden:  [64, 128]          # Hidden dim per GAT head  (int or list)
-  heads:   [2, 4]            # Number of attention heads (int or list)
-  dropout: [0.3, 0.5]          # Dropout rate              (float or list)
+  hidden:  128
+  heads:   2
+  dropout: 0.5
 
   # Readout pooling strategy (str or list):
-  #   mean_max — concat(global_mean_pool, global_max_pool)  [default]
+  #   mean_max — concat(global_mean_pool, global_max_pool)
   #   mean     — global_mean_pool
   #   max      — global_max_pool
   #   sum      — global_add_pool
   #   diff     — Differential Hierarchical Pooling (DiffPool)
-  pooling:       ["mean", "mean_max", "diff", "max", "sum"]
-  diff_clusters: [5, 10, 20]     # Number of DiffPool super-nodes (only used if pooling=diff)
+  pooling:       ["mean", "mean_max", "sum", "diff"]
+  diff_clusters: 25     # only used if pooling=diff
 
 # ── Training ───────────────────────────────────────────────────────────────────
 training:
-  lr:         [1.0e-4, 5.0e-5, 1.0e-5]
+  lr:         [1.0e-4, 1.0e-5]
   epochs:     100
   batch_size: 128
 
-  # ReduceLROnPlateau: reduces LR when val_loss stops improving
-  scheduler_factor:   0.5   # Multiplicative factor applied to LR on plateau
-  scheduler_patience: 5     # Epochs without val_loss improvement before reducing LR
-  scheduler_min_lr:   1.0e-6  # Lower bound on LR
+  # ReduceLROnPlateau
+  scheduler_factor:   0.5
+  scheduler_patience: 5
+  scheduler_min_lr:   1.0e-6
 
-  warm_up:    10        # Epochs before early stopping activates
-  patience:   15        # Early stopping patience (epochs without improvement)
-  seed:       123
+  warm_up:  10
+  patience: 15
+  seed:     123
 
-  # Metric used for checkpointing (saving best model):
-  #   val_auc      — validation ROC-AUC          [default]
+  # Metric used for checkpointing:
+  #   val_auc      — validation ROC-AUC
   #   val_f1_macro — macro-averaged F1 (N0 + N1)
-  monitor: "val_f1_macro"
+  monitor: ["val_auc", "val_f1_macro"]
 
-  # Patient-level Multiple Instance Learning (MIL):
-  #   patient_level: true  — backpropagate from a single patient-level label
-  #                          (all slides of a patient contribute to one loss)
-  #   patient_level: false — standard slide-level training
   patient_level: true
 
-  # How to aggregate per-slide P(N1) into a patient probability:
-  #   noisy_or   — P(pat=N1) = 1 - Π(1-P(slide_i=N1))  [default]
-  #   max        — max(P(slide_i=N1))
-  #   lse        — log-sum-exp smooth maximum
-  #   mean       — mean(P(slide_i=N1))
-  #   attention  — Gated Attention MIL (Ilse et al., 2018)
-  aggregation: "noisy_or"
+  # How to aggregate per-slide P(N1) → patient probability:
+  #   noisy_or — P(pat=N1) = 1 - Π(1-P(slide_i))  [default]
+  #   max      — max(P(slide_i))
+  #   lse      — log-sum-exp smooth maximum
+  #   mean     — mean(P(slide_i))
+  #   attention — Gated Attention MIL (Ilse et al., 2018)
+  aggregation: ["noisy_or", "max", "lse", "mean", "attention"]
 
 # ── W&B ────────────────────────────────────────────────────────────────────────
 wandb:
