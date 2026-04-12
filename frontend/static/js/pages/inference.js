@@ -1,5 +1,5 @@
 import { API } from "../api.js";
-import { renderGraph, renderPCA, renderAttentionBars } from "../components/graphViz.js";
+import { renderGraph, renderAttentionBars } from "../components/graphViz.js";
 
 let _patients  = [];
 let _filtered  = [];
@@ -93,13 +93,22 @@ function buildLayout() {
 
     <!-- Visualització del graf de la slide més rellevant -->
     <div id="viz-section" style="display:none" class="section">
-      <div class="section-title"><i data-lucide="share-2"></i> Estructura del graf <span id="viz-slide-label" style="font-size:12px;color:var(--text3);margin-left:8px"></span></div>
+      <div class="section-title">
+        <i data-lucide="share-2"></i> Estructura del graf
+        <span id="viz-slide-label" style="font-size:12px;color:var(--text3);margin-left:8px"></span>
+      </div>
+      <div style="margin-bottom:8px;font-size:12px;color:var(--text3)">
+        <i data-lucide="info" style="width:13px;height:13px;vertical-align:middle"></i>
+        Clic sobre un node per veure el patch d'histopatologia
+      </div>
       <div class="two-col" style="align-items:start">
         <div>
-          <div class="graph-viz-wrap" id="graph-svg-container" style="height:360px"></div>
-          <div class="graph-legend">
-            <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> Alta atenció</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#2a2a2a;border:1px solid #444"></div> Baixa atenció</div>
+          <div class="graph-viz-wrap" id="graph-svg-container" style="height:420px"></div>
+          <div class="graph-legend" style="margin-top:6px">
+            <div class="legend-item">
+              <canvas id="attn-legend-canvas" width="120" height="14" style="border-radius:3px;vertical-align:middle"></canvas>
+              <span style="font-size:11px;color:var(--text3);margin-left:4px">baixa → alta atenció</span>
+            </div>
             <div class="legend-item" style="margin-left:auto;color:var(--text3)">Scroll per zoom · Arrossega per moure</div>
           </div>
         </div>
@@ -120,12 +129,6 @@ function buildLayout() {
         </div>
         <div style="padding:16px" id="attn-content"></div>
       </div>
-    </div>
-
-    <!-- PCA -->
-    <div id="pca-section" style="display:none" class="section">
-      <div class="section-title"><i data-lucide="scatter-chart"></i> Embeddings de nodes (PCA)</div>
-      <div class="three-col" id="pca-grid"></div>
     </div>
   `;
 }
@@ -196,14 +199,13 @@ const STEPS = [
   "Executant inferència slide 2…",
   "Agregant prediccions del pacient…",
   "Extraient pesos d'atenció…",
-  "Calculant PCA dels embeddings…",
   "Processant resultats…",
 ];
 
 async function runInference(container) {
   if (!_selectedPid) return;
 
-  const runBtn      = container.querySelector("#run-btn");
+  const runBtn       = container.querySelector("#run-btn");
   const progressWrap = container.querySelector("#progress-wrap");
   const progressFill = container.querySelector("#progress-fill");
   const progressLabel = container.querySelector("#progress-label-text");
@@ -248,9 +250,8 @@ async function runInference(container) {
 
     renderResult(container, _result);
     renderSlideBreakdown(container, _result);
-    renderGraphViz(container, _result);
-    renderAttention(container, _result, "layer1");
-    renderPCASections(container, _result);
+    await renderGraphViz(container, _result);
+    renderAttention(container, _result, "layer3");
 
   } catch (e) {
     clearInterval(stepInterval);
@@ -320,7 +321,6 @@ function renderSlideBreakdown(container, r) {
     const isViz = s.graph_id === r.viz_graph_id;
     const pct   = (s.prob_n1 * 100).toFixed(1);
     const barW  = Math.round(s.prob_n1 * 100);
-    const barCls = s.pred === 1 ? "n1" : "n0";
     return `
       <tr class="${isViz ? "selected" : ""}">
         <td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)">${s.graph_id.split("/").pop()}</td>
@@ -345,17 +345,51 @@ function renderSlideBreakdown(container, r) {
     </table>`;
 }
 
-function renderGraphViz(container, r) {
+async function renderGraphViz(container, r) {
   const section = container.querySelector("#viz-section");
   section.style.display = "";
 
   const label = container.querySelector("#viz-slide-label");
   if (label) label.textContent = `(slide: ${(r.viz_graph_id || "").split("/").pop()})`;
 
-  const svgContainer = container.querySelector("#graph-svg-container");
-  const meta = container.querySelector("#graph-meta-card");
+  // Draw attention color legend
+  const canvas = container.querySelector("#attn-legend-canvas");
+  if (canvas) {
+    const ctx = canvas.getContext("2d");
+    const grad = ctx.createLinearGradient(0, 0, 120, 0);
+    // d3.interpolateTurbo stops: blue→cyan→green→yellow→red
+    for (let t = 0; t <= 1; t += 0.1) {
+      const c = d3.color(d3.interpolateTurbo(t));
+      grad.addColorStop(t, `rgb(${c.r},${c.g},${c.b})`);
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 120, 14);
+  }
 
-  const attn3 = r.attention?.layer3;
+  const svgContainer = container.querySelector("#graph-svg-container");
+  const meta         = container.querySelector("#graph-meta-card");
+  const attn3        = r.attention?.layer3;
+
+  // Build slideInfo for patch click
+  const slideInfo = {
+    hospital:   r.hospital   || "",
+    patient_id: r.patient_id || "",
+    slide_id:   r.slide_id   || "",
+    graph_id:   r.viz_graph_id || "",
+    patch_j:    r.patch_j,
+    patch_i:    r.patch_i,
+  };
+
+  // Try to load slide background
+  let bgImageUrl = null;
+  if (r.viz_graph_id) {
+    bgImageUrl = `/api/slide_bg/${encodeURIComponent(r.viz_graph_id)}`;
+    // Preload to check availability (non-blocking)
+    const testImg = new Image();
+    testImg.src = bgImageUrl;
+    // We pass the URL regardless — if it fails, the <image> element just shows nothing
+  }
+
   renderGraph(svgContainer, {
     edge_index:     r.edge_index,
     node_positions: r.node_positions,
@@ -364,11 +398,13 @@ function renderGraphViz(container, r) {
   }, {
     nodeAttention: attn3?.node_attention,
     edgeAttention: attn3 ? { edge_index: attn3.edge_index, weights_mean: attn3.weights_mean } : null,
-    height: 360,
+    height:    420,
+    slideInfo,
+    bgImageUrl,
   });
 
-  const nodeAttn = attn3?.node_attention || [];
-  const topNodes = nodeAttn.map((v, i) => ({ i, v })).sort((a, b) => b.v - a.v).slice(0, 5);
+  const nodeAttn  = attn3?.node_attention || [];
+  const topNodes  = nodeAttn.map((v, i) => ({ i, v })).sort((a, b) => b.v - a.v).slice(0, 5);
 
   meta.innerHTML = `
     <div class="card-title">Nodes més rellevants (Capa 3)</div>
@@ -385,6 +421,7 @@ function renderGraphViz(container, r) {
       <div class="stat-row"><span class="stat-key">Arestes dirigides</span><span class="stat-val mono">${r.num_edges}</span></div>
       <div class="stat-row"><span class="stat-key">Posicions reals</span><span class="stat-val">${r.node_positions ? "✓ Sí" : "No"}</span></div>
       <div class="stat-row"><span class="stat-key">Pooling</span><span class="stat-val accent">${r.pooling_type ?? "—"}</span></div>
+      <div class="stat-row"><span class="stat-key">Patches</span><span class="stat-val">${r.patch_j ? "✓ disponibles" : "⚠ cal re-executar build_dataset"}</span></div>
     </div>`;
 
   lucide.createIcons();
@@ -406,16 +443,21 @@ function renderAttention(container, r, activeLayer) {
   }
 
   const content = section.querySelector("#attn-content");
+
+  // SlideInfo for attention mini-graph node clicks
+  const slideInfo = {
+    hospital:   r.hospital   || "",
+    patient_id: r.patient_id || "",
+    slide_id:   r.slide_id   || "",
+    graph_id:   r.viz_graph_id || "",
+    patch_j:    r.patch_j,
+    patch_i:    r.patch_i,
+  };
+
   content.innerHTML = `
-    <div class="two-col">
-      <div>
-        <div class="section-title" style="margin-bottom:8px">Atenció mitjana per node</div>
-        <div id="attn-bar-chart"></div>
-      </div>
-      <div>
-        <div class="section-title" style="margin-bottom:8px">Graf acolorit per atenció (${activeLayer.replace("layer", "Capa ")})</div>
-        <div class="graph-viz-wrap" id="attn-graph-mini" style="height:280px"></div>
-      </div>
+    <div>
+      <div class="section-title" style="margin-bottom:8px">Graf acolorit per atenció (${activeLayer.replace("layer", "Capa ")})</div>
+      <div class="graph-viz-wrap" id="attn-graph-mini" style="height:300px"></div>
     </div>
     <div style="margin-top:12px">
       <div class="stat-list">
@@ -426,7 +468,6 @@ function renderAttention(container, r, activeLayer) {
       </div>
     </div>`;
 
-  renderAttentionBars(content.querySelector("#attn-bar-chart"), layerData.node_attention, "");
   renderGraph(content.querySelector("#attn-graph-mini"), {
     edge_index:     r.edge_index,
     node_positions: r.node_positions,
@@ -435,25 +476,9 @@ function renderAttention(container, r, activeLayer) {
   }, {
     nodeAttention: layerData.node_attention,
     edgeAttention: { edge_index: layerData.edge_index, weights_mean: layerData.weights_mean },
-    height: 280,
+    height: 300,
+    slideInfo,
   });
-}
-
-function renderPCASections(container, r) {
-  const section = container.querySelector("#pca-section");
-  section.style.display = "";
-  const grid = container.querySelector("#pca-grid");
-  grid.innerHTML = `
-    <div><div id="pca-layer1"></div></div>
-    <div><div id="pca-layer2"></div></div>
-    <div><div id="pca-layer3"></div></div>`;
-
-  for (const [name, label] of [["layer1", "Capa 1"], ["layer2", "Capa 2"], ["layer3", "Capa 3"]]) {
-    const pcaData  = r.node_embeddings?.[name];
-    if (!pcaData) continue;
-    const nodeAttn = r.attention?.[name]?.node_attention;
-    renderPCA(grid.querySelector(`#pca-${name}`), pcaData, nodeAttn, label);
-  }
 }
 
 function entropy(vals) {

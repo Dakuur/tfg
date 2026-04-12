@@ -238,12 +238,27 @@ def build_graph_for_section(
     pos        = torch.tensor(centroids, dtype=torch.float32)
     y          = torch.tensor([label],   dtype=torch.long)
 
+    # For each bag (node), find the most central patch in its 256-patch bag.
+    # Stored as (j, i) WSI level-0 pixel coordinates so the frontend can
+    # reconstruct the patch filename: {hospital}_{patient}_{slide}_{j}_{i}.jpg
+    patch_j_list: list[int] = []
+    patch_i_list: list[int] = []
+    for n, bag_coords in enumerate(coord_arrays):      # (256, 2) each
+        centroid    = centroids[n]                      # (j_c, i_c)
+        dists       = np.linalg.norm(bag_coords - centroid, axis=1)
+        central_idx = int(dists.argmin())
+        j_c, i_c   = bag_coords[central_idx]
+        patch_j_list.append(int(round(j_c)))
+        patch_i_list.append(int(round(i_c)))
+
     data = Data(x=x, edge_index=edge_index, pos=pos, y=y)
     data.patient_id       = patient_id
     data.slide_id         = slide_id
     data.section_id       = section_id
     data.hospital         = hospital
     data.metastasis_score = metastasis_score
+    data.patch_j          = torch.tensor(patch_j_list, dtype=torch.int32)
+    data.patch_i          = torch.tensor(patch_i_list, dtype=torch.int32)
 
     return data
 

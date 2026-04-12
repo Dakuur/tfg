@@ -12,7 +12,9 @@ Predictions are aggregated at patient level:
     all slides must predict N0 → patient is N0
 """
 
+import io
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -22,12 +24,12 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from PIL import Image as PILImage
 from pydantic import BaseModel
-from sklearn.decomposition import PCA
 from sklearn.metrics import (
     accuracy_score,
     confusion_matrix,
@@ -42,6 +44,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 from scripts.model    import GATClassifier           # noqa: E402
 from scripts.training import aggregate_patient_probs  # noqa: E402
+from scripts.wsi_io   import find_patches_dir         # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
@@ -70,6 +73,15 @@ STATE = _State()
 
 CKPT_DIR   = ROOT / "outputs" / "checkpoints"
 GRAPHS_DIR = ROOT / "outputs" / "graphs"
+
+# Patch image serving — requires access to /mnt/iam (or IAM_PATH env var)
+_IAM_PATH = Path(os.environ.get("IAM_PATH", "/mnt/iam"))
+try:
+    PATCHES_DIR: Optional[Path] = find_patches_dir(_IAM_PATH)
+    log.info(f"Patches dir: {PATCHES_DIR}")
+except FileNotFoundError:
+    PATCHES_DIR = None
+    log.info("Patches directory not found — patch/slide-bg endpoints disabled")
 
 
 # ── model loading ──────────────────────────────────────────────────────────────
@@ -302,8 +314,7 @@ def _infer_slide_full(
     g_dev = g.to(device)
     batch = torch.zeros(num_nodes, dtype=torch.long, device=device)
 
-    attention_layers:    Dict[str, dict] = {}
-    node_embeddings_pca: Dict[str, dict] = {}
+    attention_layers: Dict[str, dict] = {}
 
     with torch.no_grad():
         x, ei = g_dev.x, g_dev.edge_index
@@ -351,23 +362,6 @@ def _infer_slide_full(
                 "num_heads":        a_full.shape[1],
             }
 
-        # PCA of node embeddings
-        for name, emb in [("layer1", x1), ("layer2", x2), ("layer3", x3)]:
-            arr   = emb.cpu().float().numpy()
-            N, D  = arr.shape
-            n_comp = min(2, N - 1, D)
-            if N >= 2 and D >= 2 and n_comp == 2:
-                pca       = PCA(n_components=2)
-                coords_2d = pca.fit_transform(arr).tolist()
-                var_exp   = pca.explained_variance_ratio_.tolist()
-            elif N >= 2 and D >= 1:
-                coords_2d = [[float(arr[i, 0]), 0.0] for i in range(N)]
-                var_exp   = [1.0, 0.0]
-            else:
-                coords_2d = [[0.0, 0.0]] * N
-                var_exp   = [0.0, 0.0]
-            node_embeddings_pca[name] = {"coords": coords_2d, "variance_explained": var_exp}
-
         # Pooling + MLP
         dlog(f"Pooling ({model.pooling_type}) + MLP…")
         h      = model.pool_readout(x3, ei, batch)
@@ -403,12 +397,14 @@ def _infer_slide_full(
         "num_edges":       num_edges,
         "patient_id":      entry.get("patient_id", ""),
         "hospital":        entry.get("hospital", ""),
+        "slide_id":        str(getattr(g, "slide_id", "")),
         "pooling_type":    model.pooling_type,
         "attention":       attention_layers,
-        "node_embeddings": node_embeddings_pca,
         "node_positions":  g.pos.cpu().numpy().tolist() if (hasattr(g, "pos") and g.pos is not None) else None,
         "edge_index":      g.edge_index.cpu().numpy().tolist(),
         "feature_norms":   g.x.cpu().float().norm(dim=1).numpy().tolist(),
+        "patch_j":         g.patch_j.cpu().numpy().tolist() if hasattr(g, "patch_j") and g.patch_j is not None else None,
+        "patch_i":         g.patch_i.cpu().numpy().tolist() if hasattr(g, "patch_i") and g.patch_i is not None else None,
         "debug_log":       debug_log,
     }
 
@@ -709,12 +705,15 @@ async def inference_patient(req: PatientInferenceRequest):
         "num_nodes":       viz["num_nodes"],
         "num_edges":       viz["num_edges"],
         "attention":       viz["attention"],
-        "node_embeddings": viz["node_embeddings"],
-        "node_positions":  viz["node_positions"],
-        "edge_index":      viz["edge_index"],
-        "feature_norms":   viz["feature_norms"],
-        "pooling_type":    viz["pooling_type"],
-        "debug_log":       viz["debug_log"],
+        "node_positions": viz["node_positions"],
+        "edge_index":     viz["edge_index"],
+        "feature_norms":  viz["feature_norms"],
+        "pooling_type":   viz["pooling_type"],
+        "patch_j":        viz.get("patch_j"),
+        "patch_i":        viz.get("patch_i"),
+        "hospital":       viz.get("hospital", patient_graphs[0]["hospital"]),
+        "slide_id":       viz.get("slide_id", ""),
+        "debug_log":      viz["debug_log"],
     }
 
 
@@ -746,6 +745,99 @@ async def stats():
         return JSONResponse({"error": "No validation graphs found"}, status_code=404)
     STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device, STATE.aggregation)
     return STATE.val_stats or JSONResponse({"error": "Could not compute statistics"}, status_code=500)
+
+
+@app.get("/api/patch_image")
+async def patch_image(
+    hospital:   str = Query(...),
+    patient_id: str = Query(...),
+    slide_id:   str = Query(...),
+    j:          int = Query(...),
+    i:          int = Query(...),
+):
+    """Serve a single patch JPG by (hospital, patient_id, slide_id, j, i)."""
+    if PATCHES_DIR is None:
+        raise HTTPException(503, "Patches directory not available on this server")
+    fname    = f"{hospital}_{patient_id}_{slide_id}_{j}_{i}.jpg"
+    img_path = PATCHES_DIR / hospital / patient_id / slide_id / fname
+    if not img_path.exists():
+        raise HTTPException(404, f"Patch not found: {fname}")
+    return FileResponse(str(img_path), media_type="image/jpeg")
+
+
+@app.get("/api/slide_bg/{graph_id:path}")
+async def slide_background(graph_id: str):
+    """
+    Generate a small composite JPEG of the slide section for use as
+    graph background. Patches are placed at their WSI centroids and the
+    image covers exactly the node bounding box so it aligns with the D3 graph.
+    """
+    if PATCHES_DIR is None:
+        raise HTTPException(503, "Patches directory not available on this server")
+
+    all_g = STATE.graphs["train"] + STATE.graphs["val"]
+    entry = next((g for g in all_g if g["id"] == graph_id), None)
+    if not entry:
+        raise HTTPException(404, f"Graph not found: {graph_id}")
+
+    g = _load_pt(Path(entry["path"]))
+    if g is None or not hasattr(g, "pos") or g.pos is None:
+        raise HTTPException(404, "No position data in graph")
+
+    hospital   = entry["hospital"]
+    patient_id = str(getattr(g, "patient_id", ""))
+    slide_id   = str(getattr(g, "slide_id",   ""))
+
+    pos = g.pos.cpu().numpy()   # (N, 2) — (j, i)
+    j_min, i_min = pos[:, 0].min(), pos[:, 1].min()
+    j_max, i_max = pos[:, 0].max(), pos[:, 1].max()
+
+    # Use stored central patch coords if available, else fall back to bag centroids
+    if hasattr(g, "patch_j") and g.patch_j is not None:
+        pj = g.patch_j.cpu().numpy()
+        pi = g.patch_i.cpu().numpy()
+    else:
+        pj = pos[:, 0]
+        pi = pos[:, 1]
+
+    # Compute canvas dimensions (max 800 px on the longest side)
+    wsi_w = float(j_max - j_min) or 1.0
+    wsi_h = float(i_max - i_min) or 1.0
+    MAX_PX = 800
+    scale  = MAX_PX / max(wsi_w, wsi_h)
+    out_w  = max(1, int(wsi_w * scale))
+    out_h  = max(1, int(wsi_h * scale))
+    ps_px  = max(1, int(2048 * scale))   # patch side in output pixels
+
+    canvas = np.full((out_h, out_w, 3), 230, dtype=np.uint8)
+
+    slide_dir = PATCHES_DIR / hospital / patient_id / slide_id
+    for n in range(len(pj)):
+        fname    = f"{hospital}_{patient_id}_{slide_id}_{int(pj[n])}_{int(pi[n])}.jpg"
+        img_path = slide_dir / fname
+        if not img_path.exists():
+            continue
+        try:
+            thumb = PILImage.open(img_path).convert("RGB").resize((ps_px, ps_px), PILImage.LANCZOS)
+            arr   = np.array(thumb)
+            # Center the patch thumbnail at the bag centroid
+            cx = int((pos[n, 0] - j_min) * scale)
+            cy = int((pos[n, 1] - i_min) * scale)
+            x0 = cx - ps_px // 2;  x1 = min(x0 + ps_px, out_w)
+            y0 = cy - ps_px // 2;  y1 = min(y0 + ps_px, out_h)
+            ax0 = max(0, -x0);     ay0 = max(0, -y0)
+            x0  = max(0, x0);      y0  = max(0, y0)
+            if x0 >= out_w or y0 >= out_h or x1 <= 0 or y1 <= 0:
+                continue
+            canvas[y0:y1, x0:x1] = arr[ay0:ay0 + (y1 - y0), ax0:ax0 + (x1 - x0)]
+        except Exception:
+            continue
+
+    buf = io.BytesIO()
+    PILImage.fromarray(canvas).save(buf, format="JPEG", quality=75)
+    buf.seek(0)
+    return Response(content=buf.read(), media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=3600"})
 
 
 @app.post("/api/reload")
