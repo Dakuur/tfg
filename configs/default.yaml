@@ -14,7 +14,7 @@ data:
 # ── Model ──────────────────────────────────────────────────────────────────────
 model:
   hidden:  128
-  heads:   [2, 4]
+  heads:   2
   dropout: 0.5
 
   # Readout pooling strategy (str or list):
@@ -39,12 +39,12 @@ training:
 
   warm_up:  10
   patience: 15
-  seed:     [42, 123, 456, 789, 1234]
+  seed:     123
 
   # Metric used for checkpointing:
   #   val_auc      — validation ROC-AUC
   #   val_f1_macro — macro-averaged F1 (N0 + N1)
-  monitor: ["val_auc", "val_f1_macro"]
+  monitor: "val_f1_macro"
 
   patient_level: true
 
