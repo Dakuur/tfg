@@ -19,6 +19,7 @@ export const API = {
   patients:         ()                    => _req("GET",  "/api/patients"),
   inference:        (graphId, debug)      => _req("POST", "/api/inference",         { graph_id:   graphId,    debug }),
   inferencePatient: (patientId, debug)    => _req("POST", "/api/inference_patient",  { patient_id: patientId,  debug }),
+  slideMeta:        (graphId)             => _req("GET",  `/api/slide_meta/${encodeURIComponent(graphId)}`),
   stats:           ()                    => _req("GET",  "/api/stats"),
   setAggregation:  (method)             => _req("POST", "/api/set_aggregation", { method }),
   reload:          ()                    => _req("POST", "/api/reload"),

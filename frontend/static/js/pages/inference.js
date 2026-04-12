@@ -377,8 +377,8 @@ async function renderGraphViz(container, r) {
 }
 
 async function _drawViz(container, viz, graphId) {
-  const vizLabel   = container.querySelector("#viz-slide-label");
-  const vizLoading = container.querySelector("#viz-loading");
+  const vizLabel     = container.querySelector("#viz-slide-label");
+  const vizLoading   = container.querySelector("#viz-loading");
   const svgContainer = container.querySelector("#graph-svg-container");
   const meta         = container.querySelector("#graph-meta-card");
 
@@ -386,9 +386,9 @@ async function _drawViz(container, viz, graphId) {
   if (vizLoading) vizLoading.style.display = "none";
 
   // Attention color legend
-  const canvas = container.querySelector("#attn-legend-canvas");
-  if (canvas) {
-    const ctx  = canvas.getContext("2d");
+  const legendCanvas = container.querySelector("#attn-legend-canvas");
+  if (legendCanvas) {
+    const ctx  = legendCanvas.getContext("2d");
     const grad = ctx.createLinearGradient(0, 0, 120, 0);
     for (let t = 0; t <= 1; t += 0.1) {
       const c = d3.color(d3.interpolateTurbo(t));
@@ -409,7 +409,20 @@ async function _drawViz(container, viz, graphId) {
     patch_i:    viz.patch_i,
   };
 
-  const bgImageUrl = graphId ? `/api/slide_bg/${encodeURIComponent(graphId)}` : null;
+  // Fetch slide metadata (WSI extent) for background alignment — non-blocking
+  let wsiExtent = null;
+  let bgImageUrl = null;
+  if (graphId) {
+    try {
+      const sm = await API.slideMeta(graphId);
+      if (sm.has_bg) {
+        bgImageUrl = `/api/slide_bg/${encodeURIComponent(graphId)}`;
+        if (sm.j_base != null) {
+          wsiExtent = { j_base: sm.j_base, i_base: sm.i_base, w: sm.w, h: sm.h };
+        }
+      }
+    } catch (_) { /* background not available — continue without it */ }
+  }
 
   renderGraph(svgContainer, {
     edge_index:     viz.edge_index,
@@ -422,6 +435,7 @@ async function _drawViz(container, viz, graphId) {
     height:    440,
     slideInfo,
     bgImageUrl,
+    wsiExtent,
   });
 
   meta.innerHTML = `

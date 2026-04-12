@@ -42,9 +42,10 @@ from torch_geometric.data import Data
 # ── bootstrap ──────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
-from scripts.model    import GATClassifier           # noqa: E402
-from scripts.training import aggregate_patient_probs  # noqa: E402
-from scripts.wsi_io   import find_patches_dir         # noqa: E402
+from scripts.model    import GATClassifier                          # noqa: E402
+from scripts.training import aggregate_patient_probs               # noqa: E402
+from scripts.wsi_io   import (find_patches_dir, find_rgb_images_dir,  # noqa: E402
+                               load_slide_meta)                    # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
@@ -74,14 +75,17 @@ STATE = _State()
 CKPT_DIR   = ROOT / "outputs" / "checkpoints"
 GRAPHS_DIR = ROOT / "outputs" / "graphs"
 
-# Patch image serving — requires access to /mnt/iam (or IAM_PATH env var)
+# Image serving — requires access to /mnt/iam (or IAM_PATH env var)
 _IAM_PATH = Path(os.environ.get("IAM_PATH", "/mnt/iam"))
 try:
     PATCHES_DIR: Optional[Path] = find_patches_dir(_IAM_PATH)
-    log.info(f"Patches dir: {PATCHES_DIR}")
+    log.info(f"Patches dir  : {PATCHES_DIR}")
 except FileNotFoundError:
     PATCHES_DIR = None
-    log.info("Patches directory not found — patch/slide-bg endpoints disabled")
+    log.info("Patches directory not found — patch assembly disabled")
+
+_RGB_DIR: Optional[Path] = find_rgb_images_dir(_IAM_PATH)
+log.info(f"RGB images dir: {_RGB_DIR}")
 
 
 # ── model loading ──────────────────────────────────────────────────────────────
@@ -747,6 +751,42 @@ async def stats():
     return STATE.val_stats or JSONResponse({"error": "Could not compute statistics"}, status_code=500)
 
 
+def _slide_dir_patch_index(slide_dir: Path, hospital: str, patient_id: str, slide_id: str
+                           ) -> dict:
+    """
+    Scan slide_dir for .jpg patch files and build a {(j,i): Path} index.
+    Patch filenames follow: {hospital}_{patient_id}_{slide_id}_{j}_{i}.jpg
+    Uses the prefix to handle names with underscores correctly.
+    """
+    prefix = f"{hospital}_{patient_id}_{slide_id}_"
+    index: dict = {}
+    for p in slide_dir.glob("*.jpg"):
+        stem = p.stem
+        if not stem.startswith(prefix):
+            continue
+        coord_part = stem[len(prefix):]
+        parts = coord_part.split("_")
+        if len(parts) != 2:
+            continue
+        try:
+            index[(int(parts[0]), int(parts[1]))] = p
+        except ValueError:
+            continue
+    return index
+
+
+def _nearest_patch(index: dict, j: float, i: float) -> Optional[Path]:
+    """Return the path of the patch whose (j,i) is closest to the query point."""
+    if not index:
+        return None
+    coords = np.array(list(index.keys()), dtype=np.float32)   # (M, 2)
+    dists  = np.sum((coords - [j, i]) ** 2, axis=1)
+    best   = int(np.argmin(dists))
+    if dists[best] > (8192 ** 2):   # > 8192 px away → probably wrong slide
+        return None
+    return index[tuple(coords[best].astype(int))]
+
+
 @app.get("/api/patch_image")
 async def patch_image(
     hospital:   str = Query(...),
@@ -755,89 +795,161 @@ async def patch_image(
     j:          int = Query(...),
     i:          int = Query(...),
 ):
-    """Serve a single patch JPG by (hospital, patient_id, slide_id, j, i)."""
+    """Serve the patch JPG closest to WSI position (j, i)."""
     if PATCHES_DIR is None:
         raise HTTPException(503, "Patches directory not available on this server")
+
+    slide_dir = PATCHES_DIR / hospital / patient_id / slide_id
+    if not slide_dir.exists():
+        raise HTTPException(404, f"Slide directory not found: {slide_dir}")
+
+    # Try exact filename first
     fname    = f"{hospital}_{patient_id}_{slide_id}_{j}_{i}.jpg"
-    img_path = PATCHES_DIR / hospital / patient_id / slide_id / fname
-    if not img_path.exists():
-        raise HTTPException(404, f"Patch not found: {fname}")
-    return FileResponse(str(img_path), media_type="image/jpeg")
+    img_path = slide_dir / fname
+    if img_path.exists():
+        return FileResponse(str(img_path), media_type="image/jpeg")
+
+    # Nearest-neighbour fallback (coords in NPZ may differ slightly from filenames)
+    index = _slide_dir_patch_index(slide_dir, hospital, patient_id, slide_id)
+    best  = _nearest_patch(index, j, i)
+    if best:
+        log.info(f"patch_image nearest match: {best.name}  (asked j={j} i={i})")
+        return FileResponse(str(best), media_type="image/jpeg")
+
+    raise HTTPException(404, f"No patch found near ({j},{i}) in {slide_dir}")
 
 
-@app.get("/api/slide_bg/{graph_id:path}")
-async def slide_background(graph_id: str):
+@app.get("/api/slide_meta/{graph_id:path}")
+async def slide_meta(graph_id: str):
     """
-    Generate a small composite JPEG of the slide section for use as
-    graph background. Patches are placed at their WSI centroids and the
-    image covers exactly the node bounding box so it aligns with the D3 graph.
+    Return WSI extent info so the frontend can align the background image
+    with the node positions.  j_base/i_base/w/h are in WSI level-0 pixels.
     """
-    if PATCHES_DIR is None:
-        raise HTTPException(503, "Patches directory not available on this server")
-
     all_g = STATE.graphs["train"] + STATE.graphs["val"]
     entry = next((g for g in all_g if g["id"] == graph_id), None)
     if not entry:
         raise HTTPException(404, f"Graph not found: {graph_id}")
 
-    g = _load_pt(Path(entry["path"]))
-    if g is None or not hasattr(g, "pos") or g.pos is None:
-        raise HTTPException(404, "No position data in graph")
-
+    g          = _load_pt(Path(entry["path"]))
     hospital   = entry["hospital"]
-    patient_id = str(getattr(g, "patient_id", ""))
-    slide_id   = str(getattr(g, "slide_id",   ""))
+    patient_id = str(getattr(g, "patient_id", "")) if g else ""
+    slide_id   = str(getattr(g, "slide_id",   "")) if g else ""
 
-    pos = g.pos.cpu().numpy()   # (N, 2) — (j, i)
+    meta   = load_slide_meta(_IAM_PATH, hospital, patient_id, slide_id)
+    has_bg = False
+
+    if _RGB_DIR:
+        low = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}_low.jpg"
+        png = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}.png"
+        has_bg = low.exists() or png.exists()
+
+    if not has_bg and PATCHES_DIR:
+        sd = PATCHES_DIR / hospital / patient_id / slide_id
+        has_bg = sd.is_dir() and any(sd.glob("*.jpg"))
+
+    return {
+        "has_bg":  has_bg,
+        "j_base":  meta["j_base"] if meta else None,
+        "i_base":  meta["i_base"] if meta else None,
+        "w":       meta["w"]      if meta else None,
+        "h":       meta["h"]      if meta else None,
+    }
+
+
+@app.get("/api/slide_bg/{graph_id:path}")
+async def slide_background(graph_id: str):
+    """
+    Return a small JPEG overview of the slide for use as graph background.
+    Priority: _low.jpg → full PNG (resized) → assembled from patches.
+    """
+    all_g = STATE.graphs["train"] + STATE.graphs["val"]
+    entry = next((g for g in all_g if g["id"] == graph_id), None)
+    if not entry:
+        raise HTTPException(404, f"Graph not found: {graph_id}")
+
+    g          = _load_pt(Path(entry["path"]))
+    hospital   = entry["hospital"]
+    patient_id = str(getattr(g, "patient_id", "")) if g else ""
+    slide_id   = str(getattr(g, "slide_id",   "")) if g else ""
+
+    cache_hdr  = {"Cache-Control": "public, max-age=3600"}
+
+    # 1. Pre-existing low-res thumbnail (_low.jpg)
+    if _RGB_DIR:
+        low = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}_low.jpg"
+        if low.exists():
+            return FileResponse(str(low), media_type="image/jpeg", headers=cache_hdr)
+
+        # 2. Full PNG → resize to max 1200 px
+        png = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}.png"
+        if png.exists():
+            try:
+                img   = PILImage.open(png).convert("RGB")
+                scale = min(1.0, 1200 / max(img.width, img.height))
+                if scale < 1:
+                    img = img.resize((int(img.width * scale), int(img.height * scale)),
+                                     PILImage.LANCZOS)
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=82)
+                buf.seek(0)
+                return Response(content=buf.read(), media_type="image/jpeg", headers=cache_hdr)
+            except Exception as exc:
+                log.warning(f"slide_bg: could not resize PNG: {exc}")
+
+    # 3. Assemble from individual patches (slow fallback — scans directory)
+    if PATCHES_DIR is None or g is None or not hasattr(g, "pos") or g.pos is None:
+        raise HTTPException(404, "No background image available for this slide")
+
+    pos       = g.pos.cpu().numpy()        # (N, 2) — bag centroids (j, i)
     j_min, i_min = pos[:, 0].min(), pos[:, 1].min()
     j_max, i_max = pos[:, 0].max(), pos[:, 1].max()
 
-    # Use stored central patch coords if available, else fall back to bag centroids
-    if hasattr(g, "patch_j") and g.patch_j is not None:
-        pj = g.patch_j.cpu().numpy()
-        pi = g.patch_i.cpu().numpy()
-    else:
-        pj = pos[:, 0]
-        pi = pos[:, 1]
+    slide_dir = PATCHES_DIR / hospital / patient_id / slide_id
+    if not slide_dir.is_dir():
+        raise HTTPException(404, f"Patch directory not found: {slide_dir}")
 
-    # Compute canvas dimensions (max 800 px on the longest side)
-    wsi_w = float(j_max - j_min) or 1.0
-    wsi_h = float(i_max - i_min) or 1.0
-    MAX_PX = 800
+    # Build patch index and find nearest file for every node
+    index = _slide_dir_patch_index(slide_dir, hospital, patient_id, slide_id)
+    if not index:
+        raise HTTPException(404, "No patch files found in slide directory")
+
+    coords_arr = np.array(list(index.keys()), dtype=np.float32)   # (M, 2)
+    paths_list = list(index.values())
+
+    MAX_PX = 900
+    wsi_w  = float(j_max - j_min) or 1.0
+    wsi_h  = float(i_max - i_min) or 1.0
     scale  = MAX_PX / max(wsi_w, wsi_h)
     out_w  = max(1, int(wsi_w * scale))
     out_h  = max(1, int(wsi_h * scale))
-    ps_px  = max(1, int(2048 * scale))   # patch side in output pixels
+    ps_px  = max(1, int(2048 * scale))
 
     canvas = np.full((out_h, out_w, 3), 230, dtype=np.uint8)
 
-    slide_dir = PATCHES_DIR / hospital / patient_id / slide_id
-    for n in range(len(pj)):
-        fname    = f"{hospital}_{patient_id}_{slide_id}_{int(pj[n])}_{int(pi[n])}.jpg"
-        img_path = slide_dir / fname
-        if not img_path.exists():
+    for n in range(len(pos)):
+        dists = np.sum((coords_arr - pos[n]) ** 2, axis=1)
+        best  = int(np.argmin(dists))
+        if dists[best] > (8192 ** 2):
             continue
         try:
-            thumb = PILImage.open(img_path).convert("RGB").resize((ps_px, ps_px), PILImage.LANCZOS)
-            arr   = np.array(thumb)
-            # Center the patch thumbnail at the bag centroid
-            cx = int((pos[n, 0] - j_min) * scale)
-            cy = int((pos[n, 1] - i_min) * scale)
-            x0 = cx - ps_px // 2;  x1 = min(x0 + ps_px, out_w)
-            y0 = cy - ps_px // 2;  y1 = min(y0 + ps_px, out_h)
-            ax0 = max(0, -x0);     ay0 = max(0, -y0)
-            x0  = max(0, x0);      y0  = max(0, y0)
-            if x0 >= out_w or y0 >= out_h or x1 <= 0 or y1 <= 0:
-                continue
-            canvas[y0:y1, x0:x1] = arr[ay0:ay0 + (y1 - y0), ax0:ax0 + (x1 - x0)]
+            thumb = PILImage.open(paths_list[best]).convert("RGB").resize(
+                (ps_px, ps_px), PILImage.LANCZOS)
+            arr = np.array(thumb)
+            cx  = int((pos[n, 0] - j_min) * scale)
+            cy  = int((pos[n, 1] - i_min) * scale)
+            x0  = cx - ps_px // 2;  x1 = min(x0 + ps_px, out_w)
+            y0  = cy - ps_px // 2;  y1 = min(y0 + ps_px, out_h)
+            ax0 = max(0, -x0);      ay0 = max(0, -y0)
+            x0  = max(0, x0);       y0  = max(0, y0)
+            if x0 < out_w and y0 < out_h and x1 > 0 and y1 > 0:
+                canvas[y0:y1, x0:x1] = arr[ay0:ay0 + (y1 - y0), ax0:ax0 + (x1 - x0)]
         except Exception:
             continue
 
     buf = io.BytesIO()
-    PILImage.fromarray(canvas).save(buf, format="JPEG", quality=75)
+    PILImage.fromarray(canvas).save(buf, format="JPEG", quality=78)
     buf.seek(0)
-    return Response(content=buf.read(), media_type="image/jpeg",
-                    headers={"Cache-Control": "public, max-age=3600"})
+    return Response(content=buf.read(), media_type="image/jpeg", headers=cache_hdr)
 
 
 @app.post("/api/reload")
