@@ -20,6 +20,13 @@ Creates a figure with two panels:
   --patient_id P --slide_id S    →  specific patient + slide
   --list                         →  print available patients/slides and exit
 
+─── node filtering ─────────────────────────────────────────────────────────────
+  --filtered    Keep only the patches that have a CLS embedding in the NPZ.
+                Each bag centroid in the NPZ is matched to its nearest patch in
+                the metadata CSV; unmatched patches are discarded.
+                Use this to reproduce exactly the same set of nodes as the .pt
+                training graphs (and the frontend visualisation).
+
 ─── usage examples ─────────────────────────────────────────────────────────────
   # default: picks the slide with the most patches automatically
   python scripts/delaunay_vis.py
@@ -38,6 +45,10 @@ Creates a figure with two panels:
 
   # slide alone (patient resolved automatically)
   python scripts/delaunay_vis.py --hospital "H. Bellvitge" --slide_id "12345_A1"
+
+  # only show nodes that exist in the CLS NPZ (same as frontend)
+  python scripts/delaunay_vis.py \\
+      --hospital "H. Bellvitge" --slide_id "12345_A1" --filtered
 """
 
 import argparse
@@ -58,6 +69,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from graph_utils import build_delaunay_edges, filter_edges_by_mask, export_graph  # noqa: E402
 from wsi_io import (  # noqa: E402
+    CLS_DIR_SUBPATH,
     find_patches_dir,
     load_metadata,
     load_slide_meta,
@@ -68,6 +80,70 @@ from wsi_io import (  # noqa: E402
 
 # ── single-line toggle ─────────────────────────────────────────────────────────
 OVERLAY_MODE = "mask"   # "mask" → segmentation mask | "rgb" → full RGB image
+
+
+# ── CLS-based node filtering ──────────────────────────────────────────────────
+
+def filter_to_cls_nodes(
+    df_slide: "pd.DataFrame",
+    hospital: str,
+    patient_id: str,
+    slide_id: str,
+    iam_path: Path,
+) -> "pd.DataFrame":
+    """
+    Keep only the patches in df_slide that have a CLS embedding in the NPZ.
+
+    Each bag centroid (mean of its 256 patch coords) is matched to its nearest
+    patch in df_slide by Euclidean distance in (j, i) space.  Patches with no
+    matching bag are discarded, so the resulting node set mirrors what
+    build_dataset.py stores in the .pt training graphs.
+
+    Coordinates convention: NPZ coords[:, :, 0] = j (x), coords[:, :, 1] = i (y),
+    which matches the (j, i) columns of the metadata CSV.
+    """
+    from scipy.spatial import cKDTree
+
+    cls_dir  = iam_path / CLS_DIR_SUBPATH
+    npz_path = cls_dir / f"{hospital}_CLS.npz"
+    if not npz_path.exists():
+        print(f"[WARN] --filtered: CLS NPZ not found: {npz_path}. Skipping filter.")
+        return df_slide
+
+    try:
+        npz = np.load(npz_path, allow_pickle=True)
+    except Exception as exc:
+        print(f"[WARN] --filtered: Could not load NPZ: {exc}. Skipping filter.")
+        return df_slide
+
+    bag_mask = (
+        (npz["patient_list"].astype(str) == patient_id) &
+        (npz["slides"].astype(str)       == slide_id)
+    )
+    n_bags = int(bag_mask.sum())
+    if n_bags == 0:
+        print(
+            f"[WARN] --filtered: No CLS bags found for patient={patient_id} "
+            f"slide={slide_id}. Skipping filter."
+        )
+        return df_slide
+
+    # Bag centroids: mean of the 256 patch coords → (N_bags, 2) in (j, i) order
+    coords    = npz["coords"][bag_mask]   # (N_bags, 256, 2)
+    centroids = coords.mean(axis=1)       # (N_bags, 2)
+
+    # For each centroid find the nearest patch in df_slide
+    patch_ji = df_slide[["j", "i"]].values.astype(np.float64)  # (M, 2)
+    _, idxs  = cKDTree(patch_ji).query(centroids)               # (N_bags,)
+
+    kept     = np.unique(idxs)
+    n_before = len(df_slide)
+    df_out   = df_slide.iloc[kept].copy().reset_index(drop=True)
+    print(
+        f"[INFO] --filtered: {n_before} patches → {len(df_out)} "
+        f"(matched {n_bags} CLS bags; {n_before - len(df_out)} patches without embedding discarded)"
+    )
+    return df_out
 
 
 # ── slide selection helpers ────────────────────────────────────────────────────
@@ -283,6 +359,9 @@ def parse_args() -> argparse.Namespace:
                    help="Slide ID; patient resolved automatically if --patient_id is omitted")
     p.add_argument("--list",        action="store_true",
                    help="List available patients and slides for the selected hospital and exit")
+    p.add_argument("--filtered",    action="store_true",
+                   help="Keep only patches with a CLS embedding in the NPZ "
+                        "(mirrors the node set used by build_dataset.py and the frontend)")
     p.add_argument("--output",      default="outputs/delaunay_overlay.png",
                    help="Output PNG path")
     p.add_argument("--max_patches", type=int, default=500,
@@ -361,6 +440,12 @@ def main() -> None:
     ]
     if df_slide.empty:
         sys.exit(f"[ERROR] No filtered patches for patient={patient_id}, slide={slide_id}")
+
+    # ── optional: keep only patches present in the CLS NPZ ────────────────────
+    if args.filtered:
+        df_slide = filter_to_cls_nodes(df_slide, hospital, patient_id, slide_id, iam_path)
+        if len(df_slide) < 3:
+            sys.exit("[ERROR] After --filtered, fewer than 3 patches remain — cannot build Delaunay graph.")
 
     print(f"[INFO] Patient  : {patient_id}")
     print(f"[INFO] Slide    : {slide_id}")
