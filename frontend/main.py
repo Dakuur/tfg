@@ -839,7 +839,7 @@ async def slide_meta(graph_id: str):
     has_bg = False
 
     if _RGB_DIR:
-        low = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}_low.jpg"
+        low = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}_low.png"
         has_bg = low.exists()
 
     return {
@@ -870,11 +870,11 @@ async def slide_background(graph_id: str):
     cache_hdr = {"Cache-Control": "public, max-age=3600"}
 
     if _RGB_DIR:
-        low = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}_low.jpg"
+        low = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}_low.png"
         if low.exists():
-            return FileResponse(str(low), media_type="image/jpeg", headers=cache_hdr)
+            return FileResponse(str(low), media_type="image/png", headers=cache_hdr)
 
-    expected = f"{hospital}_{slide_id}_low.jpg"
+    expected = f"{hospital}_{slide_id}_low.png"
     raise HTTPException(
         404,
         f"Imatge de fons no disponible: no s'ha trobat '{expected}' "
