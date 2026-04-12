@@ -1,11 +1,12 @@
 import { API } from "../api.js";
-import { renderGraph, renderAttentionBars } from "../components/graphViz.js";
+import { renderGraph } from "../components/graphViz.js";
 
-let _patients  = [];
-let _filtered  = [];
+let _patients    = [];
+let _filtered    = [];
 let _selectedPid = null;
-let _result    = null;
-let _debugMode = false;
+let _result      = null;   // patient-level result
+let _debugMode   = false;
+let _vizGraphId  = null;   // which slide is currently shown in viz
 
 export async function renderInference(container, debugMode = false) {
   _debugMode = debugMode;
@@ -23,6 +24,7 @@ export async function renderInference(container, debugMode = false) {
   _filtered    = [..._patients];
   _selectedPid = null;
   _result      = null;
+  _vizGraphId  = null;
 
   container.innerHTML = buildLayout();
   lucide.createIcons();
@@ -64,7 +66,6 @@ function buildLayout() {
           </div>
         </div>
 
-        <!-- Botó d'execució -->
         <div class="section">
           <button class="btn btn-primary" id="run-btn" disabled style="width:100%;justify-content:center">
             <i data-lucide="play-circle"></i> Executar inferència del pacient
@@ -89,27 +90,32 @@ function buildLayout() {
     <div id="slides-section" style="display:none" class="section">
       <div class="section-title"><i data-lucide="layers"></i> Resultats per slide</div>
       <div class="card" style="padding:14px" id="slides-content"></div>
+      <div style="font-size:11.5px;color:var(--text3);margin-top:6px">
+        <i data-lucide="mouse-pointer-2" style="width:12px;height:12px;vertical-align:middle"></i>
+        Fes clic a qualsevol slide per visualitzar-la
+      </div>
     </div>
 
-    <!-- Visualització del graf de la slide més rellevant -->
+    <!-- Visualització del graf -->
     <div id="viz-section" style="display:none" class="section">
       <div class="section-title">
         <i data-lucide="share-2"></i> Estructura del graf
         <span id="viz-slide-label" style="font-size:12px;color:var(--text3);margin-left:8px"></span>
+        <span id="viz-loading" style="display:none;font-size:11px;color:var(--accent-light);margin-left:8px">carregant…</span>
       </div>
       <div style="margin-bottom:8px;font-size:12px;color:var(--text3)">
         <i data-lucide="info" style="width:13px;height:13px;vertical-align:middle"></i>
-        Clic sobre un node per veure el patch d'histopatologia
+        Clic sobre un node per veure el patch d'histopatologia · Scroll per zoom
       </div>
       <div class="two-col" style="align-items:start">
         <div>
-          <div class="graph-viz-wrap" id="graph-svg-container" style="height:420px"></div>
+          <div class="graph-viz-wrap" id="graph-svg-container" style="height:440px"></div>
           <div class="graph-legend" style="margin-top:6px">
             <div class="legend-item">
               <canvas id="attn-legend-canvas" width="120" height="14" style="border-radius:3px;vertical-align:middle"></canvas>
-              <span style="font-size:11px;color:var(--text3);margin-left:4px">baixa → alta atenció</span>
+              <span style="font-size:11px;color:var(--text3);margin-left:6px">baixa → alta atenció</span>
             </div>
-            <div class="legend-item" style="margin-left:auto;color:var(--text3)">Scroll per zoom · Arrossega per moure</div>
+            <div class="legend-item" style="margin-left:auto;color:var(--text3)">Arrossega per moure</div>
           </div>
         </div>
         <div>
@@ -117,41 +123,26 @@ function buildLayout() {
         </div>
       </div>
     </div>
-
-    <!-- Capes d'atenció -->
-    <div id="attention-section" style="display:none" class="section">
-      <div class="section-title"><i data-lucide="eye"></i> Capes d'atenció GAT</div>
-      <div class="attention-wrap">
-        <div class="tabs" id="attn-tabs">
-          <button class="tab active" data-layer="layer1">Capa 1</button>
-          <button class="tab" data-layer="layer2">Capa 2</button>
-          <button class="tab" data-layer="layer3">Capa 3</button>
-        </div>
-        <div style="padding:16px" id="attn-content"></div>
-      </div>
-    </div>
   `;
 }
 
 function attachEvents(container) {
-  container.querySelector("#patient-search").addEventListener("input", () => applyFilters(container));
-  container.querySelector("#split-filter").addEventListener("change", () => applyFilters(container));
-  container.querySelector("#label-filter").addEventListener("change", () => applyFilters(container));
-  container.querySelector("#run-btn").addEventListener("click", () => runInference(container));
+  container.querySelector("#patient-search").addEventListener("input",  () => applyFilters(container));
+  container.querySelector("#split-filter").addEventListener("change",   () => applyFilters(container));
+  container.querySelector("#label-filter").addEventListener("change",   () => applyFilters(container));
+  container.querySelector("#run-btn").addEventListener("click",         () => runInference(container));
 }
 
 function applyFilters(container) {
   const q     = container.querySelector("#patient-search").value.toLowerCase();
   const split = container.querySelector("#split-filter").value;
   const label = container.querySelector("#label-filter").value;
-
   _filtered = _patients.filter(p => {
     if (split && !p.splits.includes(split)) return false;
     if (label !== "" && String(p.label) !== label) return false;
     if (q && !`${p.patient_id} ${p.hospital}`.toLowerCase().includes(q)) return false;
     return true;
   });
-
   renderTable(container);
 }
 
@@ -205,11 +196,11 @@ const STEPS = [
 async function runInference(container) {
   if (!_selectedPid) return;
 
-  const runBtn       = container.querySelector("#run-btn");
-  const progressWrap = container.querySelector("#progress-wrap");
-  const progressFill = container.querySelector("#progress-fill");
+  const runBtn        = container.querySelector("#run-btn");
+  const progressWrap  = container.querySelector("#progress-wrap");
+  const progressFill  = container.querySelector("#progress-fill");
   const progressLabel = container.querySelector("#progress-label-text");
-  const progressPct  = container.querySelector("#progress-pct");
+  const progressPct   = container.querySelector("#progress-pct");
 
   runBtn.disabled = true;
   progressWrap.style.display = "block";
@@ -231,7 +222,8 @@ async function runInference(container) {
   appendDebugLog({ level: "info", msg: `Inferència pacient: ${_selectedPid}`, t: Date.now() });
 
   try {
-    _result = await API.inferencePatient(_selectedPid, _debugMode);
+    _result     = await API.inferencePatient(_selectedPid, _debugMode);
+    _vizGraphId = _result.viz_graph_id;
 
     clearInterval(stepInterval);
     progressFill.style.width = "100%";
@@ -249,9 +241,8 @@ async function runInference(container) {
     }, 800);
 
     renderResult(container, _result);
-    renderSlideBreakdown(container, _result);
+    renderSlideBreakdown(container, _result, container);
     await renderGraphViz(container, _result);
-    renderAttention(container, _result, "layer3");
 
   } catch (e) {
     clearInterval(stepInterval);
@@ -268,11 +259,10 @@ async function runInference(container) {
 }
 
 function renderResult(container, r) {
-  const isN1 = r.prediction === 1;
-  const cls  = isN1 ? "n1" : "n0";
-
-  const n1Slides = (r.slide_results || []).filter(s => s.pred === 1).length;
-  const total    = r.num_slides || 0;
+  const isN1      = r.prediction === 1;
+  const cls       = isN1 ? "n1" : "n0";
+  const n1Slides  = (r.slide_results || []).filter(s => s.pred === 1).length;
+  const total     = r.num_slides || 0;
 
   const reasonHtml = isN1
     ? `<div class="result-reason n1">⚠ ${n1Slides} de ${total} slide${n1Slides !== 1 ? "s" : ""} amb predicció N1</div>`
@@ -290,7 +280,6 @@ function renderResult(container, r) {
         P(N1)=${(r.prob_n1 * 100).toFixed(1)}% &nbsp; ${correctHtml}
       </div>
       ${reasonHtml}
-
       <div class="result-meta">
         <div class="result-meta-row">
           <span>Etiqueta real</span>
@@ -317,13 +306,19 @@ function renderSlideBreakdown(container, r) {
     return;
   }
 
+  _rebuildSlideTable(container, slides, r);
+}
+
+function _rebuildSlideTable(container, slides, r) {
   const rows = slides.map(s => {
-    const isViz = s.graph_id === r.viz_graph_id;
+    const isViz = s.graph_id === _vizGraphId;
     const pct   = (s.prob_n1 * 100).toFixed(1);
     const barW  = Math.round(s.prob_n1 * 100);
     return `
-      <tr class="${isViz ? "selected" : ""}">
-        <td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)">${s.graph_id.split("/").pop()}</td>
+      <tr data-gid="${s.graph_id}" style="cursor:pointer" class="${isViz ? "selected" : ""}">
+        <td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)">
+          ${s.graph_id.split("/").pop()}
+        </td>
         <td><span class="badge badge-${s.pred === 0 ? "n0" : "n1"}">${s.label_name}</span></td>
         <td style="min-width:100px">
           <div style="display:flex;align-items:center;gap:6px">
@@ -334,30 +329,67 @@ function renderSlideBreakdown(container, r) {
           </div>
         </td>
         <td class="mono" style="font-size:11px">${s.num_nodes}</td>
-        ${isViz ? `<td style="font-size:10.5px;color:var(--accent-light)">▶ viz</td>` : `<td></td>`}
+        <td style="font-size:10.5px;color:${isViz ? "var(--accent-light)" : "var(--text3)"}">
+          ${isViz ? "▶ viz" : "<span style='opacity:0.4'>viz</span>"}
+        </td>
       </tr>`;
   }).join("");
 
-  section.querySelector("#slides-content").innerHTML = `
+  container.querySelector("#slides-content").innerHTML = `
     <table>
       <thead><tr><th>Slide</th><th>Predicció</th><th>P(N1)</th><th>Nodes</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+
+  // Click a slide row → visualize that slide
+  container.querySelector("#slides-content").querySelectorAll("tbody tr").forEach(row => {
+    row.addEventListener("click", async () => {
+      const gid = row.dataset.gid;
+      if (!gid || gid === _vizGraphId) return;
+      await vizSlide(container, gid, r.slide_results);
+    });
+  });
+}
+
+async function vizSlide(container, graphId, slides) {
+  const vizLabel   = container.querySelector("#viz-slide-label");
+  const vizLoading = container.querySelector("#viz-loading");
+  if (vizLoading) vizLoading.style.display = "";
+  if (vizLabel)   vizLabel.textContent = `(carregant…)`;
+
+  try {
+    const viz = await API.inference(graphId, false);
+    _vizGraphId = graphId;
+
+    // Rebuild slide table to update the ▶ viz marker
+    if (slides) _rebuildSlideTable(container, slides, {});
+
+    await _drawViz(container, viz, graphId);
+  } catch (e) {
+    if (vizLoading) vizLoading.style.display = "none";
+    if (vizLabel)   vizLabel.textContent = `(error: ${e.message})`;
+  }
 }
 
 async function renderGraphViz(container, r) {
-  const section = container.querySelector("#viz-section");
-  section.style.display = "";
+  container.querySelector("#viz-section").style.display = "";
+  await _drawViz(container, r, r.viz_graph_id);
+}
 
-  const label = container.querySelector("#viz-slide-label");
-  if (label) label.textContent = `(slide: ${(r.viz_graph_id || "").split("/").pop()})`;
+async function _drawViz(container, viz, graphId) {
+  const vizLabel   = container.querySelector("#viz-slide-label");
+  const vizLoading = container.querySelector("#viz-loading");
+  const svgContainer = container.querySelector("#graph-svg-container");
+  const meta         = container.querySelector("#graph-meta-card");
 
-  // Draw attention color legend
+  if (vizLabel)   vizLabel.textContent = `(slide: ${(graphId || "").split("/").pop()})`;
+  if (vizLoading) vizLoading.style.display = "none";
+
+  // Attention color legend
   const canvas = container.querySelector("#attn-legend-canvas");
   if (canvas) {
-    const ctx = canvas.getContext("2d");
+    const ctx  = canvas.getContext("2d");
     const grad = ctx.createLinearGradient(0, 0, 120, 0);
-    // d3.interpolateTurbo stops: blue→cyan→green→yellow→red
     for (let t = 0; t <= 1; t += 0.1) {
       const c = d3.color(d3.interpolateTurbo(t));
       grad.addColorStop(t, `rgb(${c.r},${c.g},${c.b})`);
@@ -366,128 +398,43 @@ async function renderGraphViz(container, r) {
     ctx.fillRect(0, 0, 120, 14);
   }
 
-  const svgContainer = container.querySelector("#graph-svg-container");
-  const meta         = container.querySelector("#graph-meta-card");
-  const attn3        = r.attention?.layer3;
+  const attn3 = viz.attention?.layer3;
 
-  // Build slideInfo for patch click
   const slideInfo = {
-    hospital:   r.hospital   || "",
-    patient_id: r.patient_id || "",
-    slide_id:   r.slide_id   || "",
-    graph_id:   r.viz_graph_id || "",
-    patch_j:    r.patch_j,
-    patch_i:    r.patch_i,
+    hospital:   viz.hospital   || "",
+    patient_id: viz.patient_id || "",
+    slide_id:   viz.slide_id   || "",
+    graph_id:   graphId || "",
+    patch_j:    viz.patch_j,
+    patch_i:    viz.patch_i,
   };
 
-  // Try to load slide background
-  let bgImageUrl = null;
-  if (r.viz_graph_id) {
-    bgImageUrl = `/api/slide_bg/${encodeURIComponent(r.viz_graph_id)}`;
-    // Preload to check availability (non-blocking)
-    const testImg = new Image();
-    testImg.src = bgImageUrl;
-    // We pass the URL regardless — if it fails, the <image> element just shows nothing
-  }
+  const bgImageUrl = graphId ? `/api/slide_bg/${encodeURIComponent(graphId)}` : null;
 
   renderGraph(svgContainer, {
-    edge_index:     r.edge_index,
-    node_positions: r.node_positions,
-    num_nodes:      r.num_nodes,
-    feature_norms:  r.feature_norms,
+    edge_index:     viz.edge_index,
+    node_positions: viz.node_positions,
+    num_nodes:      viz.num_nodes,
+    feature_norms:  viz.feature_norms,
   }, {
     nodeAttention: attn3?.node_attention,
     edgeAttention: attn3 ? { edge_index: attn3.edge_index, weights_mean: attn3.weights_mean } : null,
-    height:    420,
+    height:    440,
     slideInfo,
     bgImageUrl,
   });
 
-  const nodeAttn  = attn3?.node_attention || [];
-  const topNodes  = nodeAttn.map((v, i) => ({ i, v })).sort((a, b) => b.v - a.v).slice(0, 5);
-
   meta.innerHTML = `
-    <div class="card-title">Nodes més rellevants (Capa 3)</div>
-    <div class="stat-list" style="margin-bottom:14px">
-      ${topNodes.map((n, rank) => `
-        <div class="stat-row">
-          <span class="stat-key">${rank + 1}. Node ${n.i}</span>
-          <span class="stat-val">${(n.v * 100).toFixed(1)}%</span>
-        </div>`).join("")}
-    </div>
     <div class="card-title">Slide visualitzada</div>
     <div class="stat-list">
-      <div class="stat-row"><span class="stat-key">Nodes</span><span class="stat-val mono">${r.num_nodes}</span></div>
-      <div class="stat-row"><span class="stat-key">Arestes dirigides</span><span class="stat-val mono">${r.num_edges}</span></div>
-      <div class="stat-row"><span class="stat-key">Posicions reals</span><span class="stat-val">${r.node_positions ? "✓ Sí" : "No"}</span></div>
-      <div class="stat-row"><span class="stat-key">Pooling</span><span class="stat-val accent">${r.pooling_type ?? "—"}</span></div>
-      <div class="stat-row"><span class="stat-key">Patches</span><span class="stat-val">${r.patch_j ? "✓ disponibles" : "⚠ cal re-executar build_dataset"}</span></div>
+      <div class="stat-row"><span class="stat-key">Nodes</span><span class="stat-val mono">${viz.num_nodes}</span></div>
+      <div class="stat-row"><span class="stat-key">Arestes dirigides</span><span class="stat-val mono">${viz.num_edges}</span></div>
+      <div class="stat-row"><span class="stat-key">Posicions reals</span><span class="stat-val">${viz.node_positions ? "✓ Sí" : "No"}</span></div>
+      <div class="stat-row"><span class="stat-key">Pooling</span><span class="stat-val accent">${viz.pooling_type ?? "—"}</span></div>
+      <div class="stat-row"><span class="stat-key">Patches disponibles</span><span class="stat-val">${viz.patch_j ? "✓ Sí" : "⚠ cal rebuild"}</span></div>
     </div>`;
 
   lucide.createIcons();
-}
-
-function renderAttention(container, r, activeLayer) {
-  const section = container.querySelector("#attention-section");
-  section.style.display = "";
-
-  section.querySelectorAll(".tab").forEach(tab => {
-    tab.classList.toggle("active", tab.dataset.layer === activeLayer);
-    tab.onclick = () => renderAttention(container, r, tab.dataset.layer);
-  });
-
-  const layerData = r.attention?.[activeLayer];
-  if (!layerData) {
-    section.querySelector("#attn-content").innerHTML = `<div class="empty-state"><p>Sense dades d'atenció</p></div>`;
-    return;
-  }
-
-  const content = section.querySelector("#attn-content");
-
-  // SlideInfo for attention mini-graph node clicks
-  const slideInfo = {
-    hospital:   r.hospital   || "",
-    patient_id: r.patient_id || "",
-    slide_id:   r.slide_id   || "",
-    graph_id:   r.viz_graph_id || "",
-    patch_j:    r.patch_j,
-    patch_i:    r.patch_i,
-  };
-
-  content.innerHTML = `
-    <div>
-      <div class="section-title" style="margin-bottom:8px">Graf acolorit per atenció (${activeLayer.replace("layer", "Capa ")})</div>
-      <div class="graph-viz-wrap" id="attn-graph-mini" style="height:300px"></div>
-    </div>
-    <div style="margin-top:12px">
-      <div class="stat-list">
-        <div class="stat-row"><span class="stat-key">Arestes (incl. self-loops)</span><span class="stat-val mono">${layerData.edge_index[0].length}</span></div>
-        <div class="stat-row"><span class="stat-key">Caps d'atenció</span><span class="stat-val mono">${layerData.num_heads}</span></div>
-        <div class="stat-row"><span class="stat-key">Atenció màxima</span><span class="stat-val mono">${Math.max(...layerData.node_attention).toFixed(4)}</span></div>
-        <div class="stat-row"><span class="stat-key">Entropia</span><span class="stat-val mono">${entropy(layerData.weights_mean).toFixed(4)}</span></div>
-      </div>
-    </div>`;
-
-  renderGraph(content.querySelector("#attn-graph-mini"), {
-    edge_index:     r.edge_index,
-    node_positions: r.node_positions,
-    num_nodes:      r.num_nodes,
-    feature_norms:  r.feature_norms,
-  }, {
-    nodeAttention: layerData.node_attention,
-    edgeAttention: { edge_index: layerData.edge_index, weights_mean: layerData.weights_mean },
-    height: 300,
-    slideInfo,
-  });
-}
-
-function entropy(vals) {
-  const total = vals.reduce((s, v) => s + Math.abs(v), 0);
-  if (total === 0) return 0;
-  return -vals.reduce((s, v) => {
-    const p = Math.abs(v) / total;
-    return s + (p > 0 ? p * Math.log2(p) : 0);
-  }, 0);
 }
 
 export function appendDebugLog(entry) {
