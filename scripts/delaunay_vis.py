@@ -12,14 +12,32 @@ Creates a figure with two panels:
   OVERLAY_MODE = "mask"  →  right panel shows the segmentation mask at 0.5
   OVERLAY_MODE = "rgb"   →  right panel shows the full RGB image at 0.5
 
-Usage example (defaults work out of the box):
-    python scripts/delaunay_vis.py
+─── slide selection ────────────────────────────────────────────────────────────
+  (no flags)                     →  best slide of the first hospital
+  --hospital H                   →  best slide of hospital H
+  --patient_id P                 →  best slide of patient P (within hospital H)
+  --slide_id S                   →  specific slide (patient looked up automatically)
+  --patient_id P --slide_id S    →  specific patient + slide
+  --list                         →  print available patients/slides and exit
 
-Custom example:
-    python scripts/delaunay_vis.py \\
-        --hospital "H. Bellvitge" \\
-        --max_patches 300 \\
-        --output outputs/bellvitge_delaunay.png
+─── usage examples ─────────────────────────────────────────────────────────────
+  # default: picks the slide with the most patches automatically
+  python scripts/delaunay_vis.py
+
+  # list all patients/slides for a hospital to find valid IDs
+  python scripts/delaunay_vis.py --hospital "H. Bellvitge" --list
+
+  # specific patient (best slide chosen automatically)
+  python scripts/delaunay_vis.py --hospital "H. Bellvitge" --patient_id "12345"
+
+  # specific patient + slide
+  python scripts/delaunay_vis.py \\
+      --hospital "H. Bellvitge" \\
+      --patient_id "12345" --slide_id "12345_A1" \\
+      --output outputs/12345_A1_delaunay.png
+
+  # slide alone (patient resolved automatically)
+  python scripts/delaunay_vis.py --hospital "H. Bellvitge" --slide_id "12345_A1"
 """
 
 import argparse
@@ -257,9 +275,14 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--iam_path",    default="/mnt/iam",
                    help="Path to the dataset root (/mnt/iam) or the Images/ folder")
-    p.add_argument("--hospital",    default=None, help="Hospital name (first available if omitted)")
-    p.add_argument("--patient_id",  default=None, help="Patient ID (best slide if omitted)")
-    p.add_argument("--slide_id",    default=None, help="Slide ID (best slide if omitted)")
+    p.add_argument("--hospital",    default=None,
+                   help="Hospital name (first available if omitted)")
+    p.add_argument("--patient_id",  default=None,
+                   help="Patient ID; best slide chosen if --slide_id is omitted")
+    p.add_argument("--slide_id",    default=None,
+                   help="Slide ID; patient resolved automatically if --patient_id is omitted")
+    p.add_argument("--list",        action="store_true",
+                   help="List available patients and slides for the selected hospital and exit")
     p.add_argument("--output",      default="outputs/delaunay_overlay.png",
                    help="Output PNG path")
     p.add_argument("--max_patches", type=int, default=500,
@@ -295,6 +318,23 @@ def main() -> None:
     if df_filtered.empty:
         sys.exit("[ERROR] No patches passed the quality filter.")
 
+    # ── --list: print available patients/slides and exit ──────────────────────
+    if args.list:
+        summary = (
+            df_filtered
+            .groupby(["patient_ID", "slide_ID"])
+            .size()
+            .reset_index(name="patches")
+            .sort_values(["patient_ID", "slide_ID"])
+        )
+        print(f"\nAvailable patients/slides for hospital '{hospital}':\n")
+        print(f"  {'patient_ID':<20} {'slide_ID':<30} patches")
+        print(f"  {'-'*20} {'-'*30} -------")
+        for _, row in summary.iterrows():
+            print(f"  {str(row['patient_ID']):<20} {str(row['slide_ID']):<30} {row['patches']}")
+        print()
+        sys.exit(0)
+
     # ── select patient / slide ─────────────────────────────────────────────────
     if args.patient_id and args.slide_id:
         patient_id = str(args.patient_id)
@@ -305,6 +345,13 @@ def main() -> None:
         if df_pat.empty:
             sys.exit(f"[ERROR] Patient '{patient_id}' not found after quality filter.")
         slide_id = str(df_pat.groupby("slide_ID").size().idxmax())
+    elif args.slide_id:
+        slide_id  = str(args.slide_id)
+        df_sl     = df_filtered[df_filtered["slide_ID"].astype(str) == slide_id]
+        if df_sl.empty:
+            sys.exit(f"[ERROR] Slide '{slide_id}' not found after quality filter.")
+        # pick the patient with most patches for this slide (normally only one)
+        patient_id = str(df_sl.groupby("patient_ID").size().idxmax())
     else:
         patient_id, slide_id = select_best_slide(df_filtered)
 
