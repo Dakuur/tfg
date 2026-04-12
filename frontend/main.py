@@ -840,12 +840,7 @@ async def slide_meta(graph_id: str):
 
     if _RGB_DIR:
         low = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}_low.jpg"
-        png = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}.png"
-        has_bg = low.exists() or png.exists()
-
-    if not has_bg and PATCHES_DIR:
-        sd = PATCHES_DIR / hospital / patient_id / slide_id
-        has_bg = sd.is_dir() and any(sd.glob("*.jpg"))
+        has_bg = low.exists()
 
     return {
         "has_bg":  has_bg,
@@ -872,84 +867,19 @@ async def slide_background(graph_id: str):
     patient_id = str(getattr(g, "patient_id", "")) if g else ""
     slide_id   = str(getattr(g, "slide_id",   "")) if g else ""
 
-    cache_hdr  = {"Cache-Control": "public, max-age=3600"}
+    cache_hdr = {"Cache-Control": "public, max-age=3600"}
 
-    # 1. Pre-existing low-res thumbnail (_low.jpg)
     if _RGB_DIR:
         low = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}_low.jpg"
         if low.exists():
             return FileResponse(str(low), media_type="image/jpeg", headers=cache_hdr)
 
-        # 2. Full PNG → resize to max 1200 px
-        png = _RGB_DIR / hospital / patient_id / f"{hospital}_{slide_id}.png"
-        if png.exists():
-            try:
-                img   = PILImage.open(png).convert("RGB")
-                scale = min(1.0, 1200 / max(img.width, img.height))
-                if scale < 1:
-                    img = img.resize((int(img.width * scale), int(img.height * scale)),
-                                     PILImage.LANCZOS)
-                buf = io.BytesIO()
-                img.save(buf, format="JPEG", quality=82)
-                buf.seek(0)
-                return Response(content=buf.read(), media_type="image/jpeg", headers=cache_hdr)
-            except Exception as exc:
-                log.warning(f"slide_bg: could not resize PNG: {exc}")
-
-    # 3. Assemble from individual patches (slow fallback — scans directory)
-    if PATCHES_DIR is None or g is None or not hasattr(g, "pos") or g.pos is None:
-        raise HTTPException(404, "No background image available for this slide")
-
-    pos       = g.pos.cpu().numpy()        # (N, 2) — bag centroids (j, i)
-    j_min, i_min = pos[:, 0].min(), pos[:, 1].min()
-    j_max, i_max = pos[:, 0].max(), pos[:, 1].max()
-
-    slide_dir = PATCHES_DIR / hospital / patient_id / slide_id
-    if not slide_dir.is_dir():
-        raise HTTPException(404, f"Patch directory not found: {slide_dir}")
-
-    # Build patch index and find nearest file for every node
-    index = _slide_dir_patch_index(slide_dir, hospital, patient_id, slide_id)
-    if not index:
-        raise HTTPException(404, "No patch files found in slide directory")
-
-    coords_arr = np.array(list(index.keys()), dtype=np.float32)   # (M, 2)
-    paths_list = list(index.values())
-
-    MAX_PX = 900
-    wsi_w  = float(j_max - j_min) or 1.0
-    wsi_h  = float(i_max - i_min) or 1.0
-    scale  = MAX_PX / max(wsi_w, wsi_h)
-    out_w  = max(1, int(wsi_w * scale))
-    out_h  = max(1, int(wsi_h * scale))
-    ps_px  = max(1, int(2048 * scale))
-
-    canvas = np.full((out_h, out_w, 3), 230, dtype=np.uint8)
-
-    for n in range(len(pos)):
-        dists = np.sum((coords_arr - pos[n]) ** 2, axis=1)
-        best  = int(np.argmin(dists))
-        if dists[best] > (8192 ** 2):
-            continue
-        try:
-            thumb = PILImage.open(paths_list[best]).convert("RGB").resize(
-                (ps_px, ps_px), PILImage.LANCZOS)
-            arr = np.array(thumb)
-            cx  = int((pos[n, 0] - j_min) * scale)
-            cy  = int((pos[n, 1] - i_min) * scale)
-            x0  = cx - ps_px // 2;  x1 = min(x0 + ps_px, out_w)
-            y0  = cy - ps_px // 2;  y1 = min(y0 + ps_px, out_h)
-            ax0 = max(0, -x0);      ay0 = max(0, -y0)
-            x0  = max(0, x0);       y0  = max(0, y0)
-            if x0 < out_w and y0 < out_h and x1 > 0 and y1 > 0:
-                canvas[y0:y1, x0:x1] = arr[ay0:ay0 + (y1 - y0), ax0:ax0 + (x1 - x0)]
-        except Exception:
-            continue
-
-    buf = io.BytesIO()
-    PILImage.fromarray(canvas).save(buf, format="JPEG", quality=78)
-    buf.seek(0)
-    return Response(content=buf.read(), media_type="image/jpeg", headers=cache_hdr)
+    expected = f"{hospital}_{slide_id}_low.jpg"
+    raise HTTPException(
+        404,
+        f"Imatge de fons no disponible: no s'ha trobat '{expected}' "
+        f"al directori RGB_Images/{hospital}/{patient_id}/",
+    )
 
 
 @app.post("/api/reload")

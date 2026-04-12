@@ -74,6 +74,85 @@ from wsi_io import load_all_npz, load_labels, CLS_DIR_SUBPATH  # noqa: E402
 RANDOM_STATE = 42
 
 
+# ── Diagnòstic de cobertura de dades ──────────────────────────────────────────
+
+def print_data_diagnostics(
+    df_npz: pd.DataFrame,
+    df_labels: pd.DataFrame,
+    cls_dir: Path,
+) -> None:
+    """
+    Imprimeix un resum detallat de la cobertura de dades i dels registres
+    desemparellats entre els fitxers CLS (.npz) i l'Excel d'etiquetes.
+
+    Útil per detectar pacients sense embeddings, fitxers mal ubicats o
+    discrepàncies entre la base de dades i les dades reals.
+    """
+    print("\n── Diagnòstic de cobertura de dades ────────────────────────────────")
+
+    # ── fitxers NPZ trobats al disc ────────────────────────────────────────────
+    npz_files = sorted(cls_dir.glob("*_CLS.npz"))
+    print(f"\n  Directori CLS : {cls_dir}")
+    print(f"  Fitxers *_CLS.npz trobats : {len(npz_files)}")
+    if npz_files:
+        for f in npz_files:
+            size_mb = f.stat().st_size / 1e6
+            print(f"    [OK] {f.name}  ({size_mb:.1f} MB)")
+    else:
+        print("    [ERROR] Cap fitxer *_CLS.npz trobat. Comprova la ruta --iam_path.")
+
+    # ── resum per hospital (dels NPZ carregats) ────────────────────────────────
+    print(f"\n  Pacients per hospital (dels NPZ carregats):")
+    for hosp, grp in df_npz.groupby("Hospital"):
+        n_pats  = grp["Patient_ID"].nunique()
+        n_bags  = len(grp)
+        n_slides = grp.groupby(["Patient_ID", "Slide"]).ngroups
+        print(f"    {hosp}: {n_pats} pacients, {n_slides} slides, {n_bags:,} bags")
+
+    # ── resum global ───────────────────────────────────────────────────────────
+    npz_patients   = set(df_npz["Patient_ID"].unique())
+    excel_patients = set(df_labels["Patient_ID"].unique())
+    common         = npz_patients & excel_patients
+
+    n0_excel = (df_labels["label"] == 0).sum()
+    n1_excel = (df_labels["label"] == 1).sum()
+
+    print(f"\n  Resum global:")
+    print(f"    Pacients únics als NPZ          : {len(npz_patients)}")
+    print(f"    Pacients únics a l'Excel        : {len(excel_patients)}  "
+          f"(N0={n0_excel}, N1={n1_excel})")
+    print(f"    Pacients en comú (intersecció)  : {len(common)}")
+    print(f"    Bags totals carregats           : {len(df_npz):,}")
+
+    # ── als NPZ però NO a l'Excel ──────────────────────────────────────────────
+    only_in_npz = sorted(npz_patients - excel_patients)
+    if only_in_npz:
+        print(f"\n  [WARN] {len(only_in_npz)} pacient(s) als NPZ però NO a l'Excel "
+              f"(seran ignorats al join):")
+        for pid in only_in_npz:
+            row_npz  = df_npz[df_npz["Patient_ID"] == pid]
+            hospitals = ", ".join(row_npz["Hospital"].unique())
+            n_bags    = len(row_npz)
+            n_slides  = row_npz["Slide"].nunique()
+            print(f"    - {pid:>10}  hospital={hospitals}, {n_slides} slides, {n_bags} bags")
+    else:
+        print("\n  [OK] Tots els pacients dels NPZ estan a l'Excel.")
+
+    # ── a l'Excel però sense dades CLS ────────────────────────────────────────
+    only_in_excel = sorted(excel_patients - npz_patients)
+    if only_in_excel:
+        print(f"\n  [WARN] {len(only_in_excel)} pacient(s) a l'Excel però sense dades CLS als NPZ "
+              f"(no es construirà cap graf):")
+        for pid in only_in_excel:
+            rows  = df_labels[df_labels["Patient_ID"] == pid]
+            score = rows["Metastasis_score"].values[0] if len(rows) else "?"
+            print(f"    - {pid:>10}  score={score}")
+    else:
+        print("\n  [OK] Tots els pacients de l'Excel tenen dades CLS als NPZ.")
+
+    print()
+
+
 # ── Phase 1 ───────────────────────────────────────────────────────────────────
 
 def build_slide_index(df_npz: pd.DataFrame, df_labels: pd.DataFrame) -> pd.DataFrame:
@@ -408,6 +487,8 @@ def main() -> None:
     # ── Phase 1 ───────────────────────────────────────────────────────────────
     df_npz    = load_all_npz(cls_dir)
     df_labels = load_labels(iam_path)
+
+    print_data_diagnostics(df_npz, df_labels, cls_dir)
 
     df_full = df_npz.merge(df_labels, on="Patient_ID", how="inner")
     print(

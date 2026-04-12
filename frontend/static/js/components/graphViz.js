@@ -170,8 +170,17 @@ export function renderGraph(container, data, opts = {}) {
     const xMin = Math.min(...xs), xMax = Math.max(...xs);
     const yMin = Math.min(...ys), yMax = Math.max(...ys);
 
-    scaleX = d3.scaleLinear().domain([xMin, xMax]).range([pad, width  - pad]);
-    scaleY = d3.scaleLinear().domain([yMin, yMax]).range([pad, height - pad]);
+    // Uniform scale: same pixels-per-WSI-unit on both axes to avoid distortion
+    const xRange = (xMax - xMin) || 1;
+    const yRange = (yMax - yMin) || 1;
+    const availW = width  - 2 * pad;
+    const availH = height - 2 * pad;
+    const uScale = Math.min(availW / xRange, availH / yRange);
+    const xOff   = pad + (availW - xRange * uScale) / 2;
+    const yOff   = pad + (availH - yRange * uScale) / 2;
+
+    scaleX = j => xOff + (j - xMin) * uScale;
+    scaleY = i => yOff + (i - yMin) * uScale;
 
     nodes.forEach((n, i) => {
       n.x = scaleX(node_positions[i][0]);
@@ -183,23 +192,23 @@ export function renderGraph(container, data, opts = {}) {
       let imgX, imgY, imgW, imgH;
 
       if (wsiExtent && wsiExtent.j_base != null) {
-        // Align to the actual slide WSI region
+        // Align to the actual slide WSI region using the same uniform scale
         imgX = scaleX(wsiExtent.j_base);
         imgY = scaleY(wsiExtent.i_base);
-        imgW = (wsiExtent.w / (xMax - xMin)) * (width  - 2 * pad);
-        imgH = (wsiExtent.h / (yMax - yMin)) * (height - 2 * pad);
+        imgW = wsiExtent.w * uScale;
+        imgH = wsiExtent.h * uScale;
       } else {
-        // Fallback: fill the node bounding box area
-        imgX = pad; imgY = pad;
-        imgW = width  - 2 * pad;
-        imgH = height - 2 * pad;
+        // Fallback: fill the node bounding box
+        imgX = xOff; imgY = yOff;
+        imgW = xRange * uScale;
+        imgH = yRange * uScale;
       }
 
       g.append("image")
         .attr("href", bgImageUrl)
         .attr("x", imgX).attr("y", imgY)
         .attr("width", imgW).attr("height", imgH)
-        .attr("preserveAspectRatio", "none")
+        .attr("preserveAspectRatio", "none")   // dimensions already respect aspect ratio
         .attr("opacity", 0.55);
     }
   }

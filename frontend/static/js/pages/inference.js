@@ -409,9 +409,10 @@ async function _drawViz(container, viz, graphId) {
     patch_i:    viz.patch_i,
   };
 
-  // Fetch slide metadata (WSI extent) for background alignment — non-blocking
-  let wsiExtent = null;
+  // Fetch slide metadata (WSI extent) for background alignment
+  let wsiExtent  = null;
   let bgImageUrl = null;
+  let bgError    = null;
   if (graphId) {
     try {
       const sm = await API.slideMeta(graphId);
@@ -420,8 +421,13 @@ async function _drawViz(container, viz, graphId) {
         if (sm.j_base != null) {
           wsiExtent = { j_base: sm.j_base, i_base: sm.i_base, w: sm.w, h: sm.h };
         }
+      } else {
+        const sid = (graphId || "").split("/").pop().replace(/\.pt$/, "");
+        bgError = `Imatge de fons no disponible: no s'ha trobat <em>${sid}_low.jpg</em>`;
       }
-    } catch (_) { /* background not available — continue without it */ }
+    } catch (e) {
+      bgError = `Error en carregar la imatge de fons: ${e.message}`;
+    }
   }
 
   renderGraph(svgContainer, {
@@ -438,6 +444,12 @@ async function _drawViz(container, viz, graphId) {
     wsiExtent,
   });
 
+  const bgStatusHtml = bgError
+    ? `<div class="stat-row"><span class="stat-key">Imatge fons</span><span class="stat-val" style="color:var(--red);font-size:11px">${bgError}</span></div>`
+    : bgImageUrl
+      ? `<div class="stat-row"><span class="stat-key">Imatge fons</span><span class="stat-val" style="color:var(--green)">✓ _low.jpg</span></div>`
+      : "";
+
   meta.innerHTML = `
     <div class="card-title">Slide visualitzada</div>
     <div class="stat-list">
@@ -446,6 +458,7 @@ async function _drawViz(container, viz, graphId) {
       <div class="stat-row"><span class="stat-key">Posicions reals</span><span class="stat-val">${viz.node_positions ? "✓ Sí" : "No"}</span></div>
       <div class="stat-row"><span class="stat-key">Pooling</span><span class="stat-val accent">${viz.pooling_type ?? "—"}</span></div>
       <div class="stat-row"><span class="stat-key">Patches disponibles</span><span class="stat-val">${viz.patch_j ? "✓ Sí" : "⚠ cal rebuild"}</span></div>
+      ${bgStatusHtml}
     </div>`;
 
   lucide.createIcons();
