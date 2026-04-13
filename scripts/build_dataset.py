@@ -68,10 +68,156 @@ from graph_utils import (  # noqa: E402
     MIN_BAGS_PER_SECTION,
     DISTANCE_FACTOR,
 )
-from wsi_io import load_all_npz, load_labels, CLS_DIR_SUBPATH  # noqa: E402
+from wsi_io import (  # noqa: E402
+    load_all_npz, load_labels, find_patches_dir,
+    CLS_DIR_SUBPATH, LABELS_SUBPATH,
+)
 
 # ── constants ──────────────────────────────────────────────────────────────────
 RANDOM_STATE = 42
+
+
+# ── Informe de cobertura de dades ─────────────────────────────────────────────
+
+def generate_coverage_report(
+    df_npz:    pd.DataFrame,
+    iam_path:  Path,
+    out_dir:   Path,
+) -> None:
+    """
+    Genera un CSV a `out_dir/coverage_report.csv` amb una fila per (pacient, hospital)
+    i tres indicadors de presència de dades:
+
+      in_excel        : apareix a l'Excel i el diagnòstic NO és NX
+      excel_score     : N0, N1, NX o "-" (no trobat a l'Excel)
+      in_cls          : apareix en algun fitxer *_CLS.npz
+      in_patches_2048 : existeix el directori Patches_2048/{hospital}/{patient_id}
+
+    L'informe cobreix la unió de tots els pacients coneguts (Excel + CLS NPZ).
+    """
+    excel_path = iam_path / LABELS_SUBPATH
+
+    # ── carregar Excel (incloent NX) ──────────────────────────────────────────
+    df_excel_raw: pd.DataFrame | None = None
+    if excel_path.exists():
+        try:
+            df_excel_raw = pd.read_excel(excel_path)
+            score_col = next(
+                (c for c in df_excel_raw.columns if str(c).startswith("PATHOLOGIST SCORE")), None
+            )
+            if score_col and "CODE" in df_excel_raw.columns:
+                df_excel_raw = df_excel_raw.rename(
+                    columns={score_col: "Metastasis_score", "CODE": "Patient_ID"}
+                )
+                df_excel_raw["Patient_ID"] = df_excel_raw["Patient_ID"].astype(str).str.strip()
+                # Normalitza subtipus N1
+                df_excel_raw["Metastasis_score"] = df_excel_raw["Metastasis_score"].replace(
+                    {"N1a": "N1", "N1b": "N1", "N1c": "N1", "N2a": "N1", "N2b": "N1"}
+                )
+                hospital_col = "Data Access Group" if "Data Access Group" in df_excel_raw.columns else None
+                if hospital_col:
+                    df_excel_raw["hospital_excel"] = df_excel_raw[hospital_col].astype(str).str.strip()
+                else:
+                    df_excel_raw["hospital_excel"] = "-"
+            else:
+                df_excel_raw = None
+        except Exception as exc:
+            print(f"[WARN] coverage_report: could not read Excel: {exc}")
+            df_excel_raw = None
+    else:
+        print(f"[WARN] coverage_report: Excel not found at {excel_path}")
+
+    # ── resum per pacient des dels NPZ ────────────────────────────────────────
+    # Un pacient pot tenir dades en múltiples hospitals (rar però possible)
+    npz_patient_hospital: dict[str, set[str]] = {}
+    for _, row in df_npz[["Patient_ID", "Hospital"]].drop_duplicates().iterrows():
+        pid  = str(row["Patient_ID"]).strip()
+        hosp = str(row["Hospital"]).strip()
+        npz_patient_hospital.setdefault(pid, set()).add(hosp)
+
+    # ── construir registres per (pacient, hospital) ───────────────────────────
+    excel_lookup: dict[str, dict] = {}
+    if df_excel_raw is not None:
+        for _, row in df_excel_raw.iterrows():
+            pid = str(row["Patient_ID"]).strip()
+            excel_lookup[pid] = {
+                "score":           str(row.get("Metastasis_score", "-")),
+                "hospital_excel":  str(row.get("hospital_excel", "-")),
+            }
+
+    # Union de tots els pacients coneguts
+    all_patients: set[str] = set(npz_patient_hospital.keys()) | set(excel_lookup.keys())
+
+    # Directori de patches
+    try:
+        patches_dir: Path | None = find_patches_dir(iam_path)
+    except FileNotFoundError:
+        patches_dir = None
+        print("[WARN] coverage_report: Patches_2048 directory not found — in_patches_2048 will be False")
+
+    records: list[dict] = []
+    for pid in sorted(all_patients):
+        exc = excel_lookup.get(pid, {})
+        score         = exc.get("score", "-")
+        hospital_excel = exc.get("hospital_excel", "-")
+        in_excel_valid = score not in ("-", "NX")
+        hospitals_cls  = sorted(npz_patient_hospital.get(pid, set()))
+
+        # Si no surt als NPZ, usem hospital de l'Excel
+        hospitals_to_check = hospitals_cls if hospitals_cls else (
+            [hospital_excel] if hospital_excel != "-" else []
+        )
+
+        in_patches = False
+        if patches_dir and hospitals_to_check:
+            for hosp in hospitals_to_check:
+                if (patches_dir / hosp / pid).is_dir():
+                    in_patches = True
+                    break
+
+        # Generar una fila per cada hospital CLS; si no n'hi ha, una fila amb hospital de l'Excel
+        if hospitals_cls:
+            for hosp in hospitals_cls:
+                records.append({
+                    "patient_id":       pid,
+                    "hospital":         hosp,
+                    "excel_score":      score,
+                    "in_excel":         in_excel_valid,
+                    "in_cls":           True,
+                    "in_patches_2048":  in_patches,
+                })
+        else:
+            records.append({
+                "patient_id":       pid,
+                "hospital":         hospital_excel,
+                "excel_score":      score,
+                "in_excel":         in_excel_valid,
+                "in_cls":           False,
+                "in_patches_2048":  in_patches,
+            })
+
+    df_report = pd.DataFrame(records, columns=[
+        "patient_id", "hospital", "excel_score",
+        "in_excel", "in_cls", "in_patches_2048",
+    ])
+    df_report.sort_values(["hospital", "patient_id"], inplace=True)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "coverage_report.csv"
+    df_report.to_csv(out_path, index=False)
+
+    total = len(df_report)
+    n_both    = ((df_report["in_excel"]) & (df_report["in_cls"])).sum()
+    n_only_e  = ((df_report["in_excel"]) & (~df_report["in_cls"])).sum()
+    n_only_c  = ((~df_report["in_excel"]) & (df_report["in_cls"])).sum()
+    n_patches = df_report["in_patches_2048"].sum()
+    print(f"\n── Coverage report ─────────────────────────────────────────────────")
+    print(f"  Pacients totals : {total}")
+    print(f"  Excel ∩ CLS     : {n_both}   (usables per entrenament)")
+    print(f"  Només Excel     : {n_only_e}  (sense embeddings UNI2)")
+    print(f"  Només CLS       : {n_only_c}  (no a l'Excel o diagnòstic NX)")
+    print(f"  Amb patches     : {n_patches}")
+    print(f"  Desat a         : {out_path.resolve()}")
 
 
 # ── Diagnòstic de cobertura de dades ──────────────────────────────────────────
@@ -488,6 +634,7 @@ def main() -> None:
     df_npz    = load_all_npz(cls_dir)
     df_labels = load_labels(iam_path)
 
+    generate_coverage_report(df_npz, iam_path, out_dir)
     print_data_diagnostics(df_npz, df_labels, cls_dir)
 
     df_full = df_npz.merge(df_labels, on="Patient_ID", how="inner")
