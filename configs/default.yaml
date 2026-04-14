@@ -28,9 +28,10 @@ model:
 
 # ── Training ───────────────────────────────────────────────────────────────────
 training:
-  lr:         [1.0e-4, 1.0e-5]
-  epochs:     100
-  batch_size: 128
+  lr:           [1.0e-4, 1.0e-5]
+  weight_decay: 1.0e-3
+  epochs:       100
+  batch_size:   128
 
   # ReduceLROnPlateau
   scheduler_factor:   0.5
