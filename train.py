@@ -228,6 +228,8 @@ def _train_body(cfg: dict, run, device: torch.device) -> None:
 
     # ── Training state ────────────────────────────────────────────────────────
     monitor        = t.get("monitor", "val_auc")
+    if isinstance(monitor, list):
+        monitor = monitor[0]
     early_stopping = EarlyStopping(warm_up=t["warm_up"], patience=t["patience"])
     best_score     = 0.0
     best_epoch     = 0
