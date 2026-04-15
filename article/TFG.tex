@@ -230,7 +230,7 @@ la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en v
         \centering
         \includegraphics[width=\linewidth]{img/extracted_patches.png}
         \caption{\textit{Patches} extrets (nodes del graf) superposats sobre la imatge original. No tots els
-        \textit{patches} superen els filtres de qualitat.}
+        \textit{patches} superen els filtres de qualitat, per tant no se n'extreuen característiques.}
         \label{fig:patches}
     \end{subfigure}
     \hfill
@@ -255,15 +255,11 @@ El model implementat, \texttt{GATClassifier}, és un classificador de grafs form
 d'atenció (\texttt{GATConv}) seguides d'una operació de \textit{pooling} global i un capçal MLP per a la
 classificació binària N0/N1.
 
-Donada una entrada $\mathbf{X} \in \mathbb{R}^{N \times 1536}$ (els $N$ nodes de la làmina), cada capa GATConv
-aplica atenció multi-cap entre nodes veïns, concatenant les sortides dels $H$ caps:
-\begin{equation}
-\mathbf{h}_i^{(\ell)} = \Big\|_{k=1}^{H} \sigma\!\!\left(\sum_{j \in \mathcal{N}(i)} \alpha_{ij}^{(k,\ell)}\,
-\mathbf{W}^{(k,\ell)} \mathbf{h}_j^{(\ell-1)}\right)
-\end{equation}
-on $\alpha_{ij}^{(k,\ell)}$ és el coeficient d'atenció del cap $k$ a la capa $\ell$. Cada capa va seguida de
-normalització per batch, activació ELU i \textit{dropout}. La tercera capa usa un únic cap (sense concatenació)
-i produeix la representació final dels nodes $\in \mathbb{R}^{N \times d_h}$.
+Donades les representacions dels $N$ nodes de la làmina (embeddings CLS de 1.536 dimensions), cada
+capa GATConv calcula per a cada node una representació ponderada pels coeficients d'atenció apresos
+entre nodes veïns, usant $H$ caps independents les sortides dels quals es concatenen. Cada capa va
+seguida de normalització per batch, activació ELU i \textit{dropout}. La tercera capa usa un únic
+cap (sense concatenació) i produeix la representació final de cada node.
 
 El capçal MLP (\textit{Linear}~$\to$~ReLU~$\to$~\textit{Dropout}~$\to$~\textit{Linear}) transforma la
 representació global del graf en els logits N0/N1.
@@ -277,16 +273,12 @@ Per obtenir una representació de tot el graf, les representacions dels nodes s'
 \subsection{Pooling Diferenciable: DiffPool}
 
 Per superar les limitacions del \textit{readout} global, s'implementa \textbf{DiffPool}
-\cite{ying2019hierarchicalgraphrepresentationlearning}, que aprèn una matriu d'assignació suau (\textit{soft
-assignment}) per agrupar nodes en $K$ clústers de nivell superior:
-\begin{equation}
-\mathbf{S}^{(\ell)} = \mathrm{softmax}\!\left(\mathrm{GNN}_\mathrm{pool}^{(\ell)}\!\left(\mathbf{H}^{(\ell)},
-\mathbf{A}^{(\ell)}\right)\right)
-\end{equation}
-
-En lloc de col·lapsar tota la informació en un sol pas, el model captura representacions a \textbf{diferents
-nivells d'abstracció}, des de detalls citològics locals fins a l'organització arquitectònica global. L'entrenament
-incorpora una pèrdua auxiliar (\textit{link prediction} + entropia) per regularitzar l'assignació.
+\cite{ying2019hierarchicalgraphrepresentationlearning}, que aprèn a agrupar nodes en $K$ clústers
+de nivell superior mitjançant una matriu d'assignació suau (\textit{soft assignment}). En lloc de
+col·lapsar tota la informació en un sol pas, el model captura representacions a \textbf{diferents
+nivells d'abstracció}, des de detalls citològics locals fins a l'organització arquitectònica global.
+L'entrenament incorpora una pèrdua auxiliar (\textit{link prediction} + entropia) per regularitzar
+l'assignació.
 
 \begin{figure*}[h]
     \centering
@@ -325,13 +317,9 @@ les estratègies d'agregació següents:
     màxima.
     \item \textbf{Mean / LSE}: mitjana aritmètica o \textit{log-sum-exp} per als casos intermedis.
     \item \textbf{Attention MIL}: \texttt{PatientAggregator} basat en l'atenció \textit{gated} de Ilse et
-    al.\ \cite{ilse2018attentionbaseddeepmultipleinstance}:
-    \begin{align}
-    a_i &= \mathrm{softmax}\!\left(\mathbf{w}^\top\!\left(\tanh(\mathbf{V}\mathbf{h}_i)
-            \odot \sigma(\mathbf{U}\mathbf{h}_i)\right)\right) \\
-    \mathbf{h}_{p} &= \textstyle\sum_{i=1}^{S} a_i\, \mathbf{h}_i
-    \end{align}
-    on $\mathbf{h}_i$ és l'embedding de la làmina $i$ produït per l'encoder del GAT (sense el capçal MLP).
+    al.\ \cite{ilse2018attentionbaseddeepmultipleinstance}. Aprèn un pes d'atenció per a cada làmina a
+    partir del seu embedding (produït per l'encoder del GAT sense el capçal MLP), i la representació del
+    pacient s'obté com la suma ponderada dels embeddings de les seves làmines.
 \end{itemize}
 
 \subsection{Desbalanceig de Classes}
@@ -518,6 +506,7 @@ via MIL per obtenir el diagnòstic final a nivell de pacient.}
 \label{fig:pipeline}
 \end{figure*}
 
+\clearpage
 \printbibliography
 
 \end{document}
