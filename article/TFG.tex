@@ -226,17 +226,17 @@ la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en v
 
 \begin{figure*}[h]
     \centering
-    \begin{subfigure}{0.48\textwidth}
+    \begin{subfigure}[t]{0.48\textwidth}
         \centering
-        \includegraphics[width=\linewidth]{img/extracted_patches.png}
+        \includegraphics[height=5.5cm, keepaspectratio]{img/extracted_patches.png}
         \caption{\textit{Patches} extrets (nodes del graf) superposats sobre la imatge original. No tots els
         \textit{patches} superen els filtres de qualitat, per tant no se n'extreuen característiques.}
         \label{fig:patches}
     \end{subfigure}
     \hfill
-    \begin{subfigure}{0.48\textwidth}
+    \begin{subfigure}[t]{0.48\textwidth}
         \centering
-        \includegraphics[width=\linewidth]{img/delaunay_graph.png}
+        \includegraphics[height=5.5cm, keepaspectratio]{img/delaunay_graph.png}
         \caption{Graf de Delaunay sobre la imatge anotada. Les zones verdes indiquen àrees afectades anotades
         per la patòloga; les arestes en vermell han estat eliminades pel filtratge de màscara.}
         \label{fig:delaunay-real}
@@ -506,7 +506,6 @@ via MIL per obtenir el diagnòstic final a nivell de pacient.}
 \label{fig:pipeline}
 \end{figure*}
 
-\clearpage
 \printbibliography
 
 \end{document}
