@@ -1,6 +1,10 @@
 import { API } from "../api.js";
 import { renderGraph } from "../components/graphViz.js";
 
+// Set to true to re-enable the WSI background image behind the graph.
+// Requires the server to have the *_low.jpg files available.
+const SHOW_WSI_BACKGROUND = false;
+
 let _patients    = [];
 let _filtered    = [];
 let _selectedPid = null;
@@ -409,11 +413,12 @@ async function _drawViz(container, viz, graphId) {
     patch_i:    viz.patch_i,
   };
 
-  // Fetch slide metadata (WSI extent) for background alignment
+  // Fetch slide metadata (WSI extent) for background alignment.
+  // Skipped when SHOW_WSI_BACKGROUND is false — set it to true to re-enable.
   let wsiExtent  = null;
   let bgImageUrl = null;
   let bgError    = null;
-  if (graphId) {
+  if (SHOW_WSI_BACKGROUND && graphId) {
     try {
       const sm = await API.slideMeta(graphId);
       if (sm.has_bg) {
