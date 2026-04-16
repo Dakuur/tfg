@@ -78,9 +78,9 @@ Aquest treball aborda la predicció de metàstasis en ganglis limfàtics en paci
 pT1 a partir d'imatges de gran format (\textit{Whole Slide Images}). S'utilitzen \textit{Graph Attention Networks}
 (GAT) sobre grafs construïts a partir dels \textit{embeddings} CLS de 1.536 dimensions del model de fundació
 \textit{UNI2}, amb \textit{pooling} jeràrquic diferenciable (DiffPool) per preservar l'estructura espacial del
-teixit. El conjunt de dades comprèn \textbf{963 grafs} provinents de \textbf{230 pacients}, dividits
+teixit. El conjunt de dades comprèn 963 grafs provinents de 230 pacients, dividits
 estratificadament en entrenament i validació. Per afrontar el desbalanceig de classes (N0\,$\gg$\,N1), s'apliquen
-pesos per classe i mostratge balancejat. Donat que el diagnòstic és per pacient, s'implementen diverses estratègies
+pesos per classe. Donat que el diagnòstic és per pacient, s'implementen diverses estratègies
 d'agregació (\textit{Multiple Instance Learning}, MIL) que integren les prediccions de totes les làmines d'un
 pacient. Un \textit{grid search} inicial ha identificat un model candidat amb AUC de 0{,}846. A més, s'ha
 desenvolupat un \textit{frontend} web per a la inferència en temps real i la visualització de l'atenció del model.
@@ -95,8 +95,8 @@ Metàstasi, Estadi pT1, Aprenentatge per múltiples instàncies (MIL), Desbalanc
 This work addresses lymph node metastasis prediction in pT1 colorectal cancer patients from Whole Slide Images.
 We propose a methodology based on Graph Attention Networks (GAT) built on top of 1,536-dimensional CLS embeddings
 from the UNI2 foundation model, with differentiable hierarchical pooling (DiffPool) to preserve tissue spatial
-structure. The dataset comprises \textbf{963 graphs} from \textbf{230 patients}, stratified into training and
-validation splits. To handle class imbalance (N0\,$\gg$\,N1), class weighting and balanced sampling are applied.
+structure. The dataset comprises 963 graphs from 230 patients, stratified into training and
+validation splits. To handle class imbalance (N0\,$\gg$\,N1), class weighting is applied.
 Since the diagnosis is patient-level rather than slide-level, Multiple Instance Learning (MIL) aggregation
 strategies are implemented to integrate predictions across all slides of a patient. An initial grid search has
 identified a candidate model achieving an AUC of 0.846. An interactive web frontend has also been developed for
