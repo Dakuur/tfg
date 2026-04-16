@@ -210,7 +210,7 @@ nivell de borrositat (via transformada de Fourier) i proporció de teixit no bla
 Cada \textit{patch} vàlid constitueix un node del graf. No tots els \textit{patches} de la làmina generen un
 node: la màscara de qualitat descarta les regions de fons blanc i les imatges desenfocades. Les característiques
 de cada node són \textit{embeddings} del token \textit{CLS} de 1.536 dimensions generats pel model de fundació
-\textit{UNI2}, que condensa la informació morfològica i textural d'un \textit{bag} de 256 \textit{patches} de
+\textit{UNI2}~\cite{chen2024uni2}, que condensa la informació morfològica i textural d'un \textit{bag} de 256 \textit{patches} de
 $256 \times 256$ píxels. A la subfigura~\ref{fig:patches} es pot observar la distribució esparsa dels
 \textit{patches} extrets sobre una làmina real.
 
@@ -252,7 +252,7 @@ la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en v
 \subsection{GATClassifier}
 
 El model implementat, \texttt{GATClassifier}, és un classificador de grafs format per tres capes convolucionals
-d'atenció (\texttt{GATConv}) seguides d'una operació de \textit{pooling} global i un capçal MLP per a la
+d'atenció (\texttt{GATConv}~\cite{fey2019fastgraphrepresentationlearning}) seguides d'una operació de \textit{pooling} global i un capçal MLP per a la
 classificació binària N0/N1.
 
 Donades les representacions dels $N$ nodes de la làmina (embeddings CLS de 1.536 dimensions), cada
