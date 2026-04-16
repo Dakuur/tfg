@@ -229,8 +229,7 @@ la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en v
     \begin{subfigure}[t]{0.48\textwidth}
         \centering
         \includegraphics[height=7.5cm, keepaspectratio]{img/extracted_patches.png}
-        \caption{\textit{Patches} extrets (nodes del graf) superposats sobre la imatge original. No tots els
-        \textit{patches} superen els filtres de qualitat, per tant no se n'extreuen característiques.}
+        \caption{\textit{Patches} extrets (nodes del graf) superposats sobre la imatge original.}
         \label{fig:patches}
     \end{subfigure}
     \hfill
@@ -251,15 +250,42 @@ la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en v
 
 \subsection{GATClassifier}
 
-El model implementat, \texttt{GATClassifier}, és un classificador de grafs format per tres capes convolucionals
-d'atenció (\texttt{GATConv}~\cite{fey2019fastgraphrepresentationlearning}) seguides d'una operació de \textit{pooling} global i un capçal MLP per a la
-classificació binària N0/N1.
+El model implementat, \texttt{GATClassifier}, és un classificador de grafs format per tres capes
+\textbf{Graph Attention Network} (\texttt{GATConv}~\cite{veličković2018graphattentionnetworks,fey2019fastgraphrepresentationlearning})
+seguides d'una operació de \textit{pooling} global i un capçal MLP per a la classificació binària N0/N1.
 
-Donades les representacions dels $N$ nodes de la làmina (embeddings CLS de 1.536 dimensions), cada
-capa GATConv calcula per a cada node una representació ponderada pels coeficients d'atenció apresos
-entre nodes veïns, usant $H$ caps independents les sortides dels quals es concatenen. Cada capa va
-seguida de normalització per batch, activació ELU i \textit{dropout}. La tercera capa usa un únic
-cap (sense concatenació) i produeix la representació final de cada node.
+\textbf{Mecanisme d'atenció.} A diferència de les xarxes convolucionals clàssiques sobre grafs que tracten
+tots els veïns d'un node de forma uniforme, GAT aprèn a assignar pesos d'importància diferenciats a cada
+veí. Donada la representació $\mathbf{h}_i \in \mathbb{R}^{F}$ del node $i$, per a cada parella de nodes
+veïns $(i, j)$ es calcula un coeficient d'atenció no normalitzat:
+\begin{equation*}
+  e_{ij} = \text{LeakyReLU}\!\left(\mathbf{a}^{\top}\!\left[\mathbf{W}\mathbf{h}_i \;\|\; \mathbf{W}\mathbf{h}_j\right]\right)
+\end{equation*}
+on $\mathbf{W}$ és una transformació lineal aprenible, $\|$ la concatenació i $\mathbf{a}$ un vector
+d'atenció aprenible. Els coeficients es normalitzen amb \textit{softmax} sobre tots els veïns del node $i$:
+\begin{equation*}
+  \alpha_{ij} = \frac{\exp(e_{ij})}{\displaystyle\sum_{k \in \mathcal{N}(i)} \exp(e_{ik})}
+\end{equation*}
+i la nova representació del node s'obté com la suma ponderada dels veïns:
+\begin{equation*}
+  \mathbf{h}'_i = \sigma\!\left(\sum_{j \in \mathcal{N}(i)} \alpha_{ij}\,\mathbf{W}\mathbf{h}_j\right)
+\end{equation*}
+
+\textbf{Multi-cap.} Per incrementar la capacitat expressiva, cada capa usa $H$ caps d'atenció independents
+les sortides dels quals es concatenen (a les dues primeres capes) o es promitgen (tercera capa). D'aquesta
+manera el model pot capturar múltiples tipus de relació de veïnatge simultàniament. Cada capa va
+seguida de normalització per \textit{batch}, activació ELU i \textit{dropout}.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.45\textwidth]{img/gat}
+    \caption{Il·lustració del mecanisme d'atenció en una capa GAT amb tres caps independents (verd, blau,
+    lila). El node central $\vec{h}_1$ agrega les representacions dels seus sis veïns i la seva pròpia
+    ($\alpha_{11}$, \textit{self-loop}) mitjançant coeficients d'atenció $\alpha_{1j}$ apresos per cada
+    cap. Les sortides dels caps es combinen per concatenació o promig per obtenir la nova representació
+    $\vec{h}'_1$.}
+    \label{fig:gat}
+\end{figure}
 
 El capçal MLP (\textit{Linear}~$\to$~ReLU~$\to$~\textit{Dropout}~$\to$~\textit{Linear}) transforma la
 representació global del graf en els logits N0/N1.
@@ -288,10 +314,12 @@ l'assignació.
     \label{fig-diffpool}
 \end{figure*}
 
-Com a referència, \textbf{SAGPool} \cite{lee2019selfattentiongraphpooling} proposa una alternativa esparsa que
-selecciona els $K$ nodes més rellevants (Top-$K$) via puntuacions d'atenció, preservant l'estructura original.
-En el marc de Grattarola et al.\ \cite{Grattarola_2024}, el \textit{pooling} es descompon en tres funcions:
-selecció, reducció i connexió; això permet explorar mètodes no entrenables basats en posicions espacials reals.
+Com a alternativa, \textbf{SAGPool} \cite{lee2019selfattentiongraphpooling} proposa un enfocament esparç que
+selecciona els $K$ nodes més rellevants via puntuacions d'auto-atenció, descartant la resta i preservant
+l'estructura topològica original. A diferència de DiffPool, SAGPool no aprèn assignacions suaus sinó
+seleccions discretes, amb un cost computacional menor però sense la capacitat de capturar representacions
+jeràrquiques continues. En aquest projecte s'utilitza DiffPool per la seva major expressivitat i la
+possibilitat d'integrar la pèrdua auxiliar de regularització.
 
 \section{Metodologia}
 
@@ -325,10 +353,22 @@ les estratègies d'agregació següents:
 \subsection{Desbalanceig de Classes}
 
 El conjunt de dades presenta un fort desbalanceig: els casos N0 superen àmpliament els N1 (proporció aproximada
-80/20). Per combatre-ho s'apliquen dues mesures complementàries: (1) \textbf{pesos de classe} balancejats
-($w_c = N / (C \cdot n_c)$, on $n_c$ és el nombre de mostres de la classe $c$) incorporats directament a la
-funció de pèrdua BCE, i (2) un \textbf{mostratge estratificat} per pacient (\textit{WeightedRandomSampler}) que
-garanteix una representació equilibrada a cada \textit{batch}.
+80/20). Per combatre-ho s'apliquen tres mesures complementàries.
+
+\textbf{(1) Divisió estratificada.} La partició entrenament/validació (80/20) es realitza de forma
+estratificada a nivell de pacient: s'assegura que la proporció N0/N1 sigui equivalent en ambdós subconjunts.
+Sense estratificació, amb un conjunt petit i desbalancejat, el conjunt de validació podria contenir per
+atzar una proporció de N1 molt diferent a la real, invalidant les mètriques.
+
+\textbf{(2) Pesos de classe.} S'apliquen pesos balancejats $w_c = N / (C \cdot n_c)$, on $n_c$ és el
+nombre de pacients de la classe $c$, incorporats directament a la funció de pèrdua BCE. Així, cada error
+sobre un cas N1 té més pes en el gradient que un error sobre N0, penalitzant més els falsos negatius.
+
+\textbf{(3) Mostratge ponderat per \textit{batch}.} Durant l'entrenament s'utilitza un
+\textit{WeightedRandomSampler} que assigna a cada pacient una probabilitat de mostratge inversament
+proporcional a la freqüència de la seva classe. Això garanteix que cada \textit{mini-batch} contingui una
+proporció equilibrada de casos N0 i N1, evitant que el model vegi gairebé exclusivament N0 durant molts
+\textit{batches} consecutius.
 
 \subsection{Grid Search i Configuració d'Entrenament}
 
