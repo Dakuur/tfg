@@ -78,7 +78,7 @@ Aquest treball aborda la predicció de metàstasis en ganglis limfàtics en paci
 pT1 a partir d'imatges de gran format (\textit{Whole Slide Images}). S'utilitzen \textit{Graph Attention Networks}
 (GAT) sobre grafs on cada node representa un \textit{bag} de 256 \textit{patches} de $256{\times}256$\,px
 ($\approx4096{\times}4096$\,px al WSI), caracteritzat per l'embedding CLS de 1.536 dimensions del model de
-fundació \textit{UNI2}. El \textit{pooling} pot ser jeràrquic (DiffPool) o pla (\textit{mean}, \textit{max}). El conjunt de dades comprèn 963 grafs provinents de 230 pacients, dividits
+fundació \textit{UNI2}. S'exploren dues estratègies de \textit{pooling}: jeràrquic (DiffPool intercalat entre capes GAT, $N\to K_1\to K_2$ nodes) o pla (\textit{mean}/\textit{max} al final). El conjunt de dades comprèn 963 grafs provinents de 230 pacients, dividits
 estratificadament en entrenament i validació. Per afrontar el desbalanceig de classes (N0\,$\gg$\,N1), s'apliquen
 pesos per classe. Donat que el diagnòstic és per pacient, s'implementen diverses estratègies
 d'agregació (\textit{Multiple Instance Learning}, MIL) que integren les prediccions de totes les làmines d'un
@@ -95,8 +95,9 @@ Metàstasi, Estadi pT1, Aprenentatge per múltiples instàncies (MIL), Desbalanc
 This work addresses lymph node metastasis prediction in pT1 colorectal cancer patients from Whole Slide Images.
 We propose a methodology based on Graph Attention Networks (GAT) where each node represents a bag of
 256 patches of $256{\times}256$\,px ($\approx4096{\times}4096$\,px at WSI level 0), characterised by a
-1,536-dimensional CLS embedding from the UNI2 foundation model. Pooling can be hierarchical (DiffPool)
-or flat (mean, max), adapting to the graph topology. The dataset comprises 963 graphs from 230 patients, stratified into training and
+1,536-dimensional CLS embedding from the UNI2 foundation model. Two pooling strategies are explored: hierarchical DiffPool layers
+\emph{interleaved between} GAT layers ($N\!\to\!K_1\!\to\!K_2$ nodes), enabling multi-scale
+tissue representations, or flat readout (mean/max) applied after the final GAT layer. The dataset comprises 963 graphs from 230 patients, stratified into training and
 validation splits. To handle class imbalance (N0\,$\gg$\,N1), class weighting is applied.
 Since the diagnosis is patient-level rather than slide-level, Multiple Instance Learning (MIL) aggregation
 strategies are implemented to integrate predictions across all slides of a patient. An initial grid search has
@@ -230,11 +231,16 @@ $\mathcal{G} = (\mathbf{X},\,\mathbf{A})$ on:
         de Delaunay i posterior poda d'arestes llargues.
 \end{itemize}
 
-Després de les tres capes GAT i l'operació de \textit{pooling}, s'obté una representació global del
-graf que s'alimenta al capçal MLP per produir $P(\text{N1})$ per a la secció. Amb \textit{flat
-pooling} (\textit{mean}, \textit{max}\dots) es redueix directament als $d_h$ dimensions del
-\textit{readout}; amb DiffPool s'obté un graf reduït de $K \ll N$ super-nodes que preserva
-l'estructura topològica.
+Dues estratègies de \textit{pooling} transformen la seqüència de grafs en un vector global que
+alimenta el capçal MLP per produir $P(\text{N1})$:
+\begin{itemize}
+  \item \textbf{Pla (\textit{readout}).} \textit{Mean} o \textit{max} aplicats sobre les sortides de
+  la darrera capa GAT, reduint directament de $N$ nodes a $d_h$ dimensions.
+  \item \textbf{Jeràrquic (DiffPool intercalat).} Dues capes DiffPool s'insereixen entre les capes
+  GAT: la primera colapsa el graf de $N$ nodes a $K_1$ super-nodes, i la segona de $K_1$ a $K_2$.
+  Cada nivell aprèn una matriu d'assignació suau i produeix un nou graf de menor grandària sobre el
+  qual opera la capa GAT següent.
+\end{itemize}
 
 \textbf{Model 1 --- Múltiples grafs + agregació MIL.}
 Cada secció genera un graf independent; les $S$ seccions d'un pacient es processen per separat i les
@@ -302,9 +308,26 @@ la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en v
 
 \subsection{GATClassifier}
 
-El model implementat, \texttt{GATClassifier}, és un classificador de grafs format per tres capes
+El model implementat, \texttt{GATClassifier}, és un classificador de grafs que alterna capes
 \textbf{Graph Attention Network} (\texttt{GATConv}~\cite{veličković2018graphattentionnetworks,fey2019fastgraphrepresentationlearning})
-seguides d'una operació de \textit{pooling} global i un capçal MLP per a la classificació binària N0/N1.
+amb capes de \textit{pooling} jeràrquic per a la classificació binària N0/N1. L'arquitectura proposa
+intercalar operacions de reducció del graf \textit{entre} les capes de propagació de missatges, de
+manera que cada estadi treballa sobre una representació progressivament més compacta del teixit:
+
+\begin{equation*}
+  \underbrace{\mathbf{X}^{(0)},\,\mathbf{A}^{(0)}}_{N\text{ nodes}}
+  \xrightarrow{\text{GAT}_1}
+  \xrightarrow{\text{Pool}_1}
+  \underbrace{\mathbf{X}^{(1)},\,\mathbf{A}^{(1)}}_{K_1\text{ nodes}}
+  \xrightarrow{\text{GAT}_2}
+  \xrightarrow{\text{Pool}_2}
+  \underbrace{\mathbf{X}^{(2)},\,\mathbf{A}^{(2)}}_{K_2\text{ nodes}}
+  \xrightarrow{\text{GAT}_3}
+  \xrightarrow{\text{readout}}
+  \mathbf{z}
+\end{equation*}
+
+\noindent on $K_1 \ll N$ i $K_2 \ll K_1$ són el nombre de \textit{super-nodes} de cada nivell jeràrquic.
 
 \textbf{Mecanisme d'atenció.} A diferència de les xarxes convolucionals clàssiques sobre grafs que tracten
 tots els veïns d'un node de forma uniforme, GAT aprèn a assignar pesos d'importància diferenciats a cada
@@ -342,27 +365,42 @@ seguida de normalització per \textit{batch}, activació ELU i \textit{dropout}.
 El capçal MLP (\textit{Linear}~$\to$~ReLU~$\to$~\textit{Dropout}~$\to$~\textit{Linear}) transforma la
 representació global del graf en els logits N0/N1.
 
-\subsection{Estratègies de Pooling Global}
+\subsection{Estratègies de Pooling Pla (\textit{Readout})}
 
-Per obtenir una representació de tot el graf, les representacions dels nodes s'agreguen amb operacions de
-\textit{readout}. Les opcions implementades inclouen \textit{mean}, \textit{max}, la seva concatenació
-(\texttt{mean\_max}) i una suma ponderada. Tot i la seva eficiència, ignoren la topologia del graf.
+Quan no s'utilitza pooling jeràrquic, les representacions dels nodes de la darrera capa GAT s'agreguen
+directament amb operacions de \textit{readout}: \textit{mean}, \textit{max} o la seva concatenació
+(\texttt{mean\_max}). Tot i la seva eficiència computacional, aquestes estratègies ignoren la topologia del
+graf i col·lapsen tota la informació espacial en un sol pas.
 
-\subsection{Pooling Diferenciable: DiffPool}
+\subsection{Pooling Jeràrquic: DiffPool entre Capes GAT}
 
-Per superar les limitacions del \textit{readout} global, s'implementa \textbf{DiffPool}
-\cite{ying2019hierarchicalgraphrepresentationlearning}, que aprèn a agrupar nodes en $K$ clústers
-de nivell superior mitjançant una matriu d'assignació suau (\textit{soft assignment}). En lloc de
-col·lapsar tota la informació en un sol pas, el model captura representacions a \textbf{diferents
-nivells d'abstracció}, des de detalls citològics locals fins a l'organització arquitectònica global.
-L'entrenament incorpora una pèrdua auxiliar (\textit{link prediction} + entropia) per regularitzar
-l'assignació.
+Per superar les limitacions del \textit{readout} pla, s'implementa \textbf{DiffPool}
+\cite{ying2019hierarchicalgraphrepresentationlearning} com a operació intermèdia entre les capes de
+propagació. A diferència d'aplicar el \textit{pooling} únicament al final, la proposta intercala dues
+capes DiffPool al llarg de la xarxa: una entre la primera i la segona capa GAT, i una altra entre la
+segona i la tercera. Cada capa DiffPool aprèn una matriu d'assignació suau (\textit{soft assignment})
+$\mathbf{S} \in \mathbb{R}^{N \times K}$ que agrupa els $N$ nodes actuals en $K \ll N$
+\textit{super-nodes}:
+\begin{equation*}
+  \mathbf{X}^{(\ell+1)} = \mathbf{S}^{\top}\mathbf{X}^{(\ell)}, \qquad
+  \mathbf{A}^{(\ell+1)} = \mathbf{S}^{\top}\mathbf{A}^{(\ell)}\mathbf{S}
+\end{equation*}
+
+Amb aquesta arquitectura, la primera capa GAT opera sobre el graf original de nodes de teixit
+($N$ bags), la segona ho fa sobre un graf reduït de $K_1$ super-nodes que representen regions de teixit
+de nivell intermedi, i la tercera opera sobre un graf molt compacte de $K_2$ super-nodes que codifiquen
+l'organització arquitectònica global de la secció. Finalment, un \textit{readout} global (\textit{mean}
+o \textit{max}) sobre els $K_2$ nodes produeix l'embedding que entra al capçal MLP.
+
+L'entrenament incorpora una pèrdua auxiliar (\textit{link prediction} + entropia mínima) per
+regularitzar l'assignació i evitar degeneracions trivials.
 
 \begin{figure*}[h]
     \centering
     \includegraphics[width=0.8\textwidth]{img/hierarchical_pool.png}
-    \caption{Arquitectura de \textit{DiffPool}: agrupació jeràrquica de nodes mitjançant matrius d'assignació
-    aprenibles. Font: \cite{ying2019hierarchicalgraphrepresentationlearning}.}
+    \caption{Agrupació jeràrquica de nodes per \textit{DiffPool}: l'assignació suau colapsa progressivament el
+    graf en super-nodes de major abstracció. En el model proposat, dos nivells DiffPool s'intercalen entre les
+    capes GAT. Font: \cite{ying2019hierarchicalgraphrepresentationlearning}.}
     \label{fig-diffpool}
 \end{figure*}
 
@@ -563,14 +601,17 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 \draw[arr] (cls.south) to[out=270,in=70] (gra.north);
 
 %% --- Carril 3: Model i classificació (blau) ---
-\node[own, below=2.0cm of coo] (g1) {GATConv 1\\+ BN + ELU};
-\node[own, right=of g1]        (g2) {GATConv 2\\+ BN + ELU};
-\node[own, right=of g2]        (g3) {GATConv 3\\+ BN + ELU};
-\node[own, right=of g3]        (po) {\textit{Pooling}\\DiffPool\,/\\mean\,/\,max\,\dots};
-\node[own, right=of po]        (ml) {MLP};
+\node[own, below=2.0cm of coo] (g1) {GATConv 1\\$N{\to}N$};
+\node[own, right=of g1]        (p1) {DiffPool\\$N{\to}K_1$};
+\node[own, right=of p1]        (g2) {GATConv 2\\$K_1{\to}K_1$};
+\node[own, right=of g2]        (p2) {DiffPool\\$K_1{\to}K_2$};
+\node[own, right=of p2]        (g3) {GATConv 3\\$K_2{\to}K_2$};
+\node[own, right=of g3]        (ro) {\textit{Readout}\\mean\,/\,max};
+\node[own, right=of ro]        (ml) {MLP};
 \node[own, right=of ml]        (pr) {P(N1)\\secció};
-\draw[arr] (g1)--(g2); \draw[arr] (g2)--(g3);
-\draw[arr] (g3)--(po); \draw[arr] (po)--(ml); \draw[arr] (ml)--(pr);
+\draw[arr] (g1)--(p1); \draw[arr] (p1)--(g2);
+\draw[arr] (g2)--(p2); \draw[arr] (p2)--(g3);
+\draw[arr] (g3)--(ro); \draw[arr] (ro)--(ml); \draw[arr] (ml)--(pr);
 \draw[arr] (gra.south) to[out=255,in=90] (g1.north);
 
 %% --- Agregació pacient ---
@@ -595,11 +636,14 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 \caption{Diagrama de flux del \textit{pipeline} complet. \textit{Blocs grisos}: etapes realitzades
 pels companys de l'equip (extracció de \textit{patches} $256{\times}256$\,px agrupats en \textit{bags}
 de $16{\times}16$ = $4096{\times}4096$\,px, sense filtratge, i obtenció de l'embedding CLS via UNI2).
-\textit{Blocs blaus (vora gruixuda)}: contribucions d'aquest TFG. El \textit{pooling} pot ser
-jeràrquic (DiffPool, $K$ super-nodes) o pla (\textit{mean}, \textit{max}\dots). La fletxa
-${\times}S$ indica que les $S$ seccions d'un pacient es processen com a grafs independents i les
-probabilitats P(N1) s'agreguen via MIL per obtenir el diagnòstic final (Model 1); el Model 2
-(mega-graf, Secció~\ref{sec:model-dades}) és una alternativa sense etapa d'agregació.}
+\textit{Blocs blaus (vora gruixuda)}: contribucions d'aquest TFG. El model alterna capes GAT amb
+capes DiffPool intercalades: la primera DiffPool redueix el graf de $N$ nodes a $K_1$ super-nodes i
+la segona a $K_2 \ll K_1$; un \textit{readout} final agrega els $K_2$ nodes en un vector global. Com
+a alternativa sense pooling jeràrquic, s'aplica directament \textit{mean} o \textit{max} sobre la
+darrera capa GAT. La fletxa ${\times}S$ indica que les $S$ seccions d'un pacient es processen com a
+grafs independents i les probabilitats P(N1) s'agreguen via MIL per obtenir el diagnòstic final
+(Model 1); el Model 2 (mega-graf, Secció~\ref{sec:model-dades}) és una alternativa sense etapa
+d'agregació.}
 \label{fig:pipeline}
 \end{figure*}
 
