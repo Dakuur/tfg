@@ -71,94 +71,28 @@ from graph_utils import build_delaunay_edges, filter_edges_by_mask, export_graph
 from wsi_io import (  # noqa: E402
     CLS_DIR_SUBPATH,
     find_patches_dir,
-    load_metadata,
+    load_all_npz,
     load_slide_meta,
     load_mask_image,
     load_rgb_image,
-    load_patches,
 )
 
 # ── single-line toggle ─────────────────────────────────────────────────────────
 OVERLAY_MODE = "mask"   # "mask" → segmentation mask | "rgb" → full RGB image
 
 
-# ── CLS-based node filtering ──────────────────────────────────────────────────
-
-def filter_to_cls_nodes(
-    df_slide: "pd.DataFrame",
-    hospital: str,
-    patient_id: str,
-    slide_id: str,
-    iam_path: Path,
-) -> "pd.DataFrame":
-    """
-    Keep only the patches in df_slide that have a CLS embedding in the NPZ.
-
-    Each bag centroid (mean of its 256 patch coords) is matched to its nearest
-    patch in df_slide by Euclidean distance in (j, i) space.  Patches with no
-    matching bag are discarded, so the resulting node set mirrors what
-    build_dataset.py stores in the .pt training graphs.
-
-    Coordinates convention: NPZ coords[:, :, 0] = j (x), coords[:, :, 1] = i (y),
-    which matches the (j, i) columns of the metadata CSV.
-    """
-    from scipy.spatial import cKDTree
-
-    cls_dir  = iam_path / CLS_DIR_SUBPATH
-    npz_path = cls_dir / f"{hospital}_CLS.npz"
-    if not npz_path.exists():
-        print(f"[WARN] --filtered: CLS NPZ not found: {npz_path}. Skipping filter.")
-        return df_slide
-
-    try:
-        npz = np.load(npz_path, allow_pickle=True)
-    except Exception as exc:
-        print(f"[WARN] --filtered: Could not load NPZ: {exc}. Skipping filter.")
-        return df_slide
-
-    bag_mask = (
-        (npz["patient_list"].astype(str) == patient_id) &
-        (npz["slides"].astype(str)       == slide_id)
-    )
-    n_bags = int(bag_mask.sum())
-    if n_bags == 0:
-        print(
-            f"[WARN] --filtered: No CLS bags found for patient={patient_id} "
-            f"slide={slide_id}. Skipping filter."
-        )
-        return df_slide
-
-    # Bag centroids: mean of the 256 patch coords → (N_bags, 2) in (j, i) order
-    coords    = npz["coords"][bag_mask]   # (N_bags, 256, 2)
-    centroids = coords.mean(axis=1)       # (N_bags, 2)
-
-    # For each centroid find the nearest patch in df_slide
-    patch_ji = df_slide[["j", "i"]].values.astype(np.float64)  # (M, 2)
-    _, idxs  = cKDTree(patch_ji).query(centroids)               # (N_bags,)
-
-    kept     = np.unique(idxs)
-    n_before = len(df_slide)
-    df_out   = df_slide.iloc[kept].copy().reset_index(drop=True)
-    print(
-        f"[INFO] --filtered: {n_before} patches → {len(df_out)} "
-        f"(matched {n_bags} CLS bags; {n_before - len(df_out)} patches without embedding discarded)"
-    )
-    return df_out
-
-
 # ── slide selection helpers ────────────────────────────────────────────────────
 
-def filter_patches(df: "pd.DataFrame") -> "pd.DataFrame":
-    """Quality filter: discard blank and blurry patches."""
-    mask = (df["non_white_area"] >= 0.3) & (df["blurriness"] <= 100)
-    return df[mask].copy()
-
-
-def select_best_slide(df: "pd.DataFrame") -> tuple[str, str]:
-    """Return (patient_id, slide_id) for the slide with the most patches."""
-    counts = df.groupby(["patient_ID", "slide_ID"]).size()
-    patient_id, slide_id = counts.idxmax()
-    return str(patient_id), str(slide_id)
+def _estimate_patch_size(coord_arrays: np.ndarray) -> int:
+    """Estimate WSI level-0 patch size from the coordinate step in one bag."""
+    bag = coord_arrays[0]   # (256, 2)
+    js  = np.unique(bag[:, 0])
+    if len(js) >= 2:
+        return int(abs(js[1] - js[0]))
+    is_ = np.unique(bag[:, 1])
+    if len(is_) >= 2:
+        return int(abs(is_[1] - is_[0]))
+    return 256   # fallback
 
 
 # ── canvas reconstruction ──────────────────────────────────────────────────────
@@ -360,8 +294,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--list",        action="store_true",
                    help="List available patients and slides for the selected hospital and exit")
     p.add_argument("--filtered",    action="store_true",
-                   help="Keep only patches with a CLS embedding in the NPZ "
-                        "(mirrors the node set used by build_dataset.py and the frontend)")
+                   help="(Legacy flag — ignored; nodes always come from CLS NPZ)")
     p.add_argument("--output",      default="outputs/delaunay_overlay.png",
                    help="Output PNG path")
     p.add_argument("--max_patches", type=int, default=500,
@@ -376,42 +309,35 @@ def main() -> None:
     # ── locate Patches directory ───────────────────────────────────────────────
     patches_dir = find_patches_dir(iam_path)
 
-    # ── select hospital ────────────────────────────────────────────────────────
-    hospitals = sorted(p.name for p in patches_dir.iterdir() if p.is_dir())
-    if not hospitals:
-        sys.exit(f"[ERROR] No hospital directories found in {patches_dir}")
+    # ── load NPZ (source of truth for nodes + image paths) ────────────────────
+    cls_dir = iam_path / CLS_DIR_SUBPATH
+    df_npz  = load_all_npz(cls_dir)
 
-    hospital = args.hospital or hospitals[0]
+    # ── select hospital ────────────────────────────────────────────────────────
+    hospitals = sorted(df_npz["Hospital"].unique())
+    hospital  = args.hospital or hospitals[0]
     if hospital not in hospitals:
         sys.exit(
-            f"[ERROR] Hospital '{hospital}' not found.\n"
+            f"[ERROR] Hospital '{hospital}' not found in NPZ.\n"
             "Available hospitals:\n  " + "\n  ".join(hospitals)
         )
     print(f"[INFO] Hospital : {hospital}")
 
-    # ── load & optionally quality-filter metadata ──────────────────────────────
-    df = load_metadata(patches_dir, hospital)
-    # df_filtered = filter_patches(df)
-    df_filtered = df
-    print(f"[INFO] Patches after quality filter: {len(df_filtered)}")
-    if df_filtered.empty:
-        sys.exit("[ERROR] No patches passed the quality filter.")
+    df_hosp = df_npz[df_npz["Hospital"] == hospital]
 
     # ── --list: print available patients/slides and exit ──────────────────────
     if args.list:
         summary = (
-            df_filtered
-            .groupby(["patient_ID", "slide_ID"])
+            df_hosp.groupby(["Patient_ID", "Slide"])
             .size()
-            .reset_index(name="patches")
-            .sort_values(["patient_ID", "slide_ID"])
+            .reset_index(name="bags")
+            .sort_values(["Patient_ID", "Slide"])
         )
         print(f"\nAvailable patients/slides for hospital '{hospital}':\n")
-        print(f"  {'patient_ID':<20} {'slide_ID':<30} patches")
-        print(f"  {'-'*20} {'-'*30} -------")
+        print(f"  {'Patient_ID':<20} {'Slide':<30} bags")
+        print(f"  {'-'*20} {'-'*30} ----")
         for _, row in summary.iterrows():
-            print(f"  {str(row['patient_ID']):<20} {str(row['slide_ID']):<30} {row['patches']}")
-        print()
+            print(f"  {str(row['Patient_ID']):<20} {str(row['Slide']):<30} {row['bags']}")
         sys.exit(0)
 
     # ── select patient / slide ─────────────────────────────────────────────────
@@ -420,47 +346,78 @@ def main() -> None:
         slide_id   = str(args.slide_id)
     elif args.patient_id:
         patient_id = str(args.patient_id)
-        df_pat     = df_filtered[df_filtered["patient_ID"].astype(str) == patient_id]
+        df_pat     = df_hosp[df_hosp["Patient_ID"] == patient_id]
         if df_pat.empty:
-            sys.exit(f"[ERROR] Patient '{patient_id}' not found after quality filter.")
-        slide_id = str(df_pat.groupby("slide_ID").size().idxmax())
+            sys.exit(f"[ERROR] Patient '{patient_id}' not found in NPZ for this hospital.")
+        slide_id = str(df_pat.groupby("Slide").size().idxmax())
     elif args.slide_id:
-        slide_id  = str(args.slide_id)
-        df_sl     = df_filtered[df_filtered["slide_ID"].astype(str) == slide_id]
+        slide_id   = str(args.slide_id)
+        df_sl      = df_hosp[df_hosp["Slide"] == slide_id]
         if df_sl.empty:
-            sys.exit(f"[ERROR] Slide '{slide_id}' not found after quality filter.")
-        # pick the patient with most patches for this slide (normally only one)
-        patient_id = str(df_sl.groupby("patient_ID").size().idxmax())
+            sys.exit(f"[ERROR] Slide '{slide_id}' not found in NPZ for this hospital.")
+        patient_id = str(df_sl.groupby("Patient_ID").size().idxmax())
     else:
-        patient_id, slide_id = select_best_slide(df_filtered)
+        counts     = df_hosp.groupby(["Patient_ID", "Slide"]).size()
+        patient_id, slide_id = counts.idxmax()
 
-    df_slide = df_filtered[
-        (df_filtered["patient_ID"].astype(str) == patient_id) &
-        (df_filtered["slide_ID"].astype(str)   == slide_id)
+    df_slide = df_hosp[
+        (df_hosp["Patient_ID"] == patient_id) &
+        (df_hosp["Slide"]      == slide_id)
     ]
     if df_slide.empty:
-        sys.exit(f"[ERROR] No filtered patches for patient={patient_id}, slide={slide_id}")
-
-    # ── optional: keep only patches present in the CLS NPZ ────────────────────
-    if args.filtered:
-        df_slide = filter_to_cls_nodes(df_slide, hospital, patient_id, slide_id, iam_path)
-        if len(df_slide) < 3:
-            sys.exit("[ERROR] After --filtered, fewer than 3 patches remain — cannot build Delaunay graph.")
+        sys.exit(f"[ERROR] No bags in NPZ for patient={patient_id}, slide={slide_id}")
 
     print(f"[INFO] Patient  : {patient_id}")
     print(f"[INFO] Slide    : {slide_id}")
-    print(f"[INFO] Patches  : {len(df_slide)} (will load up to {args.max_patches})")
+    print(f"[INFO] Bags     : {len(df_slide)} (will load up to {args.max_patches})")
 
-    # ── load patch images ──────────────────────────────────────────────────────
-    images, coords, non_white = load_patches(
-        patches_dir, df_slide.copy(), hospital, patient_id, slide_id, args.max_patches
-    )
+    if len(df_slide) > args.max_patches:
+        df_slide = df_slide.sample(n=args.max_patches, random_state=42).reset_index(drop=True)
+
+    # ── compute bag centroids (node positions) ─────────────────────────────────
+    coord_arrays = np.stack(df_slide["coords_bag"].tolist(), axis=0)  # (N, 256, 2)
+    centroids    = coord_arrays.mean(axis=1)                           # (N, 2)
+
+    # ── load one representative patch image per bag ────────────────────────────
+    from PIL import Image as _PILImage
+    slide_dir   = patches_dir / hospital / patient_id / slide_id
+    images:     list[np.ndarray]        = []
+    coords_out: list[np.ndarray]        = []
+    non_white:  list[float]             = []
+
+    for n in range(len(df_slide)):
+        bag_coords = coord_arrays[n]
+        centroid   = centroids[n]
+        dists      = np.linalg.norm(bag_coords - centroid, axis=1)
+        central_idx = int(dists.argmin())
+
+        path_str  = str(np.array(df_slide.iloc[n]["paths_bag"])[central_idx])
+        basename  = path_str.replace("\\", "/").split("/")[-1]
+        img_path  = slide_dir / basename
+
+        if not img_path.exists():
+            continue
+        try:
+            img = np.array(_PILImage.open(img_path).convert("RGB"))
+        except Exception:
+            continue
+
+        images.append(img)
+        coords_out.append(centroids[n])
+        non_white.append(1.0)   # no quality metadata in Patches/; treat all as valid
+
+    coords = np.array(coords_out)
+
     if len(images) < 3:
         sys.exit(
-            f"[ERROR] Only {len(images)} patch(es) loaded — need at least 3 for Delaunay. "
-            "Check that the patch files exist under the expected path."
+            f"[ERROR] Only {len(images)} patch(es) loaded — need at least 3 for Delaunay.\n"
+            f"  Slide dir : {slide_dir}\n"
+            f"  Exists    : {slide_dir.exists()}"
         )
     print(f"[INFO] Loaded   : {len(images)} patch images")
+
+    # detect patch size from coord spacing (used for canvas assembly and edge filter)
+    patch_size = _estimate_patch_size(coord_arrays)
 
     # ── load slide-level metadata (for background alignment) ──────────────────
     slide_meta = load_slide_meta(iam_path, hospital, patient_id, slide_id)
@@ -486,7 +443,7 @@ def main() -> None:
             i_base=slide_meta["i_base"],
             slide_w=slide_meta["w"],
             slide_h=slide_meta["h"],
-            patch_size=2048,
+            patch_size=patch_size,
         )
         print(f"[INFO] Edges after mask filter: {len(edges)} kept, {len(removed_edges)} removed")
     else:
@@ -499,7 +456,7 @@ def main() -> None:
     export_graph(coords, edges, out_path=Path(args.output))
 
     # ── build slide canvas ─────────────────────────────────────────────────────
-    canvas, has_patch, j_min, i_min, scale = build_canvas(images, coords)
+    canvas, has_patch, j_min, i_min, scale = build_canvas(images, coords, patch_size=patch_size)
 
     # ── render & save ──────────────────────────────────────────────────────────
     title = (
@@ -518,7 +475,7 @@ def main() -> None:
         j_min=j_min,
         i_min=i_min,
         scale=scale,
-        patch_size=2048,
+        patch_size=patch_size,
         title=title,
         out_path=Path(args.output),
         mask_img=mask_img,
