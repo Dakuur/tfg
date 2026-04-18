@@ -47,10 +47,8 @@ function _closeModal() {
 
 function _openPatchModal(nodeData, slideInfo) {
   _ensureModal();
-  const { hospital, patient_id, slide_id, patch_j, patch_i } = slideInfo;
+  const { hospital, patient_id, slide_id, section_id, patch_idx, patch_j, patch_i } = slideInfo;
   const idx = nodeData.id;
-  const j   = patch_j?.[idx];
-  const i   = patch_i?.[idx];
 
   const modal = document.getElementById("patch-modal");
   const img   = modal.querySelector("#patch-modal-img");
@@ -60,20 +58,36 @@ function _openPatchModal(nodeData, slideInfo) {
   label.textContent = `Node ${idx}  ·  atenció: ${(nodeData.attn * 100).toFixed(1)}%`;
   modal.style.display = "flex";
 
-  if (j == null || i == null) {
-    img.removeAttribute("src");
-    meta.textContent = "Coordenades no disponibles — cal re-executar build_dataset.py";
-    return;
-  }
+  let url, metaText;
 
-  const url = `/api/patch_image?hospital=${encodeURIComponent(hospital)}`
-            + `&patient_id=${encodeURIComponent(patient_id)}`
-            + `&slide_id=${encodeURIComponent(slide_id)}`
-            + `&j=${j}&i=${i}`;
+  // Preferred: section_id + patch_idx (new graphs)
+  if (section_id != null && patch_idx != null) {
+    const pIdx = patch_idx[idx];
+    url      = `/api/patch_image?hospital=${encodeURIComponent(hospital)}`
+             + `&patient_id=${encodeURIComponent(patient_id)}`
+             + `&slide_id=${encodeURIComponent(slide_id)}`
+             + `&section_id=${encodeURIComponent(section_id)}`
+             + `&patch_idx=${pIdx}`;
+    metaText = `sec=${section_id}  idx=${pIdx}  ·  ${hospital}`;
+  } else {
+    // Legacy fallback: j + i coords
+    const j = patch_j?.[idx];
+    const i = patch_i?.[idx];
+    if (j == null || i == null) {
+      img.removeAttribute("src");
+      meta.textContent = "Coordenades no disponibles — cal re-executar build_dataset.py";
+      return;
+    }
+    url      = `/api/patch_image?hospital=${encodeURIComponent(hospital)}`
+             + `&patient_id=${encodeURIComponent(patient_id)}`
+             + `&slide_id=${encodeURIComponent(slide_id)}`
+             + `&j=${j}&i=${i}`;
+    metaText = `j=${j}  i=${i}  ·  ${hospital}`;
+  }
 
   meta.textContent = "Carregant patch…";
   img.src = "";
-  img.onload  = () => { meta.textContent = `j=${j}  i=${i}  ·  ${hospital}`; };
+  img.onload  = () => { meta.textContent = metaText; };
   img.onerror = () => { meta.textContent = "No s'ha pogut carregar el patch des del servidor"; };
   img.src = url;
 }

@@ -269,6 +269,7 @@ def load_all_npz(cls_dir: Path) -> pd.DataFrame:
                 "Hospital":   npz["hospitals"].astype(str),
                 "CLS":        list(npz["embeddingCLS"]),   # list of (1536,) arrays
                 "coords_bag": list(npz["coords"]),         # list of (256, 2) arrays
+                "paths_bag":  list(npz["paths"]),          # list of (256,) Windows path strings
             })
             frames.append(df)
         except Exception as exc:

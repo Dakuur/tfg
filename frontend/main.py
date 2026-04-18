@@ -415,8 +415,10 @@ def _infer_slide_full(
         "node_positions":  g.pos.cpu().numpy().tolist() if (hasattr(g, "pos") and g.pos is not None) else None,
         "edge_index":      g.edge_index.cpu().numpy().tolist(),
         "feature_norms":   g.x.cpu().float().norm(dim=1).numpy().tolist(),
-        "patch_j":         g.patch_j.cpu().numpy().tolist() if hasattr(g, "patch_j") and g.patch_j is not None else None,
-        "patch_i":         g.patch_i.cpu().numpy().tolist() if hasattr(g, "patch_i") and g.patch_i is not None else None,
+        "patch_j":         g.patch_j.cpu().numpy().tolist()   if hasattr(g, "patch_j")   and g.patch_j   is not None else None,
+        "patch_i":         g.patch_i.cpu().numpy().tolist()   if hasattr(g, "patch_i")   and g.patch_i   is not None else None,
+        "patch_idx":       g.patch_idx.cpu().numpy().tolist() if hasattr(g, "patch_idx") and g.patch_idx is not None else None,
+        "section_id":      str(g.section_id) if hasattr(g, "section_id") else None,
         "debug_log":       debug_log,
     }
 
@@ -810,6 +812,8 @@ async def inference_patient(req: PatientInferenceRequest):
         "pooling_type":   viz["pooling_type"],
         "patch_j":        viz.get("patch_j"),
         "patch_i":        viz.get("patch_i"),
+        "patch_idx":      viz.get("patch_idx"),
+        "section_id":     viz.get("section_id"),
         "hospital":       viz.get("hospital", patient_graphs[0]["hospital"]),
         "slide_id":       viz.get("slide_id", ""),
         "debug_log":      viz["debug_log"],
@@ -928,13 +932,19 @@ def _nearest_patch(index: dict, j: float, i: float) -> Optional[Path]:
 
 @app.get("/api/patch_image")
 async def patch_image(
-    hospital:   str = Query(...),
-    patient_id: str = Query(...),
-    slide_id:   str = Query(...),
-    j:          int = Query(...),
-    i:          int = Query(...),
+    hospital:   str           = Query(...),
+    patient_id: str           = Query(...),
+    slide_id:   str           = Query(...),
+    section_id: Optional[str] = Query(None),
+    patch_idx:  Optional[int] = Query(None),
+    j:          Optional[int] = Query(None),
+    i:          Optional[int] = Query(None),
 ):
-    """Serve the patch JPG closest to WSI position (j, i)."""
+    """Serve a patch image for a graph node.
+
+    Preferred: section_id + patch_idx → Patches/{h}/{p}/{s}/{h}_{p}_{s}_{sec}_{idx}.png
+    Fallback:  j + i → Patches/{h}/{p}/{s}/{h}_{p}_{s}_{j}_{i}.jpg  (legacy graphs)
+    """
     if PATCHES_DIR is None:
         raise HTTPException(503, "Patches directory not available on this server")
 
@@ -942,13 +952,23 @@ async def patch_image(
     if not slide_dir.exists():
         raise HTTPException(404, f"Slide directory not found: {slide_dir}")
 
-    # Try exact filename first
+    # ── PNG path (new graphs with patch_idx field) ─────────────────────────────
+    if section_id is not None and patch_idx is not None:
+        fname    = f"{hospital}_{patient_id}_{slide_id}_{section_id}_{patch_idx}.png"
+        img_path = slide_dir / fname
+        if img_path.exists():
+            return FileResponse(str(img_path), media_type="image/png")
+        raise HTTPException(404, f"Patch not found: {img_path}")
+
+    # ── JPG fallback (legacy graphs with patch_j / patch_i) ───────────────────
+    if j is None or i is None:
+        raise HTTPException(422, "Provide either (section_id + patch_idx) or (j + i)")
+
     fname    = f"{hospital}_{patient_id}_{slide_id}_{j}_{i}.jpg"
     img_path = slide_dir / fname
     if img_path.exists():
         return FileResponse(str(img_path), media_type="image/jpeg")
 
-    # Nearest-neighbour fallback (coords in NPZ may differ slightly from filenames)
     index = _slide_dir_patch_index(slide_dir, hospital, patient_id, slide_id)
     best  = _nearest_patch(index, j, i)
     if best:

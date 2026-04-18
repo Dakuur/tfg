@@ -373,6 +373,15 @@ def verify_patch_coverage(df_npz: pd.DataFrame, patches_dir: Path, cls_dir: Path
             if patch_global_idx < len(section_files):
                 guessed = section_files[patch_global_idx]
                 print(f"  Fitxer estimat pel patch central: {guessed.name}  exists={guessed.exists()}")
+                # Verify via paths field
+                npz0    = np.load(list(cls_dir.glob("*_CLS.npz"))[0], allow_pickle=True)
+                paths0  = npz0["paths"]   # (N, 256)
+                path_str = str(paths0[0, int(dists.argmin())])
+                basename = path_str.replace("\\", "/").split("/")[-1]
+                direct   = slide_dir / basename
+                print(f"  Ruta directa des del camp 'paths': {basename}  exists={direct.exists()}")
+                if direct.exists():
+                    print("  [OK] Camp 'paths' del NPZ apunta correctament als fitxers PNG.")
             else:
                 print(f"  [WARN] Índex estimat {patch_global_idx} fora de rang ({len(section_files)} fitxers)")
     print()
@@ -543,10 +552,12 @@ def build_graph_for_section(
     y          = torch.tensor([label],   dtype=torch.long)
 
     # For each bag (node), find the most central patch in its 256-patch bag.
-    # Stored as (j, i) WSI level-0 pixel coordinates so the frontend can
-    # reconstruct the patch filename: {hospital}_{patient}_{slide}_{j}_{i}.jpg
-    patch_j_list: list[int] = []
-    patch_i_list: list[int] = []
+    # patch_idx: index in Patches/{hospital}/{patient}/{slide}/{h}_{p}_{s}_{section}_{idx}.png
+    # patch_j/patch_i: WSI level-0 pixel coords (kept for background alignment)
+    paths_arrays = np.stack(df_section["paths_bag"].tolist(), axis=0)  # (N, 256)
+    patch_j_list:   list[int] = []
+    patch_i_list:   list[int] = []
+    patch_idx_list: list[int] = []
     for n, bag_coords in enumerate(coord_arrays):      # (256, 2) each
         centroid    = centroids[n]                      # (j_c, i_c)
         dists       = np.linalg.norm(bag_coords - centroid, axis=1)
@@ -554,6 +565,11 @@ def build_graph_for_section(
         j_c, i_c   = bag_coords[central_idx]
         patch_j_list.append(int(round(j_c)))
         patch_i_list.append(int(round(i_c)))
+        # Extract sequential index from Windows path basename: …_{section}_{idx}.png
+        path_str  = str(paths_arrays[n, central_idx])
+        basename  = path_str.replace("\\", "/").split("/")[-1]
+        stem      = basename.rsplit(".", 1)[0]
+        patch_idx_list.append(int(stem.split("_")[-1]))
 
     data = Data(x=x, edge_index=edge_index, pos=pos, y=y)
     data.patient_id       = patient_id
@@ -561,8 +577,9 @@ def build_graph_for_section(
     data.section_id       = section_id
     data.hospital         = hospital
     data.metastasis_score = metastasis_score
-    data.patch_j          = torch.tensor(patch_j_list, dtype=torch.int32)
-    data.patch_i          = torch.tensor(patch_i_list, dtype=torch.int32)
+    data.patch_j          = torch.tensor(patch_j_list,   dtype=torch.int32)
+    data.patch_i          = torch.tensor(patch_i_list,   dtype=torch.int32)
+    data.patch_idx        = torch.tensor(patch_idx_list, dtype=torch.int32)
 
     return data
 

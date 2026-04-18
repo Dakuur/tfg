@@ -540,6 +540,8 @@ async function _drawViz(container, viz, graphId) {
     patient_id: viz.patient_id || "",
     slide_id:   viz.slide_id   || "",
     graph_id:   graphId || "",
+    section_id: viz.section_id ?? null,
+    patch_idx:  viz.patch_idx  ?? null,
     patch_j:    viz.patch_j,
     patch_i:    viz.patch_i,
   };
@@ -582,7 +584,7 @@ async function _drawViz(container, viz, graphId) {
       <div class="stat-row"><span class="stat-key">Arestes dirigides</span><span class="stat-val mono">${viz.num_edges}</span></div>
       <div class="stat-row"><span class="stat-key">Posicions reals</span><span class="stat-val">${viz.node_positions ? "✓ Sí" : "No"}</span></div>
       <div class="stat-row"><span class="stat-key">Pooling</span><span class="stat-val accent">${viz.pooling_type ?? "—"}</span></div>
-      <div class="stat-row"><span class="stat-key">Patches disponibles</span><span class="stat-val">${viz.patch_j ? "✓ Sí" : "⚠ cal rebuild"}</span></div>
+      <div class="stat-row"><span class="stat-key">Patches disponibles</span><span class="stat-val">${viz.patch_idx ? "✓ Sí" : (viz.patch_j ? "⚠ legacy" : "⚠ cal rebuild")}</span></div>
       ${bgStatusHtml}
     </div>`;
 
