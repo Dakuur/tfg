@@ -41,7 +41,6 @@ from wsi_io import (  # noqa: E402
     load_all_npz,
     load_slide_meta,
     load_mask_image,
-    load_rgb_image,
 )
 
 OVERLAY_MODE = "mask"   # "mask" → segmentation mask | "rgb" → full RGB image
@@ -55,18 +54,16 @@ def render(
     removed_edges: np.ndarray,
     title: str,
     out_path: Path,
-    rgb_img: np.ndarray,
+    mask_img: np.ndarray,
     slide_meta: dict,
-    mask_img: "np.ndarray | None" = None,
-    overlay_mode: str = "mask",
 ) -> None:
-    """Single-panel figure: RGB slide + optional mask overlay + Delaunay graph."""
-    rgb_h, rgb_w = rgb_img.shape[:2]
-    scale  = rgb_w / slide_meta["w"]
+    """Single-panel: segmentation mask as background + Delaunay graph."""
+    mask_h, mask_w = mask_img.shape[:2]
+    scale  = mask_w / slide_meta["w"]
     j_base = slide_meta["j_base"]
     i_base = slide_meta["i_base"]
 
-    # WSI level-0 coords → display pixel coords (same transform as patch_vis.py)
+    # WSI level-0 → display pixel coords (same transform as patch_vis.py)
     cx = (coords[:, 0] - j_base) * scale
     cy = (coords[:, 1] - i_base) * scale
 
@@ -76,29 +73,24 @@ def render(
     ax.axis("off")
     ax.set_title(title, color="white", fontsize=9, pad=6)
 
-    ax.imshow(rgb_img, origin="upper", zorder=1)
+    ax.imshow(mask_img, origin="upper", zorder=1)
 
-    if overlay_mode == "mask" and mask_img is not None:
-        alpha_ch  = (mask_img.sum(axis=-1) > 0).astype(np.uint8) * 180
-        mask_rgba = np.dstack([mask_img, alpha_ch])
-        ax.imshow(mask_rgba, origin="upper", alpha=0.45, zorder=2)
-
-    # removed edges (crossed non-tissue) in red
+    # removed edges in red
     for u, v in removed_edges:
         ax.plot([cx[u], cx[v]], [cy[u], cy[v]],
-                color="#ff4444", alpha=0.7, linewidth=1.0, zorder=3)
+                color="#ff4444", alpha=0.8, linewidth=1.0, zorder=2)
 
     # kept edges
     for u, v in edges:
         ax.plot([cx[u], cx[v]], [cy[u], cy[v]],
-                color="black", alpha=0.85, linewidth=1.2, zorder=4)
+                color="black", alpha=0.85, linewidth=1.2, zorder=3)
 
-    # nodes
-    ax.scatter(cx, cy, color="#00d4ff", s=14, alpha=0.9,
-               linewidths=0.4, edgecolors="white", zorder=5)
+    # nodes — black
+    ax.scatter(cx, cy, color="black", s=14, alpha=0.95,
+               linewidths=0, zorder=4)
 
-    ax.set_xlim(-0.5, rgb_w - 0.5)
-    ax.set_ylim(rgb_h - 0.5, -0.5)
+    ax.set_xlim(-0.5, mask_w - 0.5)
+    ax.set_ylim(mask_h - 0.5, -0.5)
 
     plt.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -188,11 +180,10 @@ def main() -> None:
     centroids    = coord_arrays.mean(axis=1)                           # (N, 2)
 
     slide_meta = load_slide_meta(iam_path, hospital, patient_id, slide_id)
-    rgb_img    = load_rgb_image(iam_path, hospital, patient_id, slide_id)
     mask_img   = load_mask_image(iam_path, hospital, patient_id, slide_id)
 
-    if rgb_img is None or slide_meta is None:
-        sys.exit("[ERROR] RGB image and slide metadata are required for rendering.")
+    if mask_img is None or slide_meta is None:
+        sys.exit("[ERROR] Segmentation mask and slide metadata are required for rendering.")
 
     edges, _ = build_delaunay_edges(centroids, distance_factor=2.0)
     print(f"[INFO] Graph    : {len(centroids)} nodes | {len(edges)} edges (before mask filter)")
@@ -222,10 +213,8 @@ def main() -> None:
         removed_edges=removed_edges,
         title=title,
         out_path=Path(args.output),
-        rgb_img=rgb_img,
-        slide_meta=slide_meta,
         mask_img=mask_img,
-        overlay_mode=OVERLAY_MODE,
+        slide_meta=slide_meta,
     )
 
 
