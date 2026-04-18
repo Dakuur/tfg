@@ -78,15 +78,15 @@ def render(
     # removed edges in red
     for u, v in removed_edges:
         ax.plot([cx[u], cx[v]], [cy[u], cy[v]],
-                color="#ff4444", alpha=0.8, linewidth=1.0, zorder=2)
+                color="#ff4444", alpha=0.8, linewidth=2.0, zorder=2)
 
     # kept edges
     for u, v in edges:
         ax.plot([cx[u], cx[v]], [cy[u], cy[v]],
-                color="black", alpha=0.85, linewidth=1.2, zorder=3)
+                color="black", alpha=0.85, linewidth=2, zorder=3)
 
     # nodes — black
-    ax.scatter(cx, cy, color="black", s=14, alpha=0.95,
+    ax.scatter(cx, cy, color="black", s=30, alpha=0.95,
                linewidths=0, zorder=4)
 
     ax.set_xlim(-0.5, mask_w - 0.5)
