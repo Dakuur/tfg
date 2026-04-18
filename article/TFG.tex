@@ -244,18 +244,21 @@ probabilitats $\{P(\text{N1}_i)\}_{i=1}^{S}$ s'agreguen a posteriori (Secció~\r
 Com a alternativa, es pot construir un únic graf per pacient concatenant verticalment les matrius de
 característiques i col·locant les matrius d'adjacència en la diagonal d'una mega-matriu per blocs:
 
-\begin{equation}
-  \mathbf{X}_{\text{pac}} =
-  \begin{pmatrix} \mathbf{X}_1 \\ \vdots \\ \mathbf{X}_S \end{pmatrix}
-  \in \mathbb{R}^{\left(\sum_i N_i\right) \times 1536},
-  \qquad
-  \mathbf{A}_{\text{pac}} =
+\begin{align}
+  \mathbf{X}_{\text{pac}} &=
+  \begin{pmatrix}
+    \mathbf{X}_1 \\
+    \vdots \\
+    \mathbf{X}_S
+  \end{pmatrix}
+  \in \mathbb{R}^{\left(\sum_i N_i\right) \times 1536} \\[10pt]
+  \mathbf{A}_{\text{pac}} &=
   \begin{pmatrix}
     \mathbf{A}_1 & \mathbf{0} & \cdots \\
     \mathbf{0}   & \ddots     & \mathbf{0} \\
-    \cdots        & \mathbf{0} & \mathbf{A}_S
+    \cdots       & \mathbf{0} & \mathbf{A}_S
   \end{pmatrix}
-\end{equation}
+\end{align}
 
 Els triangles fora de la diagonal queden a zero, és a dir, no hi ha arestes entre seccions
 diferents. D'aquesta manera el mecanisme d'atenció del GAT opera sobre totes les seccions
