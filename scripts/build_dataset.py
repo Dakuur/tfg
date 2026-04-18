@@ -34,14 +34,22 @@ Phases
 
 Usage
 -----
-    python scripts/build_dataset.py                   # full run
+    python scripts/build_dataset.py                   # full run (one graph per section)
     python scripts/build_dataset.py --dry_run         # index + split, no .pt files
     python scripts/build_dataset.py --iam_path /mnt/iam
+    python scripts/build_dataset.py --mega            # one mega-graph per patient
 
 Outputs
 -------
+Standard mode:
     outputs/graphs/train/{patient_id}_{slide_id}_sec{section_id}.pt
     outputs/graphs/val/{patient_id}_{slide_id}_sec{section_id}.pt
+
+Mega-graph mode (--mega):
+    outputs/graphs/train/{patient_id}.pt  (one graph per patient, block-diagonal adjacency)
+    outputs/graphs/val/{patient_id}.pt
+
+Both modes write:
     outputs/graphs/train_index.csv
     outputs/graphs/val_index.csv
 """
@@ -654,6 +662,119 @@ def build_and_save_graphs(
     return records
 
 
+# ── Mega-graph (Model 2) ──────────────────────────────────────────────────────
+
+def build_patient_mega_graph(
+    patient_id: str,
+    patient_rows: pd.DataFrame,
+    df_npz: pd.DataFrame,
+) -> "Data | None":
+    """Build one mega-graph for all sections of a patient (Model 2 / --mega mode).
+
+    Concatenates feature matrices vertically and places each section's adjacency
+    matrix on the block diagonal, so no edges cross section boundaries:
+
+        X_pac = [X_1; ...; X_S]   ∈ R^(ΣN_i × 1536)
+        A_pac = block_diag(A_1, ..., A_S)   (zero off-diagonal blocks)
+
+    This allows the GAT to attend over all sections simultaneously while a
+    single global pooling produces the patient-level prediction directly,
+    without a separate MIL aggregation stage.
+
+    Returns None if no valid section graphs could be built.
+    """
+    x_list, pos_list, ei_list = [], [], []
+    patch_j_list, patch_i_list, patch_idx_list = [], [], []
+    node_offset = 0
+
+    for _, row in patient_rows.iterrows():
+        section_data = build_graph_for_section(
+            patient_id=patient_id,
+            slide_id=str(row["Slide"]),
+            section_id=str(row["Section"]),
+            hospital=str(row["Hospital"]),
+            label=int(row["label"]),
+            metastasis_score=str(row["Metastasis_score"]),
+            df_npz=df_npz,
+        )
+        if section_data is None:
+            continue
+        x_list.append(section_data.x)
+        pos_list.append(section_data.pos)
+        # Offset edge indices so each section's nodes are addressed correctly
+        ei_list.append(section_data.edge_index + node_offset)
+        patch_j_list.append(section_data.patch_j)
+        patch_i_list.append(section_data.patch_i)
+        patch_idx_list.append(section_data.patch_idx)
+        node_offset += section_data.x.shape[0]
+
+    if not x_list:
+        return None
+
+    first_row = patient_rows.iloc[0]
+    data = Data(
+        x          = torch.cat(x_list,   dim=0),
+        edge_index = torch.cat(ei_list,  dim=1),
+        pos        = torch.cat(pos_list, dim=0),
+        y          = torch.tensor([int(first_row["label"])], dtype=torch.long),
+    )
+    data.patient_id       = patient_id
+    data.hospital         = str(first_row["Hospital"])
+    data.metastasis_score = str(first_row["Metastasis_score"])
+    data.patch_j          = torch.cat(patch_j_list)
+    data.patch_i          = torch.cat(patch_i_list)
+    data.patch_idx        = torch.cat(patch_idx_list)
+    return data
+
+
+def build_and_save_mega_graphs(
+    split_index: pd.DataFrame,
+    split_name: str,
+    out_dir: Path,
+    df_npz: pd.DataFrame,
+    dry_run: bool,
+) -> list[dict]:
+    """Phase 3 (mega mode): build one graph per patient from all its sections."""
+    records   = []
+    split_dir = out_dir / split_name
+
+    if not dry_run:
+        split_dir.mkdir(parents=True, exist_ok=True)
+
+    patient_ids = split_index["Patient_ID"].unique()
+    for patient_id in tqdm(patient_ids, desc=f"Building {split_name} mega-graphs", unit="patient"):
+        patient_rows = split_index[split_index["Patient_ID"] == patient_id]
+        try:
+            data = build_patient_mega_graph(patient_id, patient_rows, df_npz)
+        except Exception as exc:
+            print(f"[WARN] Error building mega-graph for {patient_id}: {exc}")
+            continue
+
+        if data is None:
+            print(f"[WARN] Skipping {patient_id} — could not build any section graph.")
+            continue
+
+        n_nodes = data.x.shape[0]
+        n_edges = data.edge_index.shape[1]
+        n_sections = len(patient_rows)
+
+        if not dry_run:
+            fname = f"{patient_id}.pt"
+            torch.save(data, split_dir / fname)
+
+        records.append({
+            "patient_id":       patient_id,
+            "hospital":         data.hospital,
+            "metastasis_score": data.metastasis_score,
+            "label":            data.y.item(),
+            "n_sections":       n_sections,
+            "n_nodes":          n_nodes,
+            "n_edges":          n_edges,
+        })
+
+    return records
+
+
 # ── Phase 4 ───────────────────────────────────────────────────────────────────
 
 def print_verification(
@@ -709,6 +830,9 @@ def parse_args() -> argparse.Namespace:
                    help="Output directory for .pt files and index CSVs")
     p.add_argument("--dry_run",    action="store_true",
                    help="Run all phases but skip writing .pt files")
+    p.add_argument("--mega",       action="store_true",
+                   help="Build one mega-graph per patient (block-diagonal adjacency "
+                        "across all sections). Train with patient_level=false.")
     return p.parse_args()
 
 
@@ -717,9 +841,12 @@ def main() -> None:
     iam_path = Path(args.iam_path)
     out_dir  = Path(args.output_dir)
     dry_run  = args.dry_run
+    mega     = args.mega
 
     if dry_run:
         print("[INFO] --dry_run: no .pt files will be written.")
+    if mega:
+        print("[INFO] --mega: building one graph per patient (block-diagonal adjacency).")
 
     cls_dir = iam_path / CLS_DIR_SUBPATH
     if not cls_dir.is_dir():
@@ -756,20 +883,36 @@ def main() -> None:
     # ── Phase 3 ───────────────────────────────────────────────────────────────
     print("\n── Phase 3: Building graphs ────────────────────────────────────────")
 
-    train_records = build_and_save_graphs(
-        split_index=train_idx,
-        split_name="train",
-        out_dir=out_dir,
-        df_npz=df_npz,
-        dry_run=dry_run,
-    )
-    val_records = build_and_save_graphs(
-        split_index=val_idx,
-        split_name="val",
-        out_dir=out_dir,
-        df_npz=df_npz,
-        dry_run=dry_run,
-    )
+    if mega:
+        train_records = build_and_save_mega_graphs(
+            split_index=train_idx,
+            split_name="train",
+            out_dir=out_dir,
+            df_npz=df_npz,
+            dry_run=dry_run,
+        )
+        val_records = build_and_save_mega_graphs(
+            split_index=val_idx,
+            split_name="val",
+            out_dir=out_dir,
+            df_npz=df_npz,
+            dry_run=dry_run,
+        )
+    else:
+        train_records = build_and_save_graphs(
+            split_index=train_idx,
+            split_name="train",
+            out_dir=out_dir,
+            df_npz=df_npz,
+            dry_run=dry_run,
+        )
+        val_records = build_and_save_graphs(
+            split_index=val_idx,
+            split_name="val",
+            out_dir=out_dir,
+            df_npz=df_npz,
+            dry_run=dry_run,
+        )
 
     if not dry_run:
         out_dir.mkdir(parents=True, exist_ok=True)

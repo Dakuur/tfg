@@ -75,39 +75,36 @@ Graph Attention Networks}}
 \parbox{0.915\textwidth}
 {\sffamily
 \textbf{Resum--}
-Aquest treball aborda la predicció de metàstasis en ganglis limfàtics en pacients amb càncer colorectal en estadi
-pT1 a partir d'imatges de gran format (\textit{Whole Slide Images}). S'utilitzen \textit{Graph Attention Networks}
-(GAT) sobre grafs on cada node representa un \textit{bag} de 256 \textit{patches} de $256{\times}256$\,px
-($\approx4096{\times}4096$\,px al WSI), caracteritzat per l'embedding CLS de 1.536 dimensions del model de
-fundació \textit{UNI2}. S'exploren dues estratègies de \textit{pooling}: jeràrquic (DiffPool intercalat entre capes GAT, $N\to K_1\to K_2$ nodes) o pla (\textit{mean}/\textit{max} al final). El conjunt de dades comprèn 963 grafs provinents de 230 pacients, dividits
-estratificadament en entrenament i validació. Per afrontar el desbalanceig de classes (N0\,$\gg$\,N1), s'apliquen
-pesos per classe. Donat que el diagnòstic és per pacient, s'implementen diverses estratègies
-d'agregació (\textit{Multiple Instance Learning}, MIL) que integren les prediccions de totes les làmines d'un
-pacient. Un \textit{grid search} inicial ha identificat un model candidat amb AUC de 0{,}846. A més, s'ha
-desenvolupat un \textit{frontend} web per a la inferència en temps real i la visualització de l'atenció del model.
+Es proposa un \textit{pipeline} de classificació N0/N1 per a la predicció de metàstasi en ganglis limfàtics
+en càncer colorectal pT1 a partir de \textit{Whole Slide Images}. El teixit es representa com un
+\textbf{graf espacial} construït per triangulació de Delaunay sobre les coordenades dels \textit{bags},
+preservant l'arquitectura topològica del teixit —a diferència d'enfocaments basats en similitud de
+característiques. Cada node és un \textit{bag} de 256 \textit{patches} caracteritzat per l'embedding
+CLS (1.536 dim.) del model de fundació UNI2. Es comparen dues arquitectures: un GAT de referència
+amb \textit{readout} pla i un GAT amb \textbf{DiffPool jeràrquic} intercalat ($N\!\to\!K_1\!\to\!K_2$
+super-nodes), que captura representació multi-escala del teixit. El diagnòstic per pacient s'obté per
+agregació MIL sobre les seccions. El millor model assoleix un AUC de 0{,}846 sobre 230 pacients.
 \\
 \\
-\textbf{Paraules clau-- } Càncer colorectal, Histopatologia digital, Graph Attention Networks (GAT), DiffPool,
-Metàstasi, Estadi pT1, Aprenentatge per múltiples instàncies (MIL), Desbalanceig de classes.\\
+\textbf{Paraules clau-- } Càncer colorectal pT1, Histopatologia digital, Graph Attention Networks,
+DiffPool jeràrquic, Graf espacial de Delaunay, MIL, Desbalanceig de classes.\\
 \\
 \bigskip
 \\
 \textbf{Abstract--}
-This work addresses lymph node metastasis prediction in pT1 colorectal cancer patients from Whole Slide Images.
-We propose a methodology based on Graph Attention Networks (GAT) where each node represents a bag of
-256 patches of $256{\times}256$\,px ($\approx4096{\times}4096$\,px at WSI level 0), characterised by a
-1,536-dimensional CLS embedding from the UNI2 foundation model. Two pooling strategies are explored: hierarchical DiffPool layers
-\emph{interleaved between} GAT layers ($N\!\to\!K_1\!\to\!K_2$ nodes), enabling multi-scale
-tissue representations, or flat readout (mean/max) applied after the final GAT layer. The dataset comprises 963 graphs from 230 patients, stratified into training and
-validation splits. To handle class imbalance (N0\,$\gg$\,N1), class weighting is applied.
-Since the diagnosis is patient-level rather than slide-level, Multiple Instance Learning (MIL) aggregation
-strategies are implemented to integrate predictions across all slides of a patient. An initial grid search has
-identified a candidate model achieving an AUC of 0.846. An interactive web frontend has also been developed for
-real-time inference and attention visualization.
+We propose an N0/N1 classification pipeline for lymph node metastasis prediction in pT1 colorectal
+cancer from Whole Slide Images. Tissue is represented as a \textbf{spatial graph} built by Delaunay
+triangulation over bag coordinates, preserving the topological architecture of tissue —unlike
+feature-similarity graph approaches. Each node is a bag of 256 patches characterised by a
+1,536-dimensional CLS embedding from the UNI2 foundation model. Two architectures are compared: a
+\textbf{GAT baseline} with flat readout (mean/max) and a \textbf{hierarchical GAT+DiffPool} model
+with pooling layers interleaved between GAT layers ($N\!\to\!K_1\!\to\!K_2$ super-nodes), enabling
+multi-scale tissue representations. Patient-level diagnosis is obtained via MIL aggregation over
+histological sections. The best model achieves an AUC of 0.846 on 230 patients (stratified 80/20 split).
 \\
 \\
-\textbf{Keywords-- } Colorectal cancer, Digital histopathology, Graph Attention Networks (GAT), DiffPool,
-Metastasis, pT1 stage, Multiple Instance Learning (MIL), Class imbalance.\\
+\textbf{Keywords-- } pT1 colorectal cancer, Digital histopathology, Graph Attention Networks,
+Hierarchical DiffPool, Spatial Delaunay graph, Multiple Instance Learning, Class imbalance.\\
 }
 
 \bigskip
@@ -138,10 +135,13 @@ d'aquestes cirurgies resulten innecessàries \cite{MartinezDeJuan2024}.
 
 La histopatologia digital, a través de les \textit{Whole Slide Images} (WSI), obre la porta a tècniques avançades
 de visió per computador. En concret, les \textit{Graph Attention Networks} (GAT) \cite{veličković2018graphattentionnetworks}
-permeten modelar l'arquitectura espacial del teixit de forma relacional. Aquest projecte, desenvolupat al grup
-IAM del CVC (iam.cvc.uab.es) sota la supervisió de la Dra.\ Debora Gil, proposa un \textit{pipeline} complet per a
-la classificació N0/N1 que integra construcció de grafs, \textit{pooling} jeràrquic diferenciable i agregació MIL
-per pacient.
+permeten modelar l'arquitectura espacial del teixit de forma relacional. Una decisió clau en la construcció
+del graf és la definició de les arestes: mentre que alguns treballs les basen en la \textit{similitud de
+característiques} entre \textit{bags}, aquest projecte opta per la \textbf{proximitat espacial} (triangulació
+de Delaunay sobre coordenades WSI), preservant la topologia real del teixit. Aquest projecte, desenvolupat al
+grup IAM del CVC (iam.cvc.uab.es) sota la supervisió de la Dra.\ Debora Gil, compara un GAT de referència
+amb \textit{readout} pla contra un model amb \textit{pooling} jeràrquic (DiffPool) intercalat, i proposa
+estratègies d'agregació MIL per al diagnòstic a nivell de pacient.
 
 \section{Motivació}
 
@@ -154,10 +154,15 @@ de grafs i les xarxes neuronals profundes que vull explorar dins de l'Enginyeria
 \section{Objectius}
 
 \begin{itemize}
-    \item Construir un \textit{pipeline} complet de classificació N0/N1 sobre WSI reals a partir d'embeddings CLS.
-    \item Avaluar estratègies de \textit{pooling} jeràrquic per a la representació global de grafs histopatològics.
-    \item Implementar i comparar mètodes d'agregació MIL a nivell de pacient.
-    \item Explorar l'ús de les màscares d'anotació expert per supervisar l'atenció del model.
+    \item Construir un \textit{pipeline} complet de classificació N0/N1 sobre WSI reals a partir
+    d'embeddings CLS del model UNI2, basat en \textbf{grafs espacials} (triangulació de Delaunay
+    sobre coordenades del teixit).
+    \item \textbf{Comparar un GAT de referència} amb \textit{readout} pla contra un model amb
+    \textbf{DiffPool jeràrquic} intercalat entre les capes GAT, avaluant si la reducció
+    progressiva del graf aporta millor representació multi-escala.
+    \item Implementar i comparar estratègies d'agregació MIL a nivell de pacient per integrar
+    les prediccions de múltiples seccions histològiques.
+    \item Avaluar la robustesa dels models mitjançant validació creuada estratificada ($k$-fold).
     \item Proporcionar una eina interactiva de visualització i inferència en temps real.
 \end{itemize}
 
@@ -270,8 +275,10 @@ característiques i col·locant les matrius d'adjacència en la diagonal d'una m
 Els triangles fora de la diagonal queden a zero, és a dir, no hi ha arestes entre seccions
 diferents. D'aquesta manera el mecanisme d'atenció del GAT opera sobre totes les seccions
 simultàniament, i un únic \textit{pooling} global produeix directament el diagnòstic del pacient
-sense necessitat d'una etapa d'agregació de probabilitats. La implementació actual correspon al
-Model 1; el Model 2 és una línia de treball futura.
+sense necessitat d'una etapa d'agregació de probabilitats. Tots dos models estan implementats:
+el Model 1 és el mode per defecte del \textit{pipeline}, i el Model 2 s'activa amb l'argument
+\texttt{-{}-mega} de \texttt{scripts/build\_dataset.py}, que genera un fitxer \texttt{.pt} per
+pacient en lloc d'un per secció.
 
 \subsection{Connectivitat per triangulació de Delaunay}
 
@@ -582,7 +589,7 @@ proporcional a la freqüència de la seva classe. Això garanteix que cada \text
 proporció equilibrada de casos N0 i N1, evitant que el model vegi gairebé exclusivament N0 durant molts
 \textit{batches} consecutius.
 
-\subsection{Grid Search i Configuració d'Entrenament}
+\subsection{Grid Search, K-Fold i Configuració d'Entrenament}
 
 S'ha dut a terme un \textit{grid search} amb múltiples hiperparàmetres variables: \textit{hidden units}, nombre
 de caps d'atenció, tipus de \textit{pooling}, mètode d'agregació MIL, nombre de clústers DiffPool,
@@ -590,6 +597,15 @@ de caps d'atenció, tipus de \textit{pooling}, mètode d'agregació MIL, nombre 
 amb mètriques registrades a \textit{Weights \& Biases}. El millor model per AUC de validació es desa com a
 \textit{checkpoint}. L'entrenament inclou \textit{early stopping} amb 15 epochs de \textit{warm-up} i
 \textit{patience} de 10, basant el criteri d'aturada en la pèrdua de validació.
+
+Per a una avaluació estadísticament més robusta, s'implementa una validació creuada estratificada de
+$k$ particions ($k=5$ per defecte) a nivell de pacient, activable amb l'argument \texttt{-{}-kfold~5}
+de \texttt{train.py}. En mode \textit{k-fold}, tots els grafs (particions \textit{train} i \textit{val}
+predefinides) es reunifiquen i es reparteixen de nou en $k$ folds estratificats per la proporció N0/N1,
+garantint representativitat en cada partició. Cada \textit{fold} entrena un model independent (amb la
+seva pròpia \textit{run} a W\&B), i al final es reporta la mitjana $\pm$ desviació estàndard de les
+mètriques clau (AUC, F1-macro, F1-N1, \textit{recall}-N1). Aquesta modalitat és compatible amb el
+\textit{grid search}: si es combinen totes dues opcions, s'executen $n_{\text{combos}} \times k$ runs.
 
 \subsection{Atenció Supervisada amb Màscares}
 

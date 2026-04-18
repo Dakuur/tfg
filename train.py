@@ -31,11 +31,14 @@ import copy
 import itertools
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 import torch
 import wandb
 import yaml
+from sklearn.model_selection import StratifiedKFold
 
 # ── project modules ────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent
@@ -153,8 +156,20 @@ def _make_sweep_fn(base_cfg: dict):
 
 # ── training body ──────────────────────────────────────────────────────────────
 
-def _train_body(cfg: dict, run, device: torch.device) -> None:
-    """Full training loop — assumes wandb.init() has already been called."""
+def _train_body(
+    cfg:          dict,
+    run,
+    device:       torch.device,
+    train_graphs: list | None = None,
+    val_graphs:   list | None = None,
+) -> dict:
+    """Full training loop — assumes wandb.init() has already been called.
+
+    train_graphs / val_graphs: if provided, skip loading from disk (used by
+    k-fold CV). Otherwise they are loaded from cfg["data"]["graphs_dir"].
+
+    Returns a dict with the best monitored metric and per-fold val metrics.
+    """
     m = cfg["model"]
     t = cfg["training"]
     d = cfg["data"]
@@ -163,9 +178,10 @@ def _train_body(cfg: dict, run, device: torch.device) -> None:
     aggregation   = t.get("aggregation", "noisy_or")
 
     # ── Data ──────────────────────────────────────────────────────────────────
-    graphs_dir   = Path(d["graphs_dir"])
-    train_graphs = load_graphs(graphs_dir / "train")
-    val_graphs   = load_graphs(graphs_dir / "val")
+    if train_graphs is None or val_graphs is None:
+        graphs_dir   = Path(d["graphs_dir"])
+        train_graphs = load_graphs(graphs_dir / "train")
+        val_graphs   = load_graphs(graphs_dir / "val")
 
     in_ch = train_graphs[0].x.shape[1]
     print(f"[INFO] Train: {len(train_graphs)}  Val: {len(val_graphs)}  Features: {in_ch}")
@@ -230,9 +246,10 @@ def _train_body(cfg: dict, run, device: torch.device) -> None:
     monitor        = t.get("monitor", "val_auc")
     if isinstance(monitor, list):
         monitor = monitor[0]
-    early_stopping = EarlyStopping(warm_up=t["warm_up"], patience=t["patience"])
-    best_score     = 0.0
-    best_epoch     = 0
+    early_stopping   = EarlyStopping(warm_up=t["warm_up"], patience=t["patience"])
+    best_score       = 0.0
+    best_epoch       = 0
+    best_val_metrics: dict = {}
     ckpt_path      = Path(d["checkpoint_dir"]) / f"{run.name}_best.pt"
     cfg_copy_path  = ckpt_path.with_suffix(".yaml")
 
@@ -290,8 +307,9 @@ def _train_body(cfg: dict, run, device: torch.device) -> None:
         # ── Checkpoint by monitored metric ────────────────────────────────────
         score = va.get(monitor.replace("val_", ""), 0.0)
         if score > best_score:
-            best_score = score
-            best_epoch = epoch
+            best_score       = score
+            best_epoch       = epoch
+            best_val_metrics = va.copy()
             save_checkpoint(
                 model, optimizer, epoch, va, ckpt_path,
                 patient_aggregator=patient_aggregator,
@@ -318,11 +336,17 @@ def _train_body(cfg: dict, run, device: torch.device) -> None:
     print(f"  Config copy   : {cfg_copy_path.resolve()}")
 
     wandb.finish()
+    return {"monitor": monitor, "best_epoch": best_epoch, **best_val_metrics}
 
 
 # ── single training run (grid search / direct) ─────────────────────────────────
 
-def train_one(cfg: dict, run_name: str | None) -> None:
+def train_one(
+    cfg:          dict,
+    run_name:     str | None,
+    train_graphs: list | None = None,
+    val_graphs:   list | None = None,
+) -> dict:
     """Execute one full training run from the given config dict."""
     m   = cfg["model"]
     t   = cfg["training"]
@@ -342,7 +366,96 @@ def train_one(cfg: dict, run_name: str | None) -> None:
         },
     )
     print(f"[INFO] wandb run : {run.name}  ({run.url})")
-    _train_body(cfg, run, device)
+    return _train_body(cfg, run, device, train_graphs=train_graphs, val_graphs=val_graphs)
+
+
+# ── k-fold cross-validation ────────────────────────────────────────────────────
+
+def run_kfold_cv(cfg: dict, run_name_base: str | None, k: int = 5) -> None:
+    """Run k-fold stratified cross-validation at patient level.
+
+    Loads all graphs (both train and val splits), groups them by patient,
+    performs StratifiedKFold, and trains one model per fold.  Reports
+    mean ± std of key validation metrics across all folds.
+    """
+    d    = cfg["data"]
+    t    = cfg["training"]
+    seed = t.get("seed", 123)
+
+    # ── load all available graphs ─────────────────────────────────────────────
+    graphs_dir = Path(d["graphs_dir"])
+    all_graphs: list = []
+    for split in ("train", "val"):
+        split_dir = graphs_dir / split
+        if split_dir.exists():
+            all_graphs.extend(load_graphs(split_dir))
+    if not all_graphs:
+        sys.exit(f"[ERROR] No graphs found in {graphs_dir}")
+    print(f"[INFO] K-Fold: {len(all_graphs)} graphs total, k={k}")
+
+    # ── group by patient ──────────────────────────────────────────────────────
+    patient_graphs: dict[str, list] = defaultdict(list)
+    for g in all_graphs:
+        patient_graphs[g.patient_id].append(g)
+
+    patient_ids    = list(patient_graphs.keys())
+    patient_labels = [patient_graphs[pid][0].y.item() for pid in patient_ids]
+    print(f"[INFO] K-Fold: {len(patient_ids)} patients  "
+          f"N0={sum(l == 0 for l in patient_labels)}  "
+          f"N1={sum(l == 1 for l in patient_labels)}")
+
+    skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=seed)
+
+    fold_results: list[dict] = []
+    for fold, (train_idx, val_idx) in enumerate(
+        skf.split(patient_ids, patient_labels), start=1
+    ):
+        print(f"\n{'='*60}")
+        print(f"  K-Fold CV: fold {fold}/{k}")
+        print(f"{'='*60}\n")
+
+        train_graphs_fold = [
+            g for i in train_idx for g in patient_graphs[patient_ids[i]]
+        ]
+        val_graphs_fold = [
+            g for i in val_idx for g in patient_graphs[patient_ids[i]]
+        ]
+        print(f"[INFO] Fold {fold}: train={len(train_graphs_fold)} graphs  "
+              f"val={len(val_graphs_fold)} graphs")
+
+        fold_name = (
+            f"{run_name_base}_fold{fold}" if run_name_base else f"kfold_{fold}"
+        )
+        result = train_one(
+            cfg,
+            run_name=fold_name,
+            train_graphs=train_graphs_fold,
+            val_graphs=val_graphs_fold,
+        )
+        result["fold"] = fold
+        fold_results.append(result)
+
+    # ── summary ───────────────────────────────────────────────────────────────
+    _print_kfold_summary(fold_results, k)
+
+
+def _print_kfold_summary(fold_results: list[dict], k: int) -> None:
+    """Print mean ± std across folds for key metrics."""
+    metrics_to_report = ["auc", "f1_macro", "f1_N1", "recall_N1", "precision_N1"]
+    print(f"\n{'='*60}")
+    print(f"  K-Fold CV Summary  ({k} folds)")
+    print(f"{'='*60}")
+    print(f"  {'Metric':<18}  {'Mean':>8}  {'Std':>8}  {'Folds'}")
+    print(f"  {'-'*50}")
+    for metric in metrics_to_report:
+        vals = [r[metric] for r in fold_results if metric in r and r[metric] is not None]
+        if not vals:
+            continue
+        mean = float(np.mean(vals))
+        std  = float(np.std(vals, ddof=1)) if len(vals) > 1 else 0.0
+        fold_str = "  ".join(f"{v:.4f}" for v in vals)
+        print(f"  {metric:<18}  {mean:>8.4f}  {std:>8.4f}  [{fold_str}]")
+    print(f"{'='*60}\n")
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
@@ -388,6 +501,17 @@ def parse_args() -> argparse.Namespace:
         default=str(DEFAULT_SWEEP),
         metavar="PATH",
         help="Path to the W&B sweep definition YAML",
+    )
+
+    # ── K-Fold CV ──────────────────────────────────────────────────────────────
+    p.add_argument(
+        "--kfold",
+        type=int,
+        default=0,
+        metavar="K",
+        help="Run K-fold stratified CV (k=5 recommended). 0 = disabled (default). "
+             "Loads all graphs from graphs_dir/{train,val}, splits by patient, "
+             "trains K models, and reports mean ± std. Compatible with grid search.",
     )
 
     return p.parse_args()
@@ -440,7 +564,10 @@ def main() -> None:
     combos = expand_grid(cfg)
     n      = len(combos)
 
-    if n > 1:
+    if args.kfold > 0:
+        label = f"{n}-combo grid × {args.kfold}-fold CV" if n > 1 else f"{args.kfold}-fold CV"
+        print(f"[INFO] Mode: {label}  ({n * args.kfold} total runs)")
+    elif n > 1:
         print(f"[INFO] Grid search: {n} combinations")
     else:
         print("[INFO] Single training run")
@@ -453,7 +580,11 @@ def main() -> None:
 
         base_name = cfg_inst["wandb"].get("run_name")
         run_name  = resolve_run_name(base_name, varied, i, n)
-        train_one(cfg_inst, run_name)
+
+        if args.kfold > 0:
+            run_kfold_cv(cfg_inst, run_name_base=run_name, k=args.kfold)
+        else:
+            train_one(cfg_inst, run_name)
 
 
 if __name__ == "__main__":
