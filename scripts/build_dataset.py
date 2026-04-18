@@ -301,63 +301,58 @@ def print_data_diagnostics(
 
 # ── Verificació de cobertura de patches ──────────────────────────────────────
 
-def verify_patch_coverage(df_npz: pd.DataFrame, patches_dir: Path, sample_size: int = 200) -> None:
+def verify_patch_coverage(df_npz: pd.DataFrame, patches_dir: Path) -> None:
     """
-    Compare node counts in NPZ with image files in Patches directory.
+    Quick patch coverage check using one bag from the first available slide.
 
-    Prints:
-      - Total bags in NPZ (= nodes that will become graph nodes)
-      - Total JPG files found under patches_dir
-      - For a random sample of bags, how many central-patch files exist on disk
-        (exact match using the {hospital}_{patient}_{slide}_{j}_{i}.jpg convention)
+    Inspects the actual directory structure under patches_dir and checks
+    whether the central patch of one representative bag exists on disk.
     """
     print("\n── Verificació cobertura Patches ───────────────────────────────────")
     print(f"  Directori patches : {patches_dir}")
+    print(f"  Bags totals als NPZ (= nodes del graf) : {len(df_npz):,}")
 
-    total_bags = len(df_npz)
-    print(f"  Bags totals als NPZ (= nodes del graf) : {total_bags:,}")
+    # Pick first bag from NPZ
+    row        = df_npz.iloc[0]
+    hospital   = str(row["Hospital"])
+    patient_id = str(row["Patient_ID"])
+    slide_id   = str(row["Slide"])
+    bag_coords = np.array(row["coords_bag"])   # (256, 2)
+    centroid   = bag_coords.mean(axis=0)
+    dists      = np.linalg.norm(bag_coords - centroid, axis=1)
+    j_c, i_c   = bag_coords[int(dists.argmin())]
+    j_c, i_c   = int(round(j_c)), int(round(i_c))
 
-    # Comptar fitxers JPG per hospital sota patches_dir
-    print("\n  Fitxers JPG per hospital:")
-    grand_total_files = 0
-    for hosp_dir in sorted(patches_dir.iterdir()):
-        if not hosp_dir.is_dir():
-            continue
-        n_jpg = sum(1 for _ in hosp_dir.rglob("*.jpg"))
-        grand_total_files += n_jpg
-        bags_hosp = len(df_npz[df_npz["Hospital"] == hosp_dir.name])
-        print(f"    {hosp_dir.name}: {n_jpg:,} JPGs  |  {bags_hosp:,} bags NPZ")
-    print(f"\n  Total JPGs al disc : {grand_total_files:,}")
+    print(f"\n  Primer bag: hospital={hospital!r}  patient={patient_id!r}  slide={slide_id!r}")
+    print(f"  Coord central del bag (j, i) = ({j_c}, {i_c})")
 
-    # Mostreig: verificar existència del patch central per cada bag
-    rng     = np.random.default_rng(42)
-    indices = rng.choice(len(df_npz), size=min(sample_size, len(df_npz)), replace=False)
-    sample  = df_npz.iloc[indices].reset_index(drop=True)
+    # Expected path under Patches/
+    slide_dir  = patches_dir / hospital / patient_id / slide_id
+    fname      = f"{hospital}_{patient_id}_{slide_id}_{j_c}_{i_c}.jpg"
+    img_path   = slide_dir / fname
+    print(f"  Ruta esperada : {img_path}")
+    print(f"  Existeix      : {img_path.exists()}")
 
-    found = 0
-    for _, row in sample.iterrows():
-        hospital   = str(row["Hospital"])
-        patient_id = str(row["Patient_ID"])
-        slide_id   = str(row["Slide"])
-        bag_coords = np.array(row["coords_bag"])          # (256, 2)
-        centroid   = bag_coords.mean(axis=0)
-        dists      = np.linalg.norm(bag_coords - centroid, axis=1)
-        idx        = int(dists.argmin())
-        j_c, i_c   = bag_coords[idx]
-        j_c, i_c   = int(round(j_c)), int(round(i_c))
-
-        fname    = f"{hospital}_{patient_id}_{slide_id}_{j_c}_{i_c}.jpg"
-        img_path = patches_dir / hospital / patient_id / slide_id / fname
-        if img_path.exists():
-            found += 1
-
-    pct = 100.0 * found / len(sample)
-    print(f"\n  Mostreig {len(sample)} bags → patch central trobat: {found}/{len(sample)}  ({pct:.1f}%)")
-    if pct < 50:
-        print("  [WARN] Menys del 50% dels patches centrals trobats al disc.")
-        print("         Verifica que PATCHES_SUBPATH apunta al directori correcte.")
+    # If slide_dir doesn't exist, show what IS there to diagnose structure
+    if not slide_dir.exists():
+        hosp_dir = patches_dir / hospital
+        if not hosp_dir.exists():
+            print(f"\n  [WARN] Directori hospital no trobat: {hosp_dir}")
+            print(f"  Contingut de patches_dir: {[d.name for d in patches_dir.iterdir() if d.is_dir()][:10]}")
+        else:
+            pat_dir = hosp_dir / patient_id
+            if not pat_dir.exists():
+                print(f"\n  [WARN] Directori pacient no trobat: {pat_dir}")
+                sample_patients = [d.name for d in hosp_dir.iterdir() if d.is_dir()][:5]
+                print(f"  Pacients disponibles (mostra): {sample_patients}")
+            else:
+                print(f"\n  [WARN] Directori slide no trobat: {slide_dir}")
+                sample_slides = [d.name for d in pat_dir.iterdir() if d.is_dir()][:5]
+                print(f"  Slides disponibles (mostra): {sample_slides}")
     else:
-        print("  [OK] Cobertura de patches correcta.")
+        # Slide dir exists — show a few files to confirm naming convention
+        sample_files = [f.name for f in slide_dir.iterdir() if f.is_file()][:5]
+        print(f"  Fitxers al directori slide (mostra): {sample_files}")
     print()
 
 
