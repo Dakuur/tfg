@@ -7,7 +7,9 @@ mean_max  concat(global_mean_pool, global_max_pool)  — output dim = hidden*2
 mean      global_mean_pool                           — output dim = hidden
 max       global_max_pool                            — output dim = hidden
 sum       global_add_pool                            — output dim = hidden
-diff      Differential Hierarchical Pooling (DHP)    — output dim = hidden*2
+diff      Hierarchical DiffPool between GAT layers   — output dim = hidden*2
+          Architecture: GAT1 → DiffPool1(N→K1) → GAT2 → DiffPool2(K1→K2) → GAT3 → mean+max
+          K1 = diff_clusters, K2 = max(diff_clusters // 3, 5)
 
 Patient-level aggregation (inter-slide, across all slides of a patient)
 ------------------------------------------------------------------------
@@ -44,17 +46,21 @@ POOLING_OPTIONS      = ("mean_max", "mean", "max", "sum", "diff")
 AGGREGATION_OPTIONS  = ("noisy_or", "max", "lse", "mean", "attention")
 
 
-# ── Intra-slide: DiffPool readout ──────────────────────────────────────────────
+# ── Hierarchical DiffPool step ─────────────────────────────────────────────────
 
-class DiffPoolReadout(nn.Module):
-    """Differential Hierarchical Pooling readout (intra-slide).
+class HierarchicalDiffPool(nn.Module):
+    """One step of hierarchical DiffPool: reduces N sparse nodes → K super-nodes.
 
-    Learns soft cluster assignments S ∈ R^{N×K} over node embeddings,
-    pools to K super-nodes, then applies global mean+max over them.
-    Auxiliary loss (link + entropy) is stored in `self.aux_loss`.
+    Returns the pooled nodes in sparse PyG format (x_flat, edge_index, batch)
+    so subsequent GATConv layers can operate on the reduced graph.
+
+    Super-node connectivity is fully connected (adj_pool ≈ dense for soft S),
+    which is cheap since K is small (O(K²) edges per graph in the batch).
+
+    Auxiliary loss (link + entropy) is accumulated in `self.aux_loss`.
     """
 
-    def __init__(self, in_channels: int, hidden: int, n_clusters: int = 10):
+    def __init__(self, in_channels: int, hidden: int, n_clusters: int):
         super().__init__()
         if not _DIFF_POOL_OK:
             raise ImportError(
@@ -72,19 +78,52 @@ class DiffPoolReadout(nn.Module):
             nn.Linear(in_channels, hidden), nn.ReLU(),
         )
 
-    def forward(self, x, edge_index, batch):
-        x_dense, mask = to_dense_batch(x, batch)
-        adj           = to_dense_adj(edge_index, batch)
+        # Pre-build the local fully-connected edge_index for K nodes (no self-loops)
+        rows = torch.arange(n_clusters)
+        src  = rows.repeat(n_clusters)
+        dst  = rows.repeat_interleave(n_clusters)
+        no_self = src != dst
+        self.register_buffer("_local_ei", torch.stack([src[no_self], dst[no_self]]))
 
-        s = self.assign_net(x_dense)
-        z = self.embed_net(x_dense)
+    def forward(
+        self,
+        x:          torch.Tensor,
+        edge_index:  torch.Tensor,
+        batch:       torch.Tensor,
+    ):
+        """
+        Args:
+            x          : (N, in_channels)
+            edge_index : (2, E) sparse edges
+            batch      : (N,)  graph assignment per node
+        Returns:
+            x_flat     : (B*K, hidden)
+            new_ei     : (2, B*K*(K-1))
+            new_batch  : (B*K,)
+        """
+        x_dense, mask = to_dense_batch(x, batch)
+        adj           = to_dense_adj(edge_index, batch, max_num_nodes=x_dense.size(1))
+
+        s = self.assign_net(x_dense)   # (B, max_N, K)
+        z = self.embed_net(x_dense)    # (B, max_N, hidden)
 
         x_pool, _, link_loss, ent_loss = dense_diff_pool(z, adj, s, mask)
+        # x_pool: (B, K, hidden)
         self.aux_loss = link_loss + ent_loss
 
-        mean_h = x_pool.mean(dim=1)
-        max_h  = x_pool.max(dim=1).values
-        return torch.cat([mean_h, max_h], dim=1)   # (B, hidden*2)
+        B = x_pool.size(0)
+        K = self.n_clusters
+
+        x_flat    = x_pool.reshape(B * K, -1)
+        new_batch = torch.arange(B, device=x.device).repeat_interleave(K)
+
+        # Offset the pre-built local edge_index per batch item
+        offsets = (torch.arange(B, device=x.device) * K).repeat_interleave(
+            self._local_ei.size(1)
+        )
+        new_ei = self._local_ei.repeat(1, B) + offsets.unsqueeze(0)
+
+        return x_flat, new_ei, new_batch
 
 
 # ── Inter-slide: Gated Attention MIL ──────────────────────────────────────────
@@ -124,6 +163,12 @@ class GATClassifier(nn.Module):
     """
     Three-layer Graph Attention Network with configurable readout pooling.
 
+    For pooling='diff', DiffPool is applied hierarchically between GAT layers:
+        GAT1 → DiffPool1(N→K1) → GAT2 → DiffPool2(K1→K2) → GAT3 → mean+max
+
+    For all other pooling types, the three GAT layers process the original
+    graph topology and a single global pool is applied at the end.
+
     The model has two usage modes:
 
     Slide-level  (standard):
@@ -151,22 +196,28 @@ class GATClassifier(nn.Module):
         self.dropout      = dropout
         self.pooling_type = pooling
 
-        self.conv1 = GATConv(in_channels,    hidden, heads=heads, concat=True,  dropout=dropout)
+        # Layer 1 — same for all pooling types
+        self.conv1 = GATConv(in_channels, hidden, heads=heads, concat=True, dropout=dropout)
         self.bn1   = nn.BatchNorm1d(hidden * heads)
 
-        self.conv2 = GATConv(hidden * heads, hidden, heads=heads, concat=True,  dropout=dropout)
-        self.bn2   = nn.BatchNorm1d(hidden * heads)
-
-        self.conv3 = GATConv(hidden * heads, hidden, heads=1,     concat=False, dropout=dropout)
-        self.bn3   = nn.BatchNorm1d(hidden)
-
-        if pooling == "mean_max":
-            pool_out = hidden * 2
-        elif pooling in ("mean", "max", "sum"):
-            pool_out = hidden
-        elif pooling == "diff":
-            self.diff_pool = DiffPoolReadout(hidden, hidden, n_clusters=diff_clusters)
-            pool_out = hidden * 2
+        if pooling == "diff":
+            # Hierarchical DiffPool: pooling between layers
+            K1 = diff_clusters
+            K2 = max(diff_clusters // 3, 5)
+            self.diff_pool1 = HierarchicalDiffPool(hidden * heads, hidden, K1)
+            self.diff_pool2 = HierarchicalDiffPool(hidden * heads, hidden, K2)
+            # Layer 2 & 3 take `hidden` input (embed_net output of DiffPool)
+            self.conv2 = GATConv(hidden,          hidden, heads=heads, concat=True,  dropout=dropout)
+            self.bn2   = nn.BatchNorm1d(hidden * heads)
+            self.conv3 = GATConv(hidden,          hidden, heads=1,     concat=False, dropout=dropout)
+            self.bn3   = nn.BatchNorm1d(hidden)
+            pool_out   = hidden * 2   # mean + max of final K2 super-nodes
+        else:
+            self.conv2 = GATConv(hidden * heads, hidden, heads=heads, concat=True,  dropout=dropout)
+            self.bn2   = nn.BatchNorm1d(hidden * heads)
+            self.conv3 = GATConv(hidden * heads, hidden, heads=1,     concat=False, dropout=dropout)
+            self.bn3   = nn.BatchNorm1d(hidden)
+            pool_out   = hidden * 2 if pooling == "mean_max" else hidden
 
         self.mlp = nn.Sequential(
             nn.Linear(pool_out, hidden),
@@ -175,10 +226,10 @@ class GATClassifier(nn.Module):
             nn.Linear(hidden, 2),
         )
 
-    # ── readout ────────────────────────────────────────────────────────────────
+    # ── readout (non-diff pooling only) ────────────────────────────────────────
 
     def pool_readout(self, x, edge_index, batch):
-        """Apply the configured pooling → graph-level embedding h."""
+        """Global graph-level pool for non-diff pooling types."""
         if self.pooling_type == "mean_max":
             return torch.cat([global_mean_pool(x, batch),
                               global_max_pool(x, batch)], dim=1)
@@ -188,8 +239,6 @@ class GATClassifier(nn.Module):
             return global_max_pool(x, batch)
         if self.pooling_type == "sum":
             return global_add_pool(x, batch)
-        if self.pooling_type == "diff":
-            return self.diff_pool(x, edge_index, batch)
 
     # ── encode (without MLP head) ──────────────────────────────────────────────
 
@@ -201,12 +250,40 @@ class GATClassifier(nn.Module):
         patient at once, then aggregate with PatientAggregator, then call
         self.mlp() on the aggregated vector.
         """
+        if self.pooling_type == "diff":
+            return self._encode_hierarchical(x, edge_index, batch)
+        return self._encode_standard(x, edge_index, batch)
+
+    def _encode_standard(self, x, edge_index, batch):
         x = F.elu(self.bn1(self.conv1(x, edge_index)))
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = F.elu(self.bn2(self.conv2(x, edge_index)))
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = F.elu(self.bn3(self.conv3(x, edge_index)))
         return self.pool_readout(x, edge_index, batch)
+
+    def _encode_hierarchical(self, x, edge_index, batch):
+        """Hierarchical path: DiffPool progressively reduces nodes between layers."""
+        # GAT layer 1: N nodes → hidden*heads features
+        x = F.elu(self.bn1(self.conv1(x, edge_index)))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+
+        # DiffPool 1: N → K1 super-nodes
+        x, edge_index, batch = self.diff_pool1(x, edge_index, batch)
+
+        # GAT layer 2: K1 nodes → hidden*heads features
+        x = F.elu(self.bn2(self.conv2(x, edge_index)))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+
+        # DiffPool 2: K1 → K2 super-nodes
+        x, edge_index, batch = self.diff_pool2(x, edge_index, batch)
+
+        # GAT layer 3: K2 nodes → hidden features
+        x = F.elu(self.bn3(self.conv3(x, edge_index)))
+
+        # Final readout: mean + max over K2 super-nodes
+        return torch.cat([global_mean_pool(x, batch),
+                          global_max_pool(x, batch)], dim=1)
 
     # ── forward ────────────────────────────────────────────────────────────────
 
@@ -217,7 +294,7 @@ class GATClassifier(nn.Module):
 
     @property
     def aux_loss(self):
-        """DiffPool auxiliary loss; zero for all other pooling types."""
+        """Sum of DiffPool auxiliary losses; zero for all other pooling types."""
         if self.pooling_type == "diff":
-            return self.diff_pool.aux_loss
+            return self.diff_pool1.aux_loss + self.diff_pool2.aux_loss
         return torch.tensor(0.0)

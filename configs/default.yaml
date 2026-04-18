@@ -24,13 +24,14 @@ model:
   #   sum      — global_add_pool
   #   diff     — Differential Hierarchical Pooling (DiffPool)
   pooling:       "diff"
-  diff_clusters: [25, 50, 75]     # only used if pooling=diff
+  diff_clusters: [5, 25, 50]     # only used if pooling=diff
 
 # ── Training ───────────────────────────────────────────────────────────────────
 training:
-  lr:         1.0e-4
-  epochs:     100
-  batch_size: 128
+  lr:           [1.0e-4, 1.0e-5]
+  weight_decay: 1.0e-3
+  epochs:       100
+  batch_size:   128
 
   # ReduceLROnPlateau
   scheduler_factor:   0.5
@@ -44,7 +45,7 @@ training:
   # Metric used for checkpointing:
   #   val_auc      — validation ROC-AUC
   #   val_f1_macro — macro-averaged F1 (N0 + N1)
-  monitor: "val_f1_macro"
+  monitor: ["val_f1_macro", "val_auc"]
 
   patient_level: true
 
@@ -54,7 +55,7 @@ training:
   #   lse      — log-sum-exp smooth maximum
   #   mean     — mean(P(slide_i))
   #   attention — Gated Attention MIL (Ilse et al., 2018)
-  aggregation: ["noisy_or", "max", "lse", "mean", "attention"]
+  aggregation: ["noisy_or", "max", "mean", "attention"]
 
 # ── W&B ────────────────────────────────────────────────────────────────────────
 wandb:

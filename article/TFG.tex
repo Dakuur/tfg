@@ -1,5 +1,6 @@
-﻿\documentclass[10pt,a4paper,twocolumn,twoside]{article}
+\documentclass[10pt,a4paper,twocolumn,twoside]{article}
 \usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
 \usepackage[catalan]{babel}
 \usepackage{multicol}
 \usepackage{graphicx}
@@ -13,6 +14,12 @@
 \usepackage{url}
 \usepackage{float}
 \usepackage[figurename=Fig.,tablename=TAULA]{caption}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xcolor}
+\usepackage{colortbl}
 % \usepackage{parskip}
 \addbibresource{references.bib}
 \captionsetup[table]{textfont=sc}
@@ -34,8 +41,6 @@ Graph Attention Networks}}
   \endgroup
 }
 
-%
-%\large\bfseries\sffamily
 \titleformat{\section}
 {\large\sffamily\scshape\bfseries}
 {\textbf{\thesection}}{1em}{}
@@ -55,63 +60,51 @@ Graph Attention Networks}}
    \fancyfoot[C]{\scriptsize Juliol de 2026, Escola d'Enginyeria (UAB)}
 }
 
-%\lhead{\thepage}
-%\chead{}
-%\rhead{\tiny EE/UAB TFG INFORMÀTICA: TÍTOL (ABREUJAT SI ÉS MOLT LLARG)}
-%\lhead{ EE/UAB \thepage}
-%\lfoot{}
-%\cfoot{\tiny{February 2015, Escola d'Enginyeria (UAB)}}
-%\rfoot{}
 \renewcommand{\headrulewidth}{0pt}
 \renewcommand{\footrulewidth}{0pt}
 \pagestyle{fancy}
 
-%\thispagestyle{myheadings}
 \twocolumn[\begin{@twocolumnfalse}
-
-%\vspace*{-1cm}{\scriptsize TFG EN ENGINYERIA DADES, ESCOLA D'ENGINYERIA (EE), UNIVERSITAT AUTÒNOMA DE BARCELONA (UAB)}
 
 \maketitle
 
 \thispagestyle{primerapagina}
-%\twocolumn[\begin{@twocolumnfalse}
-%\maketitle
-%\begin{abstract}
+
 \begin{center}
 \parbox{0.915\textwidth}
 {\sffamily
 \textbf{Resum--}
-Aquest treball aborda el repte clínic de la predicció de metàstasis en ganglis limfàtics en pacients amb càncer
-colorectal en estadi pT1. Actualment, la manca de biomarcadors visuals precisos en la histopatologia convencional
-condueix a un elevat nombre de cirurgies radicals innecessàries. Mitjançant l'ús d'imatges de gran format
-    (Whole Slide Images), es proposa una metodologia basada en xarxes neuronals de grafs amb atenció (Graph Attention
-Networks, GAT). El sistema transforma el teixit en un graf on cada node representa un patch d'alta resolució, connectat
-segons criteris de proximitat espacial o similitud semàntica. Per evitar la pèrdua d'informació de les arquitectures
-globals, s'implementen tècniques com un pooling jeràrquic diferenciable que permet extreure característiques rellevants
-per una classificació precisa. L'objectiu final és oferir una eina de diagnòstic de precisió que millori la
-categorització del risc metastàtic i doni suport a la decisió clínica.
+Aquest treball aborda la predicció de metàstasis en ganglis limfàtics en pacients amb càncer colorectal en estadi
+pT1 a partir d'imatges de gran format (\textit{Whole Slide Images}). S'utilitzen \textit{Graph Attention Networks}
+(GAT) sobre grafs construïts a partir dels \textit{embeddings} CLS de 1.536 dimensions del model de fundació
+\textit{UNI2}, amb \textit{pooling} jeràrquic diferenciable (DiffPool) per preservar l'estructura espacial del
+teixit. El conjunt de dades comprèn 963 grafs provinents de 230 pacients, dividits
+estratificadament en entrenament i validació. Per afrontar el desbalanceig de classes (N0\,$\gg$\,N1), s'apliquen
+pesos per classe. Donat que el diagnòstic és per pacient, s'implementen diverses estratègies
+d'agregació (\textit{Multiple Instance Learning}, MIL) que integren les prediccions de totes les làmines d'un
+pacient. Un \textit{grid search} inicial ha identificat un model candidat amb AUC de 0{,}846. A més, s'ha
+desenvolupat un \textit{frontend} web per a la inferència en temps real i la visualització de l'atenció del model.
 \\
 \\
-\textbf{Paraules clau-- } Càncer colorectal, Histopatologia digital, Graph Attention Networks (GAT), Pooling jeràrquic,
-    Metàstasi, Estadi pT1, Aprenentatge profund.\\
+\textbf{Paraules clau-- } Càncer colorectal, Histopatologia digital, Graph Attention Networks (GAT), DiffPool,
+Metàstasi, Estadi pT1, Aprenentatge per múltiples instàncies (MIL), Desbalanceig de classes.\\
 \\
-%\end{abstract}
-%\bigskip
-%\begin{abstract}
 \bigskip
 \\
-\textbf{Abstract--} This research addresses the clinical challenge of predicting lymph node metastasis in patients with
-pT1 colorectal cancer. Currently, the lack of precise visual biomarkers in conventional histopathology leads to a high
-number of unnecessary radical surgeries. By utilizing Whole Slide Images (WSI), we propose a methodology based on Graph
-Attention Networks (GAT). The system transforms the tissue into a graph where each node represents a high-resolution
-patch, connected according to spatial proximity or semantic similarity criteria. To prevent the loss of global
-structural information, techniques such as a differentiable hierarchical pooling are implemented, allowing the
-extraction relevant characteristics for a precise classification. The ultimate goal is to provide a precision
-diagnostic tool that improves metastatic risk categorization and supports clinical decision-making.
+\textbf{Abstract--}
+This work addresses lymph node metastasis prediction in pT1 colorectal cancer patients from Whole Slide Images.
+We propose a methodology based on Graph Attention Networks (GAT) built on top of 1,536-dimensional CLS embeddings
+from the UNI2 foundation model, with differentiable hierarchical pooling (DiffPool) to preserve tissue spatial
+structure. The dataset comprises 963 graphs from 230 patients, stratified into training and
+validation splits. To handle class imbalance (N0\,$\gg$\,N1), class weighting is applied.
+Since the diagnosis is patient-level rather than slide-level, Multiple Instance Learning (MIL) aggregation
+strategies are implemented to integrate predictions across all slides of a patient. An initial grid search has
+identified a candidate model achieving an AUC of 0.846. An interactive web frontend has also been developed for
+real-time inference and attention visualization.
 \\
 \\
-\textbf{Keywords-- } Colorectal cancer, Digital histopathology, Graph Attention Networks (GAT), Hierarchical pooling,
-    Metastasis, pT1 stage, Deep learning.\\
+\textbf{Keywords-- } Colorectal cancer, Digital histopathology, Graph Attention Networks (GAT), DiffPool,
+Metastasis, pT1 stage, Multiple Instance Learning (MIL), Class imbalance.\\
 }
 
 \bigskip
@@ -123,330 +116,366 @@ diagnostic tool that improves metastatic risk categorization and supports clinic
 \end{center}
 
 \bigskip
-%\end{abstract}
 \end{@twocolumnfalse}]
 
 \blfootnote{$\bullet$ E-mail de contacte: David.MorilloMa@autonoma.cat}
 \blfootnote{$\bullet$ Treball tutoritzat per: Debora Gil Resina (DCC)} \blfootnote{$\bullet$ Curs 2025/26}
 
-\section{Introducció - Context del treball}
+\section{Introducció}
 
-\lettrine[lines=3]{E}{l} càncer colorectal (CCR) representa un dels desafiaments més crítics per a la salut pública
-contemporània. A Espanya, segons les dades recollides per la Sociedad Española de Oncología Médica (SEOM), s'estima
-que per al 2026 el CCR serà el tumor més freqüentment diagnosticat, amb una incidència que superarà els \textbf{44.132}
-nous casos anuals \cite{seom2026}. Més enllà de l'alta prevalença, la seva gravetat es palesa en les xifres de
-mortalitat: és la segona causa de mort per càncer al país, amb 14.629 defuncions anuals \cite{seom2026}.
+\lettrine[lines=3]{E}{l} càncer colorectal (CCR) representa un dels reptes de salut pública més greus del nostre
+entorn. A Espanya, la SEOM preveu per al 2026 més de \textbf{44.132} nous casos anuals, convertint-lo en el tumor
+més freqüentment diagnosticat i en la segona causa de mort per càncer amb 14.629 defuncions \cite{seom2026}.
 
-Dins de l'espectre d'aquesta malaltia, el diagnòstic en estadis primerencs és fonamental per a la supervivència. El
-focus d'aquest projecte se centra en el carcinoma pT1, una etapa en què el tumor ha envaït la submucosa però no la
-muscular pròpia. Tot i que els tumors colorectals en estadi $T1$ poden tractar-se mitjançant una resecció local, el
-risc de metàstasi als ganglis limfàtics depèn directament de la profunditat d'invasió del tumor a la paret de
-l'intestí: un \textbf{2\%} en la part més superficial, un \textbf{8\%} en la mitjana i fins a un \textbf{23\%} en la més
-profunda \cite{ParcSalutMar2013}. Quan el tumor presenta criteris de mal pronòstic (com una mala diferenciació de les
-cèl·lules), el risc d'afectació ganglionar se situa al voltant del 10\%, cosa que obliga a considerar una cirurgia
-radical. Tanmateix, s'estima que \textbf{entre el 80\% i el 90\%} d'aquestes cirurgies addicionals resulten
-innecessàries, ja que finalment només es confirma la presència de metàstasi en el 10-20\% dels pacients intervinguts
-\cite{MartinezDeJuan2024}.
+El carcinoma pT1 és especialment complex: el tumor ha envaït la submucosa però no la muscular pròpia, i el risc de
+metàstasi als ganglis limfàtics oscil·la entre el \textbf{2\%} i el \textbf{23\%} depenent de la profunditat
+d'invasió \cite{ParcSalutMar2013}. Quan hi ha criteris de mal pronòstic, el risc s'estima al voltant del 10\%, la
+qual cosa obliga a considerar una cirurgia radical. Tanmateix, s'estima que \textbf{entre el 80\% i el 90\%}
+d'aquestes cirurgies resulten innecessàries \cite{MartinezDeJuan2024}.
 
-L'aparició de la histopatologia digital ha obert una nova frontera en l'oncologia de precisió. La digitalització de
-mostres de teixit en imatges de gran format, conegudes com a \textit{Whole Slide Images} (WSI), permet aplicar
-tècniques avançades de visió per computador. No obstant això, la subtilesa dels canvis morfològics que prediuen la
-malignitat i el risc metastàtic en el pT1 exigeix eines que vagin més enllà de l'anàlisi de píxels aïllats.
+La histopatologia digital, a través de les \textit{Whole Slide Images} (WSI), obre la porta a tècniques avançades
+de visió per computador. En concret, les \textit{Graph Attention Networks} (GAT) \cite{veličković2018graphattentionnetworks}
+permeten modelar l'arquitectura espacial del teixit de forma relacional. Aquest projecte, desenvolupat al grup
+IAM del CVC (iam.cvc.uab.es) sota la supervisió de la Dra.\ Debora Gil, proposa un \textit{pipeline} complet per a
+la classificació N0/N1 que integra construcció de grafs, \textit{pooling} jeràrquic diferenciable i agregació MIL
+per pacient.
 
-Aquest projecte neix amb l'objectiu d'explorar l'aplicació de l'aprenentatge profund (\textit{Deep Learning}), i més
-concretament de les \textit{\textbf{Graph Attention Networks}} (GATs) \cite{veličković2018graphattentionnetworks}.
-Mitjançant la fragmentació de les imatges i la seva posterior estructuració en forma de grafs, busquem capturar
-l'arquitectura espacial del teixit, tant sa com cancerigen, i amb l'extracció de característiques i reducció de nodes
-\textit{(Pooling)}, determinar l'existència de metàstasi en un pacient.
+\section{Motivació}
 
-El treball s'ha desenvolupat dins del grup d'imatge mèdica IAM (iam.cvc.uab.es) del Centre de Visió per Computador
-(CVC), sota la supervisió de la Dra. Debora Gil. El projecte abasta des de la preparació de dades i l'anàlisi d'espais
-de representació profunds fins al desenvolupament d'un mòdul d'explicabilitat, amb l'objectiu d'assolir no només la
-precisió algorítmica, sinó també la fiabilitat i comprensió mèdica necessàries per a una futura integració en l'entorn
-clínic.
+Dues raons complementàries justifiquen la tria d'aquest projecte. Des del punt de vista clínic, els sistemes d'IA
+demostren una capacitat creixent per identificar patrons morfològics subtils de manera consistent, amb el potencial
+real de reduir cirurgies innecessàries. Des del punt de vista tècnic, la combinació de xarxes d'atenció sobre grafs
+i aprenentatge profund sobre imatges histopatològiques d'alta resolució és exactament la intersecció entre la teoria
+de grafs i les xarxes neuronals profundes que vull explorar dins de l'Enginyeria de Dades.
 
-\section{Motivacions}
+\section{Objectius}
 
-Les raons per les quals vaig escollir aquest projecte s'exposen en els apartats següents:
+\begin{itemize}
+    \item Construir un \textit{pipeline} complet de classificació N0/N1 sobre WSI reals a partir d'embeddings CLS.
+    \item Avaluar estratègies de \textit{pooling} jeràrquic per a la representació global de grafs histopatològics.
+    \item Implementar i comparar mètodes d'agregació MIL a nivell de pacient.
+    \item Explorar l'ús de les màscares d'anotació expert per supervisar l'atenció del model.
+    \item Proporcionar una eina interactiva de visualització i inferència en temps real.
+\end{itemize}
 
-\subsection{Motivació Clínica}
+\section{Dades i Preprocessament}
 
-Aquesta és la força principal que m'empeny a treballar en projectes d'aquest tipus, ja que presenten una utilitat i
-aplicabilitat cada cop més real. Actualment, proliferen les investigacions que demostren el potencial de la IA per
-predir malalties amb una precisió comparable o superior a la dels professionals de la medicina. A més, aquests
-sistemes poden processar milers de mostres de manera constant, sense fatiga ni pèrdua de concentració. Tot i el cert
-escepticisme que poden generar aquestes tecnologies, les dades confirmen la seva capacitat per retenir grans volums
-d'informació i identificar patrons morfològics imperceptibles per a l'ull humà.
-
-\subsection{Motivació Tècnica}
-
-La capacitat d'aquestes tecnologies per processar grans volums de dades simultàniament i interpretar-ne les relacions
-complexes fa que el camp de la Intel·ligència Artificial i, concretament, la Visió per Computador, sigui l'àrea més
-atractiva per a mi dins del Grau en Enginyeria de Dades.
-
-L'assignatura de Grafs, Topologia i Geometria Discreta va ser la que més em va interessar durant la primera meitat del
-grau. Després d'haver cursat Aprenentatge Computacional i Xarxes Neuronals i Aprenentatge Profund, una proposta basada
-en l'ús de \textit{Graph Attention Networks} em va semblar la combinació perfecta entre aquestes disciplines.
-
-Treballar amb dades tan massives (imatges de més de 50.000 píxels de costat) i el repte de reduir-ne la
-dimensionalitat, ja sigui mitjançant la creació de \textit{patches} o les diferents estratègies de
-\textit{graph pooling}, em semblen desafiaments molt estimulants, especialment en l'àmbit de les xarxes neuronals de
-grafs, un camp en el qual desitjava aprofundir.
-
-\section{Dades Disponibles i Preparació del Dataset}
-
-Aquest projecte es realitza en col·laboració amb un equip d'estudiants de la UAB encarregats de diferents etapes del
-\textit{pipeline}: des de la recollida de dades i la creació d'\textit{autoencoders} per a l'extracció de
-característiques, fins a la detecció final de metàstasis.
+Aquest projecte es realitza en col·laboració amb un equip de la UAB que cobreix des de la recollida de dades fins
+a la creació d'autoencoders per a l'extracció de característiques.
 
 \subsection{Imatges de Gran Format (WSI)}
 
-Les dades originals consisteixen en imatges de làmines senceres (WSI) obtingudes mitjançant escàners d'alta resolució
-i tintades amb hematoxilina-eosina. Aquestes imatges s'emmagatzemen en format MIRAX (\textit{.mrxs} i arxius
-\textit{.dat} comprimits) , amb dimensions extremadament elevades que oscil·len entre els 30.000 i els 150.000 píxels
-per costat, que arriben a pesar \textbf{10 GB per arxiu}. Cada làmina pot contenir diverses mostres de teixit
-independents i una quantitat significativa d'espai buit o artefactes (taques de tinta o brutícia) que requereixen un
-tractament previ.
+Les dades originals consisteixen en imatges de làmines senceres (WSI) obtingudes amb escàners d'alta resolució i
+tintades amb hematoxilina-eosina, emmagatzemades en format MIRAX (\textit{.mrxs}). Les dimensions oscil·len entre
+els 30.000 i els 150.000 píxels per costat, amb una quantitat significativa d'espai buit o artefactes que
+requereixen tractament previ.
+
+El conjunt de dades comprèn \textbf{963 grafs}, un per secció histològica (cadascun amb una o diverses components
+connexes), provinents de \textbf{230 pacients} en total. S'aplica una divisió estratificada 80/20 a nivell de
+pacient per evitar la filtració d'informació entre entrenament i validació.
 
 \subsection{Anotacions i Màscares de Segmentació}
 
-La Dra. Eva Musulén, patòloga especialitzada, ha realitzat les etiquetatges a mà alçada mitjançant el programari
-\textit{Labelme} sobre versions reescalades de les imatges ($1/16$ o $1/64$ del tamany original). Aquestes anotacions
-identifiquen tres categories d'afectació:
+La Dra.\ Eva Musulén, patòloga especialitzada, ha realitzat les anotacions manualment amb el programari
+\textit{Labelme}. Aquestes identifiquen tres categories d'afectació:
 
 \begin{itemize}
-    \item \textbf{Infiltració:} Teixit anormal que s'introdueix en zones no corresponents.
-    \item \textbf{Displàsia:} Presència de cèl·lules anormals que poden esdevenir canceroses.
-    \item \textbf{Infiltració + Displàsia:} Emprat en casos de dubte diagnòstic.
+    \item \textbf{Infiltració:} teixit anormal que envaeix zones no corresponents.
+    \item \textbf{Displàsia:} cèl·lules anormals que poden esdevenir canceroses.
+    \item \textbf{Infiltració + Displàsia:} emprat en casos de dubte diagnòstic.
 \end{itemize}
 
-A partir d'aquestes anotacions es generen màscares de segmentació on el fons es representa en negre, el teixit sa en
-gris i les zones afectades en vermell (infiltració), blau (displàsia) o verd clar (combinada).
+A partir d'aquestes s'obtenen màscares de segmentació codificades per color: vermell (infiltració), blau
+(displàsia) i verd clar (combinada).
 
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.45\textwidth]{img/mascara.png}
-    \caption{Exemple de WSI i la seva corresponent màscara de segmentació amb codificació de colors per a infiltració
-    i displàsia.}
+    \caption{Exemple de WSI i la seva corresponent màscara de segmentació.}
     \label{fig-mask}
 \end{figure}
 
 \subsection{Extracció de Patches i Filtratge}
 
-Donada la magnitud de les WSI, s'aplica una tècnica de finestra lliscant (\textit{sliding window}) sense solapament
-per dividir el teixit. Tot i que inicialment es generen unitats de $256 \times 256$ píxels, aquestes s'agrupen per formar
-\textit{patches} de $2048 \times 2048$ píxels per tal d'obtenir una cobertura millor i més contextual de la mostra.
+S'aplica una finestra lliscant (\textit{sliding window}) sense solapament per dividir el teixit en unitats de
+$256 \times 256$ píxels, agrupades en \textit{patches} de $2048 \times 2048$ píxels per obtenir una cobertura
+contextual millor. Per a cada \textit{patch} es calculen metadades de qualitat: percentatge d'àrea afectada,
+nivell de borrositat (via transformada de Fourier) i proporció de teixit no blanc. Només es retenen els
+\textit{patches} que superen els llindars de qualitat establerts.
 
-El procés de selecció és restrictiu: només es generen nodes per a aquelles regions detectades com a teixit en la
-màscara que contenen alguna part d'afectació. Per a cada \textit{patch}, s'extreuen metadades crítiques que permeten
-un filtratge de qualitat posterior:
-\begin{itemize}
-    \item \textbf{Percentatges d'afectació:} Proporció d'àrea amb infiltració o displàsia.
-    \item \textbf{Qualitat visual:} Nivell de borrositat calculat mitjançant la transformada de Fourier per descartar imatges desenfocades.
-    \item \textbf{Contingut de teixit:} Percentatge d'àrea no blanca per evitar \textit{patches} buits.
-\end{itemize}
+\section{Construcció del Graf}
 
-\section{Construcció i Topologia del Graf}
+\subsection{Nodes i característiques}
 
-Un cop extrets els nodes amb característiques, el pas crític és determinar la topologia del graf, és a dir, com
-s’estableixen les connexions (arestes) entre els nodes per formar la matriu d’adjacència.
+Cada \textit{patch} vàlid constitueix un node del graf. No tots els \textit{patches} de la làmina generen un
+node: la màscara de qualitat descarta les regions de fons blanc i les imatges desenfocades. Les característiques
+de cada node són \textit{embeddings} del token \textit{CLS} de 1.536 dimensions generats pel model de fundació
+\textit{UNI2}~\cite{chen2024uni2}, que condensa la informació morfològica i textural d'un \textit{bag} de 256 \textit{patches} de
+$256 \times 256$ píxels. A la subfigura~\ref{fig:patches} es pot observar la distribució esparsa dels
+\textit{patches} extrets sobre una làmina real.
 
-\subsection{Extracció de nodes}
+\subsection{Connectivitat per triangulació de Delaunay}
 
-L’extracció de nodes parteix d’una finestra lliscant (\textit{sliding window}) sense solapament que divideix cada
-imatge WSI en \textit{patches} de $2048 \times 2048$ píxels. Cada \textit{patch} constitueix un node del graf. No obstant
-això, la distribució resultant no és perfectament regular: la màscara de segmentació exclou les regions de fons blanc
-i artefactes, de manera que el conjunt de nodes actius trenca la simetria de la quadrícula inicial. En aquest sentit,
-una connectivitat fixa de tipus reixeta no seria adequada, ja que assumiria una distribució uniforme que la màscara
-invalida. Per aquest motiu, s’aplica una triangulació de Delaunay sobre els nodes restants, que s’adapta orgànicament
-a la distribució irregular resultant.
+Una connectivitat fixa de reixeta no és adequada perquè la màscara exclou regions de fons, trencant la simetria
+de la quadrícula inicial. Per aquest motiu, s'aplica una \textbf{triangulació de Delaunay} sobre els nodes
+restants, que s'adapta orgànicament a distribucions irregulars. A continuació, s'eliminen les arestes que creuen
+píxels de valor zero en la màscara, evitant connexions entre regions separades per espai buit. Finalment,
+s'aplica un criteri de distància màxima: s'eliminen les arestes que superen el doble de la longitud mitjana del
+conjunt (\texttt{DISTANCE\_FACTOR} $= 2{,}0$). La subfigura~\ref{fig:delaunay-real} mostra el resultat sobre
+la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en vermell.
 
-Pel que fa a les característiques de cada node, en aquesta fase inicial s’utilitzen \textit{embeddings} del token
-\textit{CLS} de 1.536 dimensions generats prèviament i proporcionats al inici del projecte. Al llarg del projecte,
-aquests \textit{embeddings} seran substituïts pels que obtinguin els companys de l’equip que treballen en la creació
-d’autoencoders i en la representació de l’espai latent del teixit histopatològic.
-
-\subsection{Distàncies posicionals}
-
-Per la manera com s’extreuen les dades (\textit{sliding window}), s’obtindria inicialment un graf en forma de
-quadrícula en el qual podríem connectar totes les parelles i obtenir una matriu d’adjacència amb distàncies posicionals
-reals. El problema de connectar tots els nodes entre ells sense considerar la morfologia del pòlip és que es poden
-crear connexions entre nodes separats per espais buits (aire), com passa en els extrems d’una forma en «U». Per
-combatre aquest problema, s’aplica primer una màscara binària del teixit que descarta els \textit{patches} invàlids,
-i posteriorment una triangulació de Delaunay sobre els nodes restants.
-
-\subsubsection{Malla Delaunay amb filtratge d’arestes llargues}
-
-El procés comença aplicant una màscara binària sobre la imatge original per retenir únicament els \textit{patches} que
-corresponen a teixit real, eliminant les regions de fons blanc. Sobre el conjunt de nodes resultant s’aplica una
-triangulació de Delaunay, que estableix una connectivitat basada en la proximitat espacial i s’adapta a distribucions
-irregulars de nodes. A continuació, s’aplica un segon criteri de filtratge: s’eliminen totes les arestes la línia de
-les quals travessa píxels de valor zero (negre) en les imatges de màscara de segmentació anotades per la patòloga
-especialista. Això impedeix que el graf connecti regions de teixit que, tot i ser pròximes en coordenades, es troben
-separades per zones de fons. Finalment, s’eliminen també les arestes excessivament llargues mitjançant un criteri de
-distància màxima: es descarten les arestes la longitud de les quals supera el doble de la longitud mitjana del
-conjunt (\texttt{DISTANCE\_FACTOR} $= 2{,}0$), evitant connexions espúries entre zones de teixit no contigus.
-
-\begin{figure}[h]
+\begin{figure*}[h]
     \centering
-    \includegraphics[width=0.45\textwidth]{img/delaunay-demo.png}
-    \caption{Demostració de l’aplicació d’una triangulació de Delaunay en una figura simple. Abans (esquerra) i
-    després (dreta).}
-    \label{delunay-demo}
-\end{figure}
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[height=7.5cm, keepaspectratio]{img/extracted_patches.png}
+        \caption{\textit{Patches} extrets (nodes del graf) superposats sobre la imatge original.}
+        \label{fig:patches}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[height=7.5cm, keepaspectratio]{img/delaunay_graph.png}
+        \caption{Graf de Delaunay sobre la imatge anotada. Les zones verdes indiquen àrees afectades anotades
+        per la patòloga; les arestes en vermell han estat eliminades pel filtratge de màscara.}
+        \label{fig:delaunay-real}
+    \end{subfigure}
+    \caption{Visualització del procés de construcció del graf sobre una làmina real. Les dues imatges corresponen
+    a la mateixa secció histològica i il·lustren com la topologia del graf s'adapta a la distribució irregular
+    del teixit.}
+    \label{fig:patches-delaunay}
+\end{figure*}
 
 \section{Arquitectura del Model}
 
-Més enllà de la definició de l'adjacència, la segona part de la recerca se centra en la metodologia per realitzar el
-\textit{pooling} del graf resultant del procés d'extracció de característiques i atenció. L'objectiu d'aquesta etapa
-és \textbf{reduir la dimensionalitat} de les dades preservant la informació semàntica i estructural més rellevant per
-a la diagnosi.
+\subsection{GATClassifier}
 
-Al final d'aquest \textit{pooling} hi ha una capa de classificació, que transforma l'espai de representació reduït a
-una única sortida que representa el diagnòstic predit.
+El model implementat, \texttt{GATClassifier}, és un classificador de grafs format per tres capes
+\textbf{Graph Attention Network} (\texttt{GATConv}~\cite{veličković2018graphattentionnetworks,fey2019fastgraphrepresentationlearning})
+seguides d'una operació de \textit{pooling} global i un capçal MLP per a la classificació binària N0/N1.
 
-A més del resultat final, es planeja incloure un sistema de representació d'atenció o importància per node o àrea de
-la imatge, recuperant les característiques posicionals del graf original.
+\textbf{Mecanisme d'atenció.} A diferència de les xarxes convolucionals clàssiques sobre grafs que tracten
+tots els veïns d'un node de forma uniforme, GAT aprèn a assignar pesos d'importància diferenciats a cada
+veí. Donada la representació $\mathbf{h}_i \in \mathbb{R}^{F}$ del node $i$, per a cada parella de nodes
+veïns $(i, j)$ es calcula un coeficient d'atenció no normalitzat:
+\begin{equation*}
+  e_{ij} = \text{LeakyReLU}\!\left(\mathbf{a}^{\top}\!\left[\mathbf{W}\mathbf{h}_i \;\|\; \mathbf{W}\mathbf{h}_j\right]\right)
+\end{equation*}
+on $\mathbf{W}$ és una transformació lineal aprenible, $\|$ la concatenació i $\mathbf{a}$ un vector
+d'atenció aprenible. Els coeficients es normalitzen amb \textit{softmax} sobre tots els veïns del node $i$:
+\begin{equation*}
+  \alpha_{ij} = \frac{\exp(e_{ij})}{\displaystyle\sum_{k \in \mathcal{N}(i)} \exp(e_{ik})}
+\end{equation*}
+i la nova representació del node s'obté com la suma ponderada dels veïns:
+\begin{equation*}
+  \mathbf{h}'_i = \sigma\!\left(\sum_{j \in \mathcal{N}(i)} \alpha_{ij}\,\mathbf{W}\mathbf{h}_j\right)
+\end{equation*}
 
-\subsection{Operacions de Readout Global}
+\textbf{Multi-cap.} Per incrementar la capacitat expressiva, cada capa usa $H$ caps d'atenció independents
+les sortides dels quals es concatenen (a les dues primeres capes) o es promitgen (tercera capa). D'aquesta
+manera el model pot capturar múltiples tipus de relació de veïnatge simultàniament. Cada capa va
+seguida de normalització per \textit{batch}, activació ELU i \textit{dropout}.
 
-En el cas d'una única predicció per a un graf sencer (tasca de \textit{graph-level classification}), la pràctica
-habitual consisteix a combinar les representacions dels nodes mitjançant operacions de \textit{readout} globals com
-la mitjana (\textit{mean pooling}) o el valor màxim (\textit{max pooling}). Tanmateix, aquestes tècniques d'agregació
-simple són «agnòstiques a l'estructura», ja que tracten el graf com un conjunt de nodes desconnectats
-(\textit{bag of nodes}), ignorant la topologia i provocant una pèrdua considerable d'informació estructural, la qual
-pot ser crítica per a una diagnosi precisa en histopatologia.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.45\textwidth]{img/gat}
+    \caption{Il·lustració del mecanisme d'atenció en una capa GAT amb tres caps independents (verd, blau,
+    lila). El node central $\vec{h}_1$ agrega les representacions dels seus veïns i la seva pròpia
+    ($\alpha_{11}$, \textit{self-loop}) mitjançant coeficients d'atenció $\alpha_{1j}$ apresos per cada
+    cap. Les sortides dels caps es combinen per concatenació o promig per obtenir la nova representació
+    $\vec{h}'_1$.}
+    \label{fig:gat}
+\end{figure}
 
-\subsection{Pooling Jeràrquic: DiffPool}
+El capçal MLP (\textit{Linear}~$\to$~ReLU~$\to$~\textit{Dropout}~$\to$~\textit{Linear}) transforma la
+representació global del graf en els logits N0/N1.
 
-En els últims anys, s'han desenvolupat tècniques de \textit{pooling} jeràrquic diferenciable com \textbf{DiffPool}
-\cite{ying2019hierarchicalgraphrepresentationlearning}, les quals implementen un sistema de \textit{soft assignment}
-(assignació suau). Aquest mètode aprèn una matriu d'assignació que agrupa els nodes de manera iterativa en clústers o
-«super-nodes» de nivell superior.
+\subsection{Estratègies de Pooling Global}
+
+Per obtenir una representació de tot el graf, les representacions dels nodes s'agreguen amb operacions de
+\textit{readout}. Les opcions implementades inclouen \textit{mean}, \textit{max}, la seva concatenació
+(\texttt{mean\_max}) i una suma ponderada. Tot i la seva eficiència, ignoren la topologia del graf.
+
+\subsection{Pooling Diferenciable: DiffPool}
+
+Per superar les limitacions del \textit{readout} global, s'implementa \textbf{DiffPool}
+\cite{ying2019hierarchicalgraphrepresentationlearning}, que aprèn a agrupar nodes en $K$ clústers
+de nivell superior mitjançant una matriu d'assignació suau (\textit{soft assignment}). En lloc de
+col·lapsar tota la informació en un sol pas, el model captura representacions a \textbf{diferents
+nivells d'abstracció}, des de detalls citològics locals fins a l'organització arquitectònica global.
+L'entrenament incorpora una pèrdua auxiliar (\textit{link prediction} + entropia) per regularitzar
+l'assignació.
 
 \begin{figure*}[h]
     \centering
     \includegraphics[width=0.8\textwidth]{img/hierarchical_pool.png}
-    \caption{Arquitectura del mètode \textit{DiffPool}. Es detalla el procés d'agrupació jeràrquica fins a la
-    representació global final mitjançant matrius d'assignació aprenibles. Font: \cite{ying2019hierarchicalgraphrepresentationlearning}}
+    \caption{Arquitectura de \textit{DiffPool}: agrupació jeràrquica de nodes mitjançant matrius d'assignació
+    aprenibles. Font: \cite{ying2019hierarchicalgraphrepresentationlearning}.}
     \label{fig-diffpool}
 \end{figure*}
 
-En lloc de col·lapsar tota la informació en un sol pas, el model aprèn a representar el graf en
-\textbf{diferents nivells d'abstracció}. Això permet al sistema capturar tant les anomalies citològiques locals com
-l'organització arquitectònica del teixit a gran escala. No obstant això, DiffPool presenta una complexitat
-computacional de $O(N^2)$, el que limita la seva aplicació en grafs de gran escala.
-
-\subsection{Selecció Basada en Atenció: \textit{SAGPool}}
-
-Com a alternativa eficient als mètodes densos, els mecanismes de \textit{sparse pooling} com \textbf{SAGPool}
-(Self-Attention Graph Pooling) \cite{lee2019selfattentiongraphpooling} utilitzen una GNN interna per calcular
-puntuacions d'atenció per a cada node. En lloc de fusionar nodes, el mètode selecciona els $K$ nodes més rellevants
-(Top-$K$) segons la seva topologia i característiques.
-
-\begin{figure*}[h]
-    \centering
-    \includegraphics[width=0.8\textwidth]{img/sagpool.png}
-    \caption{Esquema de \textit{SAGPool}. El mecanisme d'atenció permet filtrar els nodes menys informatius, mantenint
-    l'estructura esparsa del graf original. Font: \cite{lee2019selfattentiongraphpooling}}
-    \label{fig-sagpool}
-\end{figure*}
-
-Aquest enfocament no només és més lleuger computacionalment, sinó que facilita la interpretabilitat clínica en permetre
-visualitzar quines regions del teixit han estat seleccionades com a determinants per a la classificació.
-
-\subsection{Contracció d'Arestes i Mètodes Espectrals}
-
-Dins de les tècniques que operen sobre l'estructura d'adjacència, destaquen:
-
-\begin{itemize}
-    \item \textbf{EdgePool:} Proposa la reducció del graf mitjançant la contracció d'arestes. El model aprèn quins
-    \item parells de nodes adjacents han de fusionar-se, mimetitzant la jerarquia natural del teixit (de cèl·lules a
-    \item estructures funcionals) sense perdre la connectivitat local.
-    \item \textbf{MinCutPool:} Utilitza una formulació diferenciable del problema de «tall mínim» (\textit{min-cut})
-    \item de la teoria de grafs. Aquest mètode optimitza l'agrupament minimitzant la pèrdua d'informació de les arestes
-    \item tallades, oferint una major estabilitat matemàtica en comparació amb l'assignació de DiffPool.
-\end{itemize}
-
-\subsection{Marc Conceptual i Eficiència}
-
-Segons el marc conceptual de Grattarola \cite{Grattarola_2024}, el \textit{pooling} es pot descomposar en tres
-funcions: selecció, reducció i connexió. Això ens permet explorar mètodes «no entrenables» basats en la posició
-espacial real dels nodes (com les coordenades en una imatge histològica). A diferència del \textit{pooling} dens,
-aquests mètodes consumeixen molta menys memòria i són més eficaços per preservar els detalls i l'estructura original
-del teixit, evitant la sobreparametrització en les etapes inicials de l'entrenament.
+Com a alternativa, \textbf{SAGPool} \cite{lee2019selfattentiongraphpooling} proposa un enfocament esparç que
+selecciona els $K$ nodes més rellevants via puntuacions d'auto-atenció, descartant la resta i preservant
+l'estructura topològica original. A diferència de DiffPool, SAGPool no aprèn assignacions suaus sinó
+seleccions discretes, amb un cost computacional menor però sense la capacitat de capturar representacions
+jeràrquiques continues. En aquest projecte s'utilitza DiffPool per la seva major expressivitat i la
+possibilitat d'integrar la pèrdua auxiliar de regularització.
 
 \section{Metodologia}
 
-Per tal de treballar eficientment i donada la naturalesa d'equip d'aquest projecte, es faran reunions periòdiques,
-tant amb la tutora com amb els alumnes involucrats, per a una major sincronia i per evitar incongruències. Es tracta
-de construir un sol projecte format per parts que es connecten entre si, ja sigui mitjançant dependències o obrint
-camins alternatius per provar el màxim nombre de tècniques possible.
+\subsection{Agregació per Pacient (MIL)}
 
-En el meu cas, depenc de la creació d'un \textit{autoencoder} per part d'altres companys, per la qual cosa al principi
-treballaré amb dades provisionals o sintètiques. A mesura que avanci la recerca, entrenaré el model amb
-característiques més properes a l'entorn real, fet que permetrà desenvolupar un model amb un millor ajust i una major
-precisió.
+El diagnòstic és per \textbf{pacient}, no per làmina. Una mateixa secció histològica pot no presentar senyals
+visibles de metàstasi si s'analitza aïlladament, mentre que en una altra secció del mateix pacient sí que és
+apreciable. Si s'entrena a nivell de làmina, les seccions N1 de pacients N1 que no mostren metàstasi visible
+reben un senyal de supervisió incorrecte (N0), contaminant l'entrenament.
 
-\section{Implementació}
+Per solucionar-ho, s'adopta un paradigma d'\textbf{aprenentatge per múltiples instàncies}
+(\textit{Multiple Instance Learning}, MIL) \cite{ilse2018attentionbaseddeepmultipleinstance}: cada pacient és
+un \textit{bag} i les seves làmines (instàncies) comparteixen l'etiqueta del \textit{bag}. El model aprèn a
+classificar el \textit{bag} a partir de les instàncies.
 
-El codi font d'aquest projecte es troba en el següent repositori de GitHub \cite{morillo2026codi}. La implementació
-s'estructura en un conjunt de scripts Python que cobreixen des de la càrrega de dades fins a l'entrenament del model.
+Donades les probabilitats $\{p_i = P(\text{N1}_i)\}_{i=1}^{S}$ de les $S$ làmines d'un pacient, s'implementen
+les estratègies d'agregació següents:
 
-\subsection{Descripció dels scripts}
+\begin{itemize}
+    \item \textbf{Noisy-OR} (per defecte): $P(\text{N1}_{p}) = 1 - \prod_{i=1}^{S}(1 - p_i)$. Modela la
+    hipòtesi que n'hi ha prou que una làmina presenti metàstasi per classificar el pacient com N1.
+    \item \textbf{Max}: $P(\text{N1}_{p}) = \max_i\, p_i$. Predicció conservadora basada en l'evidència
+    màxima.
+    \item \textbf{Mean / LSE}: mitjana aritmètica o \textit{log-sum-exp} per als casos intermedis.
+    \item \textbf{Attention MIL}: \texttt{PatientAggregator} basat en l'atenció \textit{gated} de Ilse et
+    al.\ \cite{ilse2018attentionbaseddeepmultipleinstance}. Aprèn un pes d'atenció per a cada làmina a
+    partir del seu embedding (produït per l'encoder del GAT sense el capçal MLP), i la representació del
+    pacient s'obté com la suma ponderada dels embeddings de les seves làmines.
+\end{itemize}
 
-\texttt{graph\_utils.py} conté les utilitats compartides de construcció del graf. A partir d'un conjunt de coordenades
-de nodes, aplica una \textit{triangulació de Delaunay} i filtra les arestes la longitud de les quals supera el doble
-de la longitud mitjana (factor $2{,}0\times$, constant \texttt{DISTANCE\_FACTOR}). El mòdul proporciona també la conversió
-al format \texttt{edge\_index} bidireccional de \textit{PyTorch Geometric} i una funció d'exportació del graf en format
-\texttt{.pt} amb \textit{placeholders} aleatoris de 1.536 dimensions.
+\subsection{Desbalanceig de Classes}
 
-\texttt{wsi\_io.py} centralitza tota la lògica d'entrada/sortida del conjunt de dades. Localitza els directoris de
-\textit{patches}, imatges RGB i màscares de segmentació, carrega els metadades per
-\textit{patch} —coordenades $(i, j)$, \texttt{blurriness} i \texttt{non\_white\_area}— des de fitxers CSV per hospital,
-i llegeix les etiquetes de metàstasi (N0/N1) des d'un fitxer Excel diagnòstic, descartant els casos NX. No obstant
-això, la funció principal del mòdul és la càrrega dels fitxers \textit{.npz} amb els \textit{embeddings} CLS de
-\textit{UNI2} i les coordenades de cada \textit{bag} de 256 \textit{patches}.
+El conjunt de dades presenta un fort desbalanceig: els casos N0 superen àmpliament els N1 (proporció aproximada
+80/20). Per combatre-ho s'apliquen tres mesures complementàries.
 
-\texttt{build\_dataset.py} construeix el conjunt de dades de grafs per a l'entrenament en quatre fases. En primer lloc,
-uneix les dades \textit{.npz} amb les etiquetes i genera un índex de seccions vàlides (mínim de 3
-\textit{bags} per secció). En segon lloc, realitza una divisió estratificada 80/20 a nivell de pacient per evitar
-filtracions de dades entre conjunts. Posteriorment, construeix un objecte \texttt{torch\_geometric.data.Data} per a
-cada secció —amb \textit{embeddings} CLS reals com a característiques dels nodes, posicions centroide i connectivitat
-Delaunay— i l'exporta com a fitxer \texttt{.pt}. Finalment, genera fitxers d'índex CSV per als conjunts d'entrenament
-i validació.
+\textbf{(1) Divisió estratificada.} La partició entrenament/validació (80/20) es realitza de forma
+estratificada a nivell de pacient: s'assegura que la proporció N0/N1 sigui equivalent en ambdós subconjunts.
+Sense estratificació, amb un conjunt petit i desbalancejat, el conjunt de validació podria contenir per
+atzar una proporció de N1 molt diferent a la real, invalidant les mètriques.
 
-\texttt{delaunay\_vis.py} genera una visualització del graf de Delaunay sobre una làmina WSI. A partir dels metadades
-CSV, carrega fins a un màxim configurable de \textit{patches} de $2048 \times 2048$ píxels d'un pacient i làmina
-seleccionats, construeix el graf de Delaunay i renderitza un panell doble: a l'esquerra la reconstrucció de la làmina
-i a la dreta el graf superposat sobre la màscara de segmentació o la imatge RGB. Les arestes eliminades pel filtratge
-de màscara es mostren en vermell. El resultat s'exporta com a imatge PNG i el graf com a fitxer \texttt{.pt}.
+\textbf{(2) Pesos de classe.} S'apliquen pesos balancejats $w_c = N / (C \cdot n_c)$, on $n_c$ és el
+nombre de pacients de la classe $c$, incorporats directament a la funció de pèrdua BCE. Així, cada error
+sobre un cas N1 té més pes en el gradient que un error sobre N0, penalitzant més els falsos negatius.
 
-\texttt{generate\_graph.py} és un script auxiliar de prova que genera un graf sintètic totalment connectat amb nodes
-distribuïts en cercle amb soroll gaussià. Accepta per arguments el nombre de nodes, la dimensió de les característiques
-i la llavor aleatòria, i exporta el graf en format JSON. Cal destacar que aquest script serveix per verificar el
-funcionament del model GAT sense necessitat de dades reals.
+\textbf{(3) Mostratge ponderat per \textit{batch}.} Durant l'entrenament s'utilitza un
+\textit{WeightedRandomSampler} que assigna a cada pacient una probabilitat de mostratge inversament
+proporcional a la freqüència de la seva classe. Això garanteix que cada \textit{mini-batch} contingui una
+proporció equilibrada de casos N0 i N1, evitant que el model vegi gairebé exclusivament N0 durant molts
+\textit{batches} consecutius.
 
-\texttt{gat\_model.py} implementa des de zero, sense \textit{PyTorch Geometric}, una capa d'atenció sobre grafs
-(\textit{GAT Layer}) i un model GAT de dues capes, i les aplica al graf JSON generat per \texttt{generate\_graph.py}.
-Inclou múltiples estratègies de \textit{pooling} global (\textit{max}, \textit{mean}, \textit{sum}, \textit{top-k} i
-jeràrquic per \textit{k-means}) que permeten comparar empíricament la norma de l'incrustació resultant. El script
-entrena el model a nivell de node i genera una figura amb la corba de pèrdua i la comparació de \textit{poolings}.
+\subsection{Grid Search i Configuració d'Entrenament}
 
-\texttt{train.py} és l'script principal d'entrenament del model final. Carrega els grafs \texttt{.pt} generats per
-\texttt{build\_dataset.py} i entrena un classificador GAT de tres capes (\textit{GATConv}) amb
-\textit{batch normalization} i un capçal MLP per a la classificació binària N0/N1. El \textit{pooling} emprat concatena
-\texttt{global\_mean\_pool} i \texttt{global\_max\_pool} per obtenir una representació global del graf. L'entrenament
-inclou precisió mixta (\textit{AMP}), pesos de classe invers-freqüència, un mostreig balancejat
-(\textit{WeightedRandomSampler}), aturada primerenca i un planificador de taxa d'aprenentatge cosinus. Les mètriques
-(AUC, F1, precisió i \textit{recall} per a N0 i N1) es registren a \textit{Weights \& Biases} i el millor model es desa
-com a \textit{checkpoint}.
+S'ha dut a terme un \textit{grid search} amb múltiples hiperparàmetres variables: \textit{hidden units}, nombre
+de caps d'atenció, tipus de \textit{pooling}, mètode d'agregació MIL, nombre de clústers DiffPool,
+\textit{dropout} i \textit{weight decay}. Cada combinació d'hiperparàmetres genera una \textit{run} independent
+amb mètriques registrades a \textit{Weights \& Biases}. El millor model per AUC de validació es desa com a
+\textit{checkpoint}. L'entrenament inclou \textit{early stopping} amb 15 epochs de \textit{warm-up} i
+\textit{patience} de 10, basant el criteri d'aturada en la pèrdua de validació.
 
-\subsection{Diagrama de flux del pipeline}
+\subsection{Atenció Supervisada amb Màscares}
 
-La figura~\ref{fig:pipeline} mostra el flux complet del sistema, des del processament de les imatges originals fins a
-la predicció final. Els blocs en blau representen les contribucions pròpies d'aquest TFG, mentre que els blocs en gris
-corresponen a les etapes realitzades pels companys de l'equip.
+Una línia d'investigació planificada és l'ús de les màscares binàries d'anotació expert (displàsia, infiltració)
+per supervisar els pesos d'atenció del model GAT. L'objectiu és que les regions anotades amb patologia actuïn com
+a guia de supervisió feble, forçant el model a focalitzar l'atenció sobre les àrees d'interès clínic
+independentment de l'etiqueta N0/N1 final. Això permetria aprofitar les anotacions disponibles més enllà del
+diagnòstic binari, afegint un senyal de regularització espacialment informat.
+
+\section{Resultats Preliminars}
+
+El \textit{grid search} inicial ha identificat un model candidat amb els hiperparàmetres de la
+Taula~\ref{tab:hparams}. Les mètriques de validació a nivell de pacient es presenten a la
+Taula~\ref{tab:metrics} i la Taula~\ref{tab:cm}.
+
+\begin{table}[h]
+\centering
+\caption{Hiperparàmetres del model candidat.}
+\label{tab:hparams}
+\small
+\begin{tabular}{lc}
+\toprule
+\textbf{Paràmetre} & \textbf{Valor} \\
+\midrule
+\textit{Hidden} ($d_h$) & 128 \\
+Caps d'atenció ($H$) & 2 \\
+\textit{Pooling} & \textit{diff} \\
+Clústers DiffPool ($K$) & 5 \\
+\textit{Dropout} & 0{,}5 \\
+Agregació pacient & \textit{mean} \\
+Millor epoch & 34 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Mètriques de validació del model candidat. AUC: \textbf{0{,}846}.}
+\label{tab:metrics}
+\small
+\begin{tabular}{lccc}
+\toprule
+ & \textbf{N0} & \textbf{N1} & \textbf{Mitjana} \\
+\midrule
+Precisió  & 0{,}867 & 0{,}625 & 0{,}746 \\
+Recall    & 0{,}813 & 0{,}714 & 0{,}763 \\
+F1-Score  & 0{,}839 & 0{,}667 & 0{,}753 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Matriu de confusió (validació, nivell de pacient).}
+\label{tab:cm}
+\small
+\begin{tabular}{cc|cc}
+\toprule
+& & \multicolumn{2}{c}{\textbf{Predicció}} \\
+& & \textbf{N0} & \textbf{N1} \\
+\midrule
+\multirow{2}{*}{\textbf{Real}}
+  & N0 & \cellcolor{green!20}26 & \cellcolor{red!15}4 \\
+  & N1 & \cellcolor{red!15}4  & \cellcolor{green!20}10 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+L'AUC de 0{,}846 sobre 44 pacients de validació (30 N0, 14 N1) és un resultat prometedor tenint en compte el
+desbalanceig de classes i la dificultat intrínseca del problema. El model mostra una millor capacitat de
+discriminació per a N0 (recall 0{,}813) que per a N1 (recall 0{,}714), fet esperable per la menor representació
+dels casos positius. Cal destacar que tan sols 4 falsos positius i 4 falsos negatius sobre 44 pacients indiquen
+un bon potencial clínic.
+
+\section{Implementació i Frontend}
+
+La implementació segueix un disseny modular: la construcció de grafs, el model, el codi d'entrenament i els
+\textit{data loaders} estan desacoblats per facilitar l'experimentació independent. La configuració
+d'hiperparàmetres es gestiona via fitxer YAML, on qualsevol paràmetre pot ser una llista per activar el
+\textit{grid search} automàtic. El repositori és accessible a \cite{morillo2026codi} i el desplegament al
+servidor CVC es gestiona via GitHub Actions amb un \textit{runner self-hosted}.
+
+\subsection{Frontend Web Interactiu}
+
+S'ha desenvolupat un \textit{frontend} web (FastAPI + JavaScript pur, sense \textit{build step}) per facilitar
+l'exploració dels models entrenats. Les funcionalitats principals inclouen:
+
+\begin{itemize}
+    \item \textbf{Inferència en temps real}: selecció de pacient o làmina, \textit{forward pass} al model actiu
+    i visualització del resultat N0/N1 amb la descomposició per làmina.
+    \item \textbf{Visualització de l'atenció}: representació del graf de Delaunay sobre la làmina, amb nodes
+    colorejats per pes d'atenció (capes GATConv) i visualització dels \textit{patches} RGB originals.
+    \item \textbf{Estadístiques}: corbes ROC i PR, matriu de confusió i mètriques per classe sobre el conjunt
+    de validació.
+    \item \textbf{Selecció de checkpoint}: comparació entre múltiples models entrenats.
+\end{itemize}
+
+La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 
 \begin{figure*}[h]
 \centering
@@ -484,16 +513,22 @@ corresponen a les etapes realitzades pels companys de l'equip.
 \node[own, below=1.7cm of coo] (g1) {GATConv 1\\+ BN};
 \node[own, right=of g1]        (g2) {GATConv 2\\+ BN};
 \node[own, right=of g2]        (g3) {GATConv 3\\+ BN};
-\node[own, right=of g3]        (po) {\textit{Pooling}\\mult. estrat.};
+\node[own, right=of g3]        (po) {\textit{Pooling}\\jeràrquic};
 \node[own, right=of po]        (ml) {MLP};
-\node[own, right=of ml]        (pr) {N0\,/\,N1};
+\node[own, right=of ml]        (pr) {P(N1)\\làmina};
 \draw[arr] (g1)--(g2); \draw[arr] (g2)--(g3);
 \draw[arr] (g3)--(po); \draw[arr] (po)--(ml); \draw[arr] (ml)--(pr);
 \draw[arr] (gra.south) to[out=255,in=90] (g1.north);
 
+%% --- Agregació pacient ---
+\node[own, below=1.0cm of ml]  (agg)  {Agregació\\MIL pacient};
+\node[own, right=of agg]       (diag) {N0\,/\,N1\\pacient};
+\draw[arr] (pr.south) to[out=270,in=30] node[right, font=\scriptsize] {${\times}S$} (agg.north east);
+\draw[arr] (agg)--(diag);
+
 %% --- Validació ---
-\node[ext, below=0.8cm of pr] (exc) {Excel\\(\textit{ground truth})};
-\draw[arr] (exc.north)--(pr.south);
+\node[ext, below=0.8cm of diag] (exc) {Excel\\(\textit{ground truth})};
+\draw[arr] (exc.north)--(diag.south);
 
 %% --- Etiquetes de carril ---
 \node[lbl, left=0.25cm of wsi, anchor=east]
@@ -504,10 +539,10 @@ corresponen a les etapes realitzades pels companys de l'equip.
     {\footnotesize Model i\\classificació};
 
 \end{tikzpicture}
-\caption{Diagrama de flux del \textit{pipeline} complet. Els blocs en blau (vora gruixuda) representen les
-contribucions pròpies d'aquest TFG; els blocs en gris corresponen a etapes realitzades pels companys de l'equip. Cal
-destacar que el bloc \textit{Pooling} és un eix central de la recerca: s'avaluen múltiples estratègies per determinar
-quina preserva millor l'estructura global del teixit per a la classificació N0/N1.}
+\caption{Diagrama de flux del \textit{pipeline} complet. Blocs en gris: etapes realitzades pels companys de
+l'equip. Blocs en blau (vora gruixuda): contribucions pròpies d'aquest TFG. La fletxa marcada amb ${\times}S$
+indica que les $S$ làmines d'un pacient es processen independentment i les seves probabilitats P(N1) s'agreguen
+via MIL per obtenir el diagnòstic final a nivell de pacient.}
 \label{fig:pipeline}
 \end{figure*}
 

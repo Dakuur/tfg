@@ -25,4 +25,5 @@ export const API = {
   reload:          ()                    => _req("POST", "/api/reload"),
   checkpoints:     ()                    => _req("GET",  "/api/checkpoints"),
   selectModel:     (name)               => _req("POST", "/api/select_model", { name }),
+  nodeScores:      (graphId, method)    => _req("POST", "/api/node_scores",   { graph_id: graphId, method }),
 };

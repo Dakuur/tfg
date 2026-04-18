@@ -1,12 +1,115 @@
 import { API } from "../api.js";
 import { renderGraph } from "../components/graphViz.js";
 
-let _patients    = [];
-let _filtered    = [];
-let _selectedPid = null;
-let _result      = null;   // patient-level result
-let _debugMode   = false;
-let _vizGraphId  = null;   // which slide is currently shown in viz
+// Set to true to re-enable the WSI background image behind the graph.
+// Requires the server to have the *_low.jpg files available.
+const SHOW_WSI_BACKGROUND = false;
+
+let _patients      = [];
+let _filtered      = [];
+let _selectedPid   = null;
+let _result        = null;   // patient-level result
+let _debugMode     = false;
+let _vizGraphId    = null;   // which slide is currently shown in viz
+
+// Viz state — cached between mode switches to avoid re-fetching graph data
+let _vizData       = null;   // full inference result of the current slide
+let _vizMode       = "attention_l3";
+let _vizBgImageUrl = null;
+let _vizWsiExtent  = null;
+let _vizSlideInfo  = null;
+
+// ── Viz mode definitions ───────────────────────────────────────────────────────
+const VIZ_MODES = {
+  attention_l3:  {
+    label: "Atenció L3",
+    desc:  "Atenció GAT capa 3 — atenció agregada que rep cada node dels seus veïns en la capa de sortida.",
+  },
+  attention_all: {
+    label: "Atenció ∑",
+    desc:  "Atenció GAT agregada de totes les capes (ponderació 20/30/50%) — visió global del flux d'informació.",
+  },
+  gradcam: {
+    label: "GradCAM",
+    desc:  "Gradient del logit N1 respecte als embeddings. Alta puntuació = node que influeix directament en la predicció de metàstasi.",
+  },
+  leave_one_out: {
+    label: "Leave-one-out",
+    desc:  "Caiguda de P(N1) en eliminar cada node. Identifica els nodes sense els quals el model deixa de detectar metàstasi.",
+  },
+};
+
+function _getLocalScores(viz, mode) {
+  const l3 = viz.attention?.layer3?.node_attention;
+  if (!l3) return null;
+  if (mode === "attention_l3") return l3;
+  if (mode === "attention_all") {
+    const n  = l3.length;
+    const l1 = viz.attention?.layer1?.node_attention ?? new Array(n).fill(0);
+    const l2 = viz.attention?.layer2?.node_attention ?? new Array(n).fill(0);
+    const raw = l3.map((v, i) => 0.2 * l1[i] + 0.3 * l2[i] + 0.5 * v);
+    const mx  = Math.max(...raw, 1e-9);
+    return raw.map(v => v / mx);
+  }
+  return null;  // gradcam / leave_one_out require server call
+}
+
+function _reRenderGraph(container, scores) {
+  const svgContainer = container.querySelector("#graph-svg-container");
+  if (!svgContainer || !_vizData) return;
+  const attn3 = _vizData.attention?.layer3;
+  renderGraph(svgContainer, {
+    edge_index:     _vizData.edge_index,
+    node_positions: _vizData.node_positions,
+    num_nodes:      _vizData.num_nodes,
+    feature_norms:  _vizData.feature_norms,
+  }, {
+    nodeAttention: scores,
+    edgeAttention: attn3 ? { edge_index: attn3.edge_index, weights_mean: attn3.weights_mean } : null,
+    height:        440,
+    slideInfo:     _vizSlideInfo,
+    bgImageUrl:    _vizBgImageUrl,
+    wsiExtent:     _vizWsiExtent,
+  });
+}
+
+function _setModeUI(container, mode) {
+  container.querySelectorAll(".viz-mode-btn").forEach(b =>
+    b.classList.toggle("active", b.dataset.mode === mode)
+  );
+  const descEl = container.querySelector("#viz-mode-desc");
+  if (descEl) descEl.textContent = VIZ_MODES[mode]?.desc ?? "";
+}
+
+async function _applyVizMode(container, mode) {
+  if (!_vizData) return;
+  _vizMode = mode;
+  _setModeUI(container, mode);
+
+  // Disable buttons while computing
+  const btns      = container.querySelectorAll(".viz-mode-btn");
+  const computing = container.querySelector("#viz-mode-computing");
+  let scores = _getLocalScores(_vizData, mode);
+
+  if (!scores) {
+    btns.forEach(b => b.disabled = true);
+    if (computing) computing.style.display = "";
+    try {
+      const res = await API.nodeScores(_vizGraphId, mode);
+      scores = res.scores;
+    } catch (e) {
+      // Fallback to attention_l3 on error
+      scores = _getLocalScores(_vizData, "attention_l3");
+      _vizMode = "attention_l3";
+      _setModeUI(container, "attention_l3");
+    } finally {
+      btns.forEach(b => b.disabled = false);
+      if (computing) computing.style.display = "none";
+    }
+  }
+
+  _reRenderGraph(container, scores);
+}
 
 export async function renderInference(container, debugMode = false) {
   _debugMode = debugMode;
@@ -103,10 +206,21 @@ function buildLayout() {
         <span id="viz-slide-label" style="font-size:12px;color:var(--text3);margin-left:8px"></span>
         <span id="viz-loading" style="display:none;font-size:11px;color:var(--accent-light);margin-left:8px">carregant…</span>
       </div>
-      <div style="margin-bottom:8px;font-size:12px;color:var(--text3)">
+      <div style="margin-bottom:6px;font-size:12px;color:var(--text3)">
         <i data-lucide="info" style="width:13px;height:13px;vertical-align:middle"></i>
         Clic sobre un node per veure el patch d'histopatologia · Scroll per zoom
       </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+        <span style="font-size:11.5px;color:var(--text3);white-space:nowrap">Coloració nodes:</span>
+        <div id="viz-mode-selector" style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="viz-mode-btn active" data-mode="attention_l3">Atenció L3</button>
+          <button class="viz-mode-btn" data-mode="attention_all">Atenció ∑</button>
+          <button class="viz-mode-btn" data-mode="gradcam">GradCAM</button>
+          <button class="viz-mode-btn" data-mode="leave_one_out">Leave-one-out</button>
+        </div>
+        <span id="viz-mode-computing" style="display:none;font-size:11px;color:var(--accent-light)">calculant…</span>
+      </div>
+      <div id="viz-mode-desc" style="font-size:11px;color:var(--text3);margin-bottom:10px"></div>
       <div class="two-col" style="align-items:start">
         <div>
           <div class="graph-viz-wrap" id="graph-svg-container" style="height:440px"></div>
@@ -131,6 +245,14 @@ function attachEvents(container) {
   container.querySelector("#split-filter").addEventListener("change",   () => applyFilters(container));
   container.querySelector("#label-filter").addEventListener("change",   () => applyFilters(container));
   container.querySelector("#run-btn").addEventListener("click",         () => runInference(container));
+
+  // Viz mode selector — event delegation so it survives slide switches
+  container.querySelector("#viz-mode-selector")?.addEventListener("click", e => {
+    const btn = e.target.closest(".viz-mode-btn");
+    if (!btn || btn.disabled) return;
+    const mode = btn.dataset.mode;
+    if (mode && mode !== _vizMode) _applyVizMode(container, mode);
+  });
 }
 
 function applyFilters(container) {
@@ -387,10 +509,15 @@ async function renderGraphViz(container, r) {
 }
 
 async function _drawViz(container, viz, graphId) {
-  const vizLabel     = container.querySelector("#viz-slide-label");
-  const vizLoading   = container.querySelector("#viz-loading");
-  const svgContainer = container.querySelector("#graph-svg-container");
-  const meta         = container.querySelector("#graph-meta-card");
+  // Cache viz state for mode switching without re-fetching
+  _vizData       = viz;
+  _vizMode       = "attention_l3";
+  _vizBgImageUrl = null;
+  _vizWsiExtent  = null;
+
+  const vizLabel   = container.querySelector("#viz-slide-label");
+  const vizLoading = container.querySelector("#viz-loading");
+  const meta       = container.querySelector("#graph-meta-card");
 
   if (vizLabel)   vizLabel.textContent = `(slide: ${(graphId || "").split("/").pop()})`;
   if (vizLoading) vizLoading.style.display = "none";
@@ -408,9 +535,7 @@ async function _drawViz(container, viz, graphId) {
     ctx.fillRect(0, 0, 120, 14);
   }
 
-  const attn3 = viz.attention?.layer3;
-
-  const slideInfo = {
+  _vizSlideInfo = {
     hospital:   viz.hospital   || "",
     patient_id: viz.patient_id || "",
     slide_id:   viz.slide_id   || "",
@@ -419,18 +544,16 @@ async function _drawViz(container, viz, graphId) {
     patch_i:    viz.patch_i,
   };
 
-  // Fetch slide metadata (WSI extent) for background alignment
-  let wsiExtent  = null;
-  let bgImageUrl = null;
-  let bgError    = null;
-  if (graphId) {
+  // Fetch slide metadata (WSI extent) for background alignment.
+  // Skipped when SHOW_WSI_BACKGROUND is false — set it to true to re-enable.
+  let bgError = null;
+  if (SHOW_WSI_BACKGROUND && graphId) {
     try {
       const sm = await API.slideMeta(graphId);
       if (sm.has_bg) {
-        bgImageUrl = `/api/slide_bg/${encodeURIComponent(graphId)}`;
-        if (sm.j_base != null) {
-          wsiExtent = { j_base: sm.j_base, i_base: sm.i_base, w: sm.w, h: sm.h };
-        }
+        _vizBgImageUrl = `/api/slide_bg/${encodeURIComponent(graphId)}`;
+        if (sm.j_base != null)
+          _vizWsiExtent = { j_base: sm.j_base, i_base: sm.i_base, w: sm.w, h: sm.h };
       } else {
         const sid = (graphId || "").split("/").pop().replace(/\.pt$/, "");
         bgError = `Imatge de fons no disponible: no s'ha trobat <em>${sid}_low.jpg</em>`;
@@ -440,23 +563,15 @@ async function _drawViz(container, viz, graphId) {
     }
   }
 
-  renderGraph(svgContainer, {
-    edge_index:     viz.edge_index,
-    node_positions: viz.node_positions,
-    num_nodes:      viz.num_nodes,
-    feature_norms:  viz.feature_norms,
-  }, {
-    nodeAttention: attn3?.node_attention,
-    edgeAttention: attn3 ? { edge_index: attn3.edge_index, weights_mean: attn3.weights_mean } : null,
-    height:    440,
-    slideInfo,
-    bgImageUrl,
-    wsiExtent,
-  });
+  // Reset mode selector to attention_l3
+  _setModeUI(container, "attention_l3");
+
+  // Initial render with layer-3 attention scores
+  _reRenderGraph(container, _getLocalScores(viz, "attention_l3"));
 
   const bgStatusHtml = bgError
     ? `<div class="stat-row"><span class="stat-key">Imatge fons</span><span class="stat-val" style="color:var(--red);font-size:11px">${bgError}</span></div>`
-    : bgImageUrl
+    : _vizBgImageUrl
       ? `<div class="stat-row"><span class="stat-key">Imatge fons</span><span class="stat-val" style="color:var(--green)">✓ _low.jpg</span></div>`
       : "";
 

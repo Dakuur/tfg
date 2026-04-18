@@ -6,7 +6,7 @@
 
 set -e
 PORT=${1:-8000}
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 # Detectar entorno virtual

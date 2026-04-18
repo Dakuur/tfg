@@ -32,16 +32,12 @@ jobs:
           pip install -r requirements.txt
           pip install fastapi "uvicorn[standard]"
 
-      - name: 4. Aturar alive_test anterior
-        run: |
-          pkill -f alive_test.py || true
-
-      - name: 5. Reiniciar frontend
+      - name: 4. Reiniciar frontend
         run: |
           # Matar qualsevol uvicorn nohup que pugui estar ocupant el port
           pkill -f "uvicorn frontend.main" || true
           sleep 1
-          # Intenta via systemd (si setup_service.sh s'ha executat manualment)
+          # Intenta via systemd (si frontend/setup_service.sh s'ha executat manualment)
           if sudo systemctl restart histogat-frontend 2>/dev/null; then
             echo "✅ histogat-frontend reiniciat via systemd"
             systemctl is-active histogat-frontend || true
@@ -49,7 +45,7 @@ jobs:
             # Fallback: nohup (fins que es configuri el servei systemd)
             echo "⚠️  systemd no disponible — usant nohup com a fallback"
             echo "   Per activar el servei persistent, executa al servidor:"
-            echo "   sudo bash scripts/setup_service.sh"
+            echo "   sudo bash frontend/setup_service.sh"
             pkill -f "uvicorn frontend.main" || true
             sleep 1
             source venv/bin/activate
@@ -65,22 +61,9 @@ jobs:
             fi
           fi
 
-      - name: 6. Executar alive_test
+      - name: 5. Verificar entorn Python
         run: |
           source venv/bin/activate
-          export RUNNER_TRACKING_ID=0
-          nohup python -u alive_test.py > log.txt 2>&1 &
-
-      - name: 7. Verificar Estat de l'Arrencada
-        run: |
-          sleep 5
-          if pgrep -f alive_test.py > /dev/null; then
-            echo "✅ alive_test s'està executant correctament."
-            tail -n 10 log.txt
-          else
-            echo "❌ ERROR: alive_test ha fallat en arrencar."
-            cat log.txt
-            exit 1
-          fi
+          python -c "import torch; from torch_geometric.data import Data; device = 'cuda' if torch.cuda.is_available() else 'cpu'; print(f'torch={torch.__version__}, device={device}, pyg OK')"
           echo ""
           echo "Frontend URL: http://$(hostname -I | awk '{print $1}'):8000"

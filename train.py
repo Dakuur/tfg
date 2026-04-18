@@ -14,9 +14,16 @@ Prerequisites:
     wandb login                        # authenticate once
 
 Usage:
+    # Single run / grid search (lists in YAML → all combinations)
     python train.py
     python train.py --config configs/default.yaml
     python train.py --config configs/default.yaml --run_name exp_01
+
+    # W&B Sweep — Bayesian hyperparameter search
+    python train.py --sweep                              # create new sweep + run 1 agent
+    python train.py --sweep --sweep_count 5             # create sweep + run 5 trials
+    python train.py --sweep_id <id>                     # join existing sweep (1 trial)
+    python train.py --sweep_id <id> --sweep_count 10   # join existing sweep (10 trials)
 """
 
 import argparse
@@ -48,6 +55,7 @@ from scripts.training import (  # noqa: E402
 )
 
 DEFAULT_CONFIG = ROOT / "configs" / "default.yaml"
+DEFAULT_SWEEP  = ROOT / "configs" / "sweep.yaml"
 
 
 # ── config helpers ─────────────────────────────────────────────────────────────
@@ -102,32 +110,57 @@ def resolve_run_name(base: str | None, varied: dict, idx: int, n_combos: int) ->
     return f"{base}_{suffix}" if base else f"gs_{idx:02d}_{suffix}"
 
 
-# ── single training run ────────────────────────────────────────────────────────
+# ── sweep helpers ──────────────────────────────────────────────────────────────
 
-def train_one(cfg: dict, run_name: str | None) -> None:
-    """Execute one full training run from the given config dict."""
-    m   = cfg["model"]
-    t   = cfg["training"]
-    d   = cfg["data"]
-    w   = cfg["wandb"]
+# Which sweep parameter names belong to which config section
+_MODEL_PARAMS = {
+    "hidden", "heads", "dropout", "pooling", "diff_clusters",
+}
+_TRAINING_PARAMS = {
+    "lr", "weight_decay", "aggregation", "batch_size",
+    "scheduler_factor", "scheduler_patience", "scheduler_min_lr",
+    "warm_up", "patience",
+}
+
+
+def _merge_sweep_params(base_cfg: dict, sweep_cfg) -> dict:
+    """Overlay wandb sweep parameters onto a deep copy of the base config."""
+    cfg = copy.deepcopy(base_cfg)
+    for key, val in dict(sweep_cfg).items():
+        if key in _MODEL_PARAMS:
+            cfg["model"][key] = val
+        elif key in _TRAINING_PARAMS:
+            cfg["training"][key] = val
+    return cfg
+
+
+def _make_sweep_fn(base_cfg: dict):
+    """Return the agent function passed to wandb.agent().
+
+    Each call is one sweep trial: wandb.init() is called here so the sweep
+    controller can populate wandb.config with the trial's hyperparameters.
+    """
+    def sweep_fn():
+        run = wandb.init(project=base_cfg["wandb"]["project"])
+        cfg = _merge_sweep_params(base_cfg, wandb.config)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        fix_seeds(cfg["training"]["seed"])
+        print(f"[INFO] wandb sweep run : {run.name}  ({run.url})")
+        _train_body(cfg, run, device)
+
+    return sweep_fn
+
+
+# ── training body ──────────────────────────────────────────────────────────────
+
+def _train_body(cfg: dict, run, device: torch.device) -> None:
+    """Full training loop — assumes wandb.init() has already been called."""
+    m = cfg["model"]
+    t = cfg["training"]
+    d = cfg["data"]
 
     patient_level = bool(t.get("patient_level", False))
     aggregation   = t.get("aggregation", "noisy_or")
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    fix_seeds(t["seed"])
-
-    # ── W&B ───────────────────────────────────────────────────────────────────
-    run = wandb.init(
-        project=w["project"],
-        name=run_name,
-        config={
-            **m, **t,
-            "graphs_dir": d["graphs_dir"],
-            "device": str(device),
-        },
-    )
-    print(f"[INFO] wandb run : {run.name}  ({run.url})")
 
     # ── Data ──────────────────────────────────────────────────────────────────
     graphs_dir   = Path(d["graphs_dir"])
@@ -178,7 +211,11 @@ def train_one(cfg: dict, run_name: str | None) -> None:
     if patient_aggregator is not None:
         all_params += list(patient_aggregator.parameters())
 
-    optimizer = torch.optim.Adam(all_params, lr=t["lr"], weight_decay=1e-3)
+    optimizer = torch.optim.Adam(
+        all_params,
+        lr=t["lr"],
+        weight_decay=t.get("weight_decay", 1e-3),
+    )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="min",
@@ -186,12 +223,13 @@ def train_one(cfg: dict, run_name: str | None) -> None:
         patience=t.get("scheduler_patience", 5),
         min_lr=t.get("scheduler_min_lr", 1e-6),
     )
-    # slide-level criterion (CrossEntropy) only used in non-patient mode
     criterion = torch.nn.CrossEntropyLoss(weight=class_weights) if not patient_level else None
     scaler    = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
 
     # ── Training state ────────────────────────────────────────────────────────
     monitor        = t.get("monitor", "val_auc")
+    if isinstance(monitor, list):
+        monitor = monitor[0]
     early_stopping = EarlyStopping(warm_up=t["warm_up"], patience=t["patience"])
     best_score     = 0.0
     best_epoch     = 0
@@ -282,6 +320,31 @@ def train_one(cfg: dict, run_name: str | None) -> None:
     wandb.finish()
 
 
+# ── single training run (grid search / direct) ─────────────────────────────────
+
+def train_one(cfg: dict, run_name: str | None) -> None:
+    """Execute one full training run from the given config dict."""
+    m   = cfg["model"]
+    t   = cfg["training"]
+    d   = cfg["data"]
+    w   = cfg["wandb"]
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    fix_seeds(t["seed"])
+
+    run = wandb.init(
+        project=w["project"],
+        name=run_name,
+        config={
+            **m, **t,
+            "graphs_dir": d["graphs_dir"],
+            "device": str(device),
+        },
+    )
+    print(f"[INFO] wandb run : {run.name}  ({run.url})")
+    _train_body(cfg, run, device)
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
@@ -299,6 +362,34 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override wandb run name (also used as checkpoint base name)",
     )
+
+    # ── Sweep args ─────────────────────────────────────────────────────────────
+    sweep_grp = p.add_argument_group("W&B Sweep")
+    sweep_grp.add_argument(
+        "--sweep",
+        action="store_true",
+        help="Create a new W&B sweep (from --sweep_config) and run one agent",
+    )
+    sweep_grp.add_argument(
+        "--sweep_id",
+        default=None,
+        metavar="ID",
+        help="Join an existing sweep by its ID (skips sweep creation)",
+    )
+    sweep_grp.add_argument(
+        "--sweep_count",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Number of trials for this agent (default: run until sweep is done)",
+    )
+    sweep_grp.add_argument(
+        "--sweep_config",
+        default=str(DEFAULT_SWEEP),
+        metavar="PATH",
+        help="Path to the W&B sweep definition YAML",
+    )
+
     return p.parse_args()
 
 
@@ -317,6 +408,35 @@ def main() -> None:
     if args.run_name:
         cfg["wandb"]["run_name"] = args.run_name
 
+    # ── W&B Sweep mode ────────────────────────────────────────────────────────
+    if args.sweep or args.sweep_id:
+        project = cfg["wandb"]["project"]
+
+        if args.sweep_id:
+            sweep_id = args.sweep_id
+            print(f"[INFO] Joining sweep  : {sweep_id}")
+        else:
+            sweep_cfg_path = Path(args.sweep_config)
+            if not sweep_cfg_path.exists():
+                sys.exit(f"[ERROR] Sweep config not found: {sweep_cfg_path}")
+            sweep_definition = load_config(sweep_cfg_path)
+            sweep_id = wandb.sweep(sweep_definition, project=project)
+            print(f"[INFO] Created sweep  : {sweep_id}")
+            print(f"[INFO] Project        : {project}")
+            print(f"[INFO] To add agents  : python train.py --sweep_id {sweep_id}")
+
+        count_str = str(args.sweep_count) if args.sweep_count else "∞"
+        print(f"[INFO] Agent trials   : {count_str}\n")
+
+        wandb.agent(
+            sweep_id,
+            function=_make_sweep_fn(cfg),
+            count=args.sweep_count,
+            project=project,
+        )
+        return
+
+    # ── Grid search / single run ──────────────────────────────────────────────
     combos = expand_grid(cfg)
     n      = len(combos)
 

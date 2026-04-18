@@ -3,7 +3,7 @@
 # setup_service.sh — instala HistoGAT Frontend como servicio systemd
 #
 # Ejecutar UNA SOLA VEZ con sudo desde el directorio del proyecto:
-#   sudo bash scripts/setup_service.sh
+#   sudo bash frontend/setup_service.sh
 #
 # Qué hace:
 #   1. Genera /etc/systemd/system/histogat-frontend.service con las rutas reales
@@ -40,7 +40,7 @@ sed \
   -e "s|DEPLOY_USER|${DEPLOY_USER}|g" \
   -e "s|DEPLOY_GROUP|${DEPLOY_GROUP}|g" \
   -e "s|DEPLOY_DIR|${DEPLOY_DIR}|g" \
-  "${DEPLOY_DIR}/deploy/histogat-frontend.service" \
+  "${DEPLOY_DIR}/frontend/histogat-frontend.service" \
   > "${UNIT_FILE}"
 
 echo "[OK] Creado ${UNIT_FILE}"

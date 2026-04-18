@@ -323,55 +323,63 @@ def _infer_slide_full(
     with torch.no_grad():
         x, ei = g_dev.x, g_dev.edge_index
 
-        # GAT Capa 1
-        dlog(f"GAT Capa 1 — heads={model.conv1.heads}")
-        x1_raw, (ei1, a1) = model.conv1(x, ei, return_attention_weights=True)
-        x1 = F.elu(model.bn1(x1_raw))
-        x1 = F.dropout(x1, p=model.dropout, training=False)
-        a1_mean = a1.mean(dim=1).cpu().float()
+        if model.pooling_type == "diff":
+            # Hierarchical DiffPool changes node count and topology between layers;
+            # skip per-layer attention breakdown and run the full forward pass.
+            dlog("Pooling jeràrquic (diff): forward pass directe, sense desglossar atenció per capa")
+            logits  = model(x, ei, batch)
+            probs   = F.softmax(logits, dim=1)
+        else:
+            # GAT Capa 1
+            dlog(f"GAT Capa 1 — heads={model.conv1.heads}")
+            x1_raw, (ei1, a1) = model.conv1(x, ei, return_attention_weights=True)
+            x1 = F.elu(model.bn1(x1_raw))
+            x1 = F.dropout(x1, p=model.dropout, training=False)
+            a1_mean = a1.mean(dim=1).cpu().float()
 
-        # GAT Capa 2
-        dlog(f"GAT Capa 2 — heads={model.conv2.heads}")
-        x2_raw, (ei2, a2) = model.conv2(x1, ei, return_attention_weights=True)
-        x2 = F.elu(model.bn2(x2_raw))
-        x2 = F.dropout(x2, p=model.dropout, training=False)
-        a2_mean = a2.mean(dim=1).cpu().float()
+            # GAT Capa 2
+            dlog(f"GAT Capa 2 — heads={model.conv2.heads}")
+            x2_raw, (ei2, a2) = model.conv2(x1, ei, return_attention_weights=True)
+            x2 = F.elu(model.bn2(x2_raw))
+            x2 = F.dropout(x2, p=model.dropout, training=False)
+            a2_mean = a2.mean(dim=1).cpu().float()
 
-        # GAT Capa 3
-        dlog(f"GAT Capa 3 — heads={model.conv3.heads}")
-        x3_raw, (ei3, a3) = model.conv3(x2, ei, return_attention_weights=True)
-        x3 = F.elu(model.bn3(x3_raw))
-        a3_mean = a3.mean(dim=1).cpu().float()
+            # GAT Capa 3
+            dlog(f"GAT Capa 3 — heads={model.conv3.heads}")
+            x3_raw, (ei3, a3) = model.conv3(x2, ei, return_attention_weights=True)
+            x3 = F.elu(model.bn3(x3_raw))
+            a3_mean = a3.mean(dim=1).cpu().float()
 
-        # Aggregate per-node attention
-        for name, ei_l, a_mean, a_full in [
-            ("layer1", ei1, a1_mean, a1),
-            ("layer2", ei2, a2_mean, a2),
-            ("layer3", ei3, a3_mean, a3),
-        ]:
-            ei_cpu    = ei_l.cpu()
-            node_attn = torch.zeros(num_nodes)
-            counts    = torch.zeros(num_nodes)
-            for k in range(ei_cpu.shape[1]):
-                dst = ei_cpu[1, k].item()
-                if dst < num_nodes:
-                    node_attn[dst] += a_mean[k].item()
-                    counts[dst]    += 1
-            counts    = counts.clamp(min=1)
-            attention_layers[name] = {
-                "edge_index":       ei_l.cpu().numpy().tolist(),
-                "weights_mean":     a_mean.numpy().tolist(),
-                "weights_per_head": a_full.cpu().float().numpy().tolist(),
-                "node_attention":   (node_attn / counts).numpy().tolist(),
-                "num_heads":        a_full.shape[1],
-            }
+            # Aggregate per-node attention
+            for name, ei_l, a_mean, a_full in [
+                ("layer1", ei1, a1_mean, a1),
+                ("layer2", ei2, a2_mean, a2),
+                ("layer3", ei3, a3_mean, a3),
+            ]:
+                ei_cpu    = ei_l.cpu()
+                node_attn = torch.zeros(num_nodes)
+                counts    = torch.zeros(num_nodes)
+                for k in range(ei_cpu.shape[1]):
+                    dst = ei_cpu[1, k].item()
+                    if dst < num_nodes:
+                        node_attn[dst] += a_mean[k].item()
+                        counts[dst]    += 1
+                counts    = counts.clamp(min=1)
+                attention_layers[name] = {
+                    "edge_index":       ei_l.cpu().numpy().tolist(),
+                    "weights_mean":     a_mean.numpy().tolist(),
+                    "weights_per_head": a_full.cpu().float().numpy().tolist(),
+                    "node_attention":   (node_attn / counts).numpy().tolist(),
+                    "num_heads":        a_full.shape[1],
+                }
 
-        # Pooling + MLP
-        dlog(f"Pooling ({model.pooling_type}) + MLP…")
-        h      = model.pool_readout(x3, ei, batch)
-        logits = model.mlp(h)
-        probs  = F.softmax(logits, dim=1)
-        pred   = int(probs.argmax(dim=1).item())
+            # Pooling + MLP
+            dlog(f"Pooling ({model.pooling_type}) + MLP…")
+            h      = model.pool_readout(x3, ei, batch)
+            logits = model.mlp(h)
+            probs  = F.softmax(logits, dim=1)
+
+        pred    = int(probs.argmax(dim=1).item())
         prob_n0 = float(probs[0, 0].item())
         prob_n1 = float(probs[0, 1].item())
 
@@ -411,6 +419,93 @@ def _infer_slide_full(
         "patch_i":         g.patch_i.cpu().numpy().tolist() if hasattr(g, "patch_i") and g.patch_i is not None else None,
         "debug_log":       debug_log,
     }
+
+
+# ── node importance scores ────────────────────────────────────────────────────
+
+def _compute_gradcam(g: Data, model: GATClassifier, device: str, num_nodes: int) -> list:
+    """GradCAM: mean absolute gradient of logit(N1) w.r.t. node embeddings at layer 3.
+
+    Nodes with high gradient magnitude influence the N1 prediction directly.
+    Returns scores normalised to [0, 1].
+    """
+    model.eval()
+    g_dev = g.to(device)
+    batch = torch.zeros(num_nodes, dtype=torch.long, device=device)
+    x, ei = g_dev.x, g_dev.edge_index
+
+    if model.pooling_type == "diff":
+        # Hierarchical DiffPool changes node count between layers; GradCAM on
+        # original nodes is not directly applicable — fall back to uniform.
+        log.debug("GradCAM: pooling=diff, retornant scores uniformes")
+        return [0.5] * num_nodes
+
+    with torch.enable_grad():
+        x1 = F.elu(model.bn1(model.conv1(x, ei)))
+        x1 = F.dropout(x1, p=model.dropout, training=False)
+        x2 = F.elu(model.bn2(model.conv2(x1, ei)))
+        x2 = F.dropout(x2, p=model.dropout, training=False)
+        x3 = F.elu(model.bn3(model.conv3(x2, ei)))
+        x3.retain_grad()                          # keep grad on non-leaf tensor
+        h      = model.pool_readout(x3, ei, batch)
+        logits = model.mlp(h)
+        model.zero_grad()
+        logits[0, 1].backward()                   # gradient of N1 logit
+
+    if x3.grad is None:
+        log.warning("GradCAM: x3.grad is None — falling back to uniform scores")
+        return [0.5] * num_nodes
+
+    grads = x3.grad.abs().mean(dim=1).cpu().float().numpy()
+    mn, mx = float(grads.min()), float(grads.max())
+    if mx - mn > 1e-8:
+        scores = (grads - mn) / (mx - mn)
+    else:
+        scores = np.full(num_nodes, 0.5)
+    return scores.tolist()
+
+
+def _compute_leave_one_out(g: Data, model: GATClassifier, device: str, num_nodes: int) -> list:
+    """Leave-one-out: drop in P(N1) when each node is individually removed.
+
+    Positive delta = node contributes to the N1 prediction.
+    Returns scores normalised to [0, 1] (only positive contributions).
+    """
+    model.eval()
+    g_dev = g.to(device)
+    batch = torch.zeros(num_nodes, dtype=torch.long, device=device)
+    x, ei = g_dev.x, g_dev.edge_index
+
+    with torch.no_grad():
+        baseline_p_n1 = float(F.softmax(model(x, ei, batch), dim=1)[0, 1].item())
+
+    src_all, dst_all = ei[0], ei[1]
+    deltas = np.zeros(num_nodes, dtype=np.float32)
+
+    for idx in range(num_nodes):
+        mask  = torch.ones(num_nodes, dtype=torch.bool, device=device)
+        mask[idx] = False
+        new_x = x[mask]
+
+        # Remap edge indices to the reduced node set
+        remap = torch.full((num_nodes,), -1, dtype=torch.long, device=device)
+        remap[mask] = torch.arange(int(mask.sum()), device=device)
+        edge_mask = (src_all != idx) & (dst_all != idx)
+        new_ei    = torch.stack([remap[src_all[edge_mask]],
+                                 remap[dst_all[edge_mask]]], dim=0)
+        new_batch = torch.zeros(new_x.shape[0], dtype=torch.long, device=device)
+
+        try:
+            with torch.no_grad():
+                p = float(F.softmax(model(new_x, new_ei, new_batch), dim=1)[0, 1].item())
+            deltas[idx] = baseline_p_n1 - p   # positive → node pushed toward N1
+        except Exception as exc:
+            log.debug(f"LOO node {idx} failed: {exc}")
+            deltas[idx] = 0.0
+
+    pos = np.clip(deltas, 0.0, None)
+    mx  = float(pos.max())
+    return (pos / mx if mx > 1e-6 else np.zeros(num_nodes)).tolist()
 
 
 # ── patient-level stats ────────────────────────────────────────────────────────
@@ -718,6 +813,50 @@ async def inference_patient(req: PatientInferenceRequest):
         "hospital":       viz.get("hospital", patient_graphs[0]["hospital"]),
         "slide_id":       viz.get("slide_id", ""),
         "debug_log":      viz["debug_log"],
+    }
+
+
+_VALID_NODE_SCORE_METHODS = {"gradcam", "leave_one_out"}
+
+
+class NodeScoresRequest(BaseModel):
+    graph_id: str
+    method:   str   # "gradcam" | "leave_one_out"
+
+
+@app.post("/api/node_scores")
+async def node_scores(req: NodeScoresRequest):
+    """Per-node importance scores (GradCAM or leave-one-out)."""
+    if STATE.model is None:
+        raise HTTPException(503, "No model checkpoint loaded")
+    if req.method not in _VALID_NODE_SCORE_METHODS:
+        raise HTTPException(400, f"Mètode invàlid: {req.method!r}. Vàlids: {sorted(_VALID_NODE_SCORE_METHODS)}")
+
+    all_g = STATE.graphs["train"] + STATE.graphs["val"]
+    entry = next((g for g in all_g if g["id"] == req.graph_id), None)
+    if not entry:
+        raise HTTPException(404, f"Graph not found: {req.graph_id}")
+
+    g = _load_pt(Path(entry["path"]))
+    if g is None:
+        raise HTTPException(500, "Failed to load graph file")
+
+    num_nodes = int(g.num_nodes) if g.num_nodes is not None else int(g.x.shape[0])
+    t0        = time.time()
+
+    try:
+        if req.method == "gradcam":
+            scores = _compute_gradcam(g, STATE.model, STATE.device, num_nodes)
+        else:
+            scores = _compute_leave_one_out(g, STATE.model, STATE.device, num_nodes)
+    except Exception as exc:
+        raise HTTPException(500, f"Error computing {req.method}: {exc}")
+
+    return {
+        "method":    req.method,
+        "scores":    scores,
+        "num_nodes": num_nodes,
+        "time_ms":   round((time.time() - t0) * 1000),
     }
 
 

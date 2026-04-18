@@ -142,6 +142,12 @@ export function renderGraph(container, data, opts = {}) {
   const maxAttn      = Math.max(...attnVals, 1e-6);
   const normAttnVals = attnVals.map(v => v / maxAttn);
 
+  // Node size scales down as the graph grows (inversely proportional to √num_nodes).
+  // baseR: [2, 8] px — attention adds up to baseR more on top.
+  const baseR     = Math.max(2, Math.min(8, 60 / Math.sqrt(num_nodes)));
+  const nodeR     = d => baseR + normAttnVals[d.id] * baseR;
+  const nodeFontR = Math.max(0, baseR - 3);   // hide label text on very small nodes
+
   // ── SVG ───────────────────────────────────────────────────────────────────────
   const svg = d3.select(container)
     .append("svg")
@@ -236,16 +242,16 @@ export function renderGraph(container, data, opts = {}) {
     .on("mouseout",  ()        => hideTooltip());
 
   nodeGroup.append("circle")
-    .attr("r", d => 5 + normAttnVals[d.id] * 8)
+    .attr("r", nodeR)
     .attr("fill", d => _attnColor(normAttnVals[d.id]))
     .attr("stroke", d => normAttnVals[d.id] > 0.6 ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.2)")
     .attr("stroke-width", d => normAttnVals[d.id] > 0.6 ? 1.5 : 0.5);
 
   nodeGroup.append("text")
     .attr("dy", "0.35em").attr("text-anchor", "middle")
-    .attr("font-size", "8px").attr("fill", "rgba(255,255,255,0.5)")
+    .attr("font-size", `${nodeFontR}px`).attr("fill", "rgba(255,255,255,0.5)")
     .attr("pointer-events", "none")
-    .text(d => d.id);
+    .text(d => nodeFontR > 0 ? d.id : "");
 
   // ── Draw (static real positions OR force simulation) ───────────────────────────
   if (node_positions && node_positions.length === num_nodes) {
