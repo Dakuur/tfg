@@ -411,6 +411,125 @@ seleccions discretes, amb un cost computacional menor però sense la capacitat d
 jeràrquiques continues. En aquest projecte s'utilitza DiffPool per la seva major expressivitat i la
 possibilitat d'integrar la pèrdua auxiliar de regularització.
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance = 0.30cm,
+  % ── base box ──────────────────────────────────────────────────
+  B/.style = {rectangle, rounded corners=3pt, minimum width=5.2cm,
+              minimum height=0.70cm, align=center, font=\small,
+              draw=#1!65!black, fill=#1!9, line width=0.9pt},
+  % norm row (slimmer)
+  N/.style = {rectangle, rounded corners=2pt, minimum width=5.2cm,
+              minimum height=0.48cm, align=center, font=\scriptsize\itshape,
+              draw=gray!40, fill=gray!6, line width=0.7pt},
+  % annotations
+  dim/.style = {font=\scriptsize\ttfamily, text=black!40, anchor=west},
+  sec/.style = {font=\scriptsize\bfseries\sffamily, text=black!45, anchor=east},
+  arr/.style = {->, >=stealth, line width=0.85pt, draw=black!40},
+  aux/.style = {font=\scriptsize\itshape, text=orange!70!black},
+]
+
+%% ── INPUT ─────────────────────────────────────────────────────
+\node[B=gray] (inp)
+  {$\mathbf{X}\!\in\!\mathbb{R}^{N\times 1536}$,\enspace
+   $\mathbf{A}\!\in\!\{0,1\}^{N\times N}$};
+\node[dim, right=0.22cm of inp] {$N\!\times\!1536$};
+
+%% ── GAT LAYER 1 ───────────────────────────────────────────────
+\node[B=blue, below=0.38cm of inp] (g1)
+  {GATConv$_1$\enspace $1536\!\to\!128$,\enspace $H\!=\!4$, concat};
+\node[N, below=0.15cm of g1] (n1)
+  {BatchNorm\;·\;ELU\;·\;Dropout};
+\node[dim, right=0.22cm of n1] {$N\!\times\!512$};
+
+%% ── DIFFPOOL 1 ────────────────────────────────────────────────
+\node[B=orange, below=0.38cm of n1] (p1)
+  {DiffPool$_1$\enspace $N \longrightarrow K_1$ super-nodes};
+\node[dim, right=0.22cm of p1] {$K_1\!\times\!128$};
+% aux loss annotation
+\node[aux, right=0.22cm of p1, yshift=-0.55cm] (al1)
+  {$+\;\mathcal{L}_{\text{link}} + \mathcal{L}_{\text{ent}}$};
+\draw[->, >=stealth, dashed, orange!45, line width=0.6pt]
+  (p1.south east) to[out=-10,in=180] (al1.west);
+
+%% ── GAT LAYER 2 ───────────────────────────────────────────────
+\node[B=blue, below=0.55cm of p1] (g2)
+  {GATConv$_2$\enspace $128\!\to\!128$,\enspace $H\!=\!4$, concat};
+\node[N, below=0.15cm of g2] (n2)
+  {BatchNorm\;·\;ELU\;·\;Dropout};
+\node[dim, right=0.22cm of n2] {$K_1\!\times\!512$};
+
+%% ── DIFFPOOL 2 ────────────────────────────────────────────────
+\node[B=orange, below=0.38cm of n2] (p2)
+  {DiffPool$_2$\enspace $K_1 \longrightarrow K_2$ super-nodes};
+\node[dim, right=0.22cm of p2] {$K_2\!\times\!128$};
+\node[aux, right=0.22cm of p2, yshift=-0.55cm] (al2)
+  {$+\;\mathcal{L}_{\text{link}} + \mathcal{L}_{\text{ent}}$};
+\draw[->, >=stealth, dashed, orange!45, line width=0.6pt]
+  (p2.south east) to[out=-10,in=180] (al2.west);
+
+%% ── GAT LAYER 3 ───────────────────────────────────────────────
+\node[B=blue, below=0.55cm of p2] (g3)
+  {GATConv$_3$\enspace $128\!\to\!128$,\enspace $H\!=\!1$, mean};
+\node[N, below=0.15cm of g3] (n3)
+  {BatchNorm\;·\;ELU};
+\node[dim, right=0.22cm of n3] {$K_2\!\times\!128$};
+
+%% ── READOUT ───────────────────────────────────────────────────
+\node[B=teal, below=0.38cm of n3] (ro)
+  {Readout\enspace mean\,$\Vert$\,max\enspace over $K_2$ nodes};
+\node[dim, right=0.22cm of ro] {$256$};
+
+%% ── MLP ───────────────────────────────────────────────────────
+\node[B=violet, below=0.38cm of ro] (m1)
+  {Linear$_{256\to 128}$\;·\;ReLU\;·\;Dropout};
+\node[B=violet, below=0.15cm of m1] (m2)
+  {Linear$_{128\to 2}$};
+\node[dim, right=0.22cm of m2] {$2$};
+
+%% ── OUTPUT ────────────────────────────────────────────────────
+\node[B=green!60!black, below=0.38cm of m2] (out)
+  {Softmax\enspace$P(\text{N0}),\enspace P(\text{N1})$};
+
+%% ── ARROWS ────────────────────────────────────────────────────
+\foreach \a/\b in {inp/g1, g1/n1, n1/p1, p1/g2, g2/n2, n2/p2,
+                   p2/g3, g3/n3, n3/ro, ro/m1, m1/m2, m2/out}
+  \draw[arr] (\a)--(\b);
+
+%% ── LEFT SECTION LABELS ───────────────────────────────────────
+\draw[gray!30, line width=0.6pt]
+  ([xshift=-0.45cm]g1.north west) -- ([xshift=-0.45cm]n1.south west);
+\node[sec] at ([xshift=-0.5cm]$(g1.west)!0.5!(n1.west)$) {\rotatebox{90}{GAT 1}};
+
+\node[sec] at ([xshift=-0.5cm]p1.west) {\rotatebox{90}{Pool 1}};
+
+\draw[gray!30, line width=0.6pt]
+  ([xshift=-0.45cm]g2.north west) -- ([xshift=-0.45cm]n2.south west);
+\node[sec] at ([xshift=-0.5cm]$(g2.west)!0.5!(n2.west)$) {\rotatebox{90}{GAT 2}};
+
+\node[sec] at ([xshift=-0.5cm]p2.west) {\rotatebox{90}{Pool 2}};
+
+\draw[gray!30, line width=0.6pt]
+  ([xshift=-0.45cm]g3.north west) -- ([xshift=-0.45cm]n3.south west);
+\node[sec] at ([xshift=-0.5cm]$(g3.west)!0.5!(n3.west)$) {\rotatebox{90}{GAT 3}};
+
+\node[sec] at ([xshift=-0.5cm]ro.west)  {\rotatebox{90}{Pool}};
+
+\draw[gray!30, line width=0.6pt]
+  ([xshift=-0.45cm]m1.north west) -- ([xshift=-0.45cm]m2.south west);
+\node[sec] at ([xshift=-0.5cm]$(m1.west)!0.5!(m2.west)$) {\rotatebox{90}{MLP}};
+
+\end{tikzpicture}
+\caption{Arquitectura detallada del \texttt{GATClassifier} amb \textit{pooling} jeràrquic. Les etiquetes
+a la dreta indiquen la forma del tensor de sortida de cada bloc ($h\!=\!128$, $H\!=\!4$, per tant
+$h{\cdot}H\!=\!512$). Les capes DiffPool aprenen una matriu d'assignació suau $\mathbf{S}$ i emeten una
+pèrdua auxiliar $\mathcal{L}_{\text{aux}}$ que es suma a la BCE principal. $K_1 \ll N$ i $K_2 \ll K_1$
+són els super-nodes dels dos nivells de reducció (p.~ex.\ $N\!\approx\!250$, $K_1\!=\!25$, $K_2\!=\!5$
+amb la configuració per defecte).}
+\label{fig:arch}
+\end{figure}
+
 \section{Metodologia}
 
 \subsection{Agregació per Pacient (MIL)}
@@ -577,6 +696,13 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
                 align=center, font=\small},
     ext/.style={box, draw=gray!55, fill=gray!12},
     own/.style={box, draw=blue!65!black, line width=1.3pt, fill=blue!7},
+    % compact nodes for model row
+    cmp/.style={rectangle, rounded corners=3pt, draw=blue!65!black, line width=1pt,
+                fill=blue!7, minimum width=1.45cm, minimum height=0.60cm,
+                align=center, font=\scriptsize},
+    dpl/.style={rectangle, rounded corners=3pt, draw=orange!70!black, line width=1pt,
+                fill=orange!10, minimum width=1.1cm, minimum height=0.60cm,
+                align=center, font=\scriptsize},
     arr/.style={->, >=stealth, thick},
     lbl/.style={font=\small\bfseries, align=right},
 ]
@@ -600,22 +726,25 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 \draw[arr] (bag.south) to[out=270,in=90] (coo.north);
 \draw[arr] (cls.south) to[out=270,in=70] (gra.north);
 
-%% --- Carril 3: Model i classificació (blau) ---
-\node[own, below=2.0cm of coo] (g1) {GATConv 1\\$N{\to}N$};
-\node[own, right=of g1]        (p1) {DiffPool\\$N{\to}K_1$};
-\node[own, right=of p1]        (g2) {GATConv 2\\$K_1{\to}K_1$};
-\node[own, right=of g2]        (p2) {DiffPool\\$K_1{\to}K_2$};
-\node[own, right=of p2]        (g3) {GATConv 3\\$K_2{\to}K_2$};
-\node[own, right=of g3]        (ro) {\textit{Readout}\\mean\,/\,max};
-\node[own, right=of ro]        (ml) {MLP};
-\node[own, right=of ml]        (pr) {P(N1)\\secció};
+%% --- Carril 3a: Backbone GAT+DiffPool (nodes compactes) ---
+\node[cmp, below=2.0cm of coo] (g1) {GAT$_1$\\$N{\to}N$};
+\node[dpl, right=0.18cm of g1] (p1) {DP$_1$\\$N{\to}K_1$};
+\node[cmp, right=0.18cm of p1] (g2) {GAT$_2$\\$K_1{\to}K_1$};
+\node[dpl, right=0.18cm of g2] (p2) {DP$_2$\\$K_1{\to}K_2$};
+\node[cmp, right=0.18cm of p2] (g3) {GAT$_3$\\$K_2{\to}K_2$};
 \draw[arr] (g1)--(p1); \draw[arr] (p1)--(g2);
 \draw[arr] (g2)--(p2); \draw[arr] (p2)--(g3);
-\draw[arr] (g3)--(ro); \draw[arr] (ro)--(ml); \draw[arr] (ml)--(pr);
 \draw[arr] (gra.south) to[out=255,in=90] (g1.north);
 
+%% --- Carril 3b: Readout + MLP + predicció ---
+\node[own, below=0.6cm of g1] (ro) {\textit{Readout}\\mean\,$\|$\,max};
+\node[own, right=of ro]        (ml) {MLP};
+\node[own, right=of ml]        (pr) {P(N1)\\secció};
+\draw[arr] (g3.south) to[out=270,in=0] (ro.east);
+\draw[arr] (ro)--(ml); \draw[arr] (ml)--(pr);
+
 %% --- Agregació pacient ---
-\node[own, below=1.0cm of ml]  (agg)  {Agregació\\MIL pacient};
+\node[own, below=0.8cm of ml]  (agg)  {Agregació\\MIL pacient};
 \node[own, right=of agg]       (diag) {N0\,/\,N1\\pacient};
 \draw[arr] (pr.south) to[out=270,in=30] node[right, font=\scriptsize] {${\times}S$} (agg.north east);
 \draw[arr] (agg)--(diag);
@@ -630,7 +759,7 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 \node[lbl, left=0.25cm of coo, anchor=east]
     {\footnotesize Construcció\\del graf};
 \node[lbl, left=0.25cm of g1,  anchor=east]
-    {\footnotesize Model i\\classificació};
+    {\footnotesize Model};
 
 \end{tikzpicture}
 \caption{Diagrama de flux del \textit{pipeline} complet. \textit{Blocs grisos}: etapes realitzades
