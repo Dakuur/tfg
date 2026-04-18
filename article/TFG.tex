@@ -420,124 +420,179 @@ seleccions discretes, amb un cost computacional menor però sense la capacitat d
 jeràrquiques continues. En aquest projecte s'utilitza DiffPool per la seva major expressivitat i la
 possibilitat d'integrar la pèrdua auxiliar de regularització.
 
-\begin{figure}[t]
+% ── Shared TikZ styles for both architecture diagrams ──────────
+\tikzset{
+  archB/.style = {rectangle, rounded corners=3pt, minimum width=4.7cm,
+                  minimum height=0.65cm, align=center, font=\small,
+                  draw=#1!65!black, fill=#1!9, line width=0.9pt},
+  archN/.style = {rectangle, rounded corners=2pt, minimum width=4.7cm,
+                  minimum height=0.44cm, align=center, font=\scriptsize\itshape,
+                  draw=gray!40, fill=gray!6, line width=0.7pt},
+  archdim/.style = {font=\scriptsize\ttfamily, text=black!40, anchor=west},
+  archsec/.style = {font=\scriptsize\bfseries\sffamily, text=black!45, anchor=east},
+  archarr/.style = {->, >=stealth, line width=0.85pt, draw=black!40},
+  archaux/.style = {font=\scriptsize\itshape, text=orange!70!black},
+}
+
+\begin{figure*}[t]
 \centering
-\begin{tikzpicture}[
-  node distance = 0.30cm,
-  % ── base box ──────────────────────────────────────────────────
-  B/.style = {rectangle, rounded corners=3pt, minimum width=5.2cm,
-              minimum height=0.70cm, align=center, font=\small,
-              draw=#1!65!black, fill=#1!9, line width=0.9pt},
-  % norm row (slimmer)
-  N/.style = {rectangle, rounded corners=2pt, minimum width=5.2cm,
-              minimum height=0.48cm, align=center, font=\scriptsize\itshape,
-              draw=gray!40, fill=gray!6, line width=0.7pt},
-  % annotations
-  dim/.style = {font=\scriptsize\ttfamily, text=black!40, anchor=west},
-  sec/.style = {font=\scriptsize\bfseries\sffamily, text=black!45, anchor=east},
-  arr/.style = {->, >=stealth, line width=0.85pt, draw=black!40},
-  aux/.style = {font=\scriptsize\itshape, text=orange!70!black},
-]
 
-%% ── INPUT ─────────────────────────────────────────────────────
-\node[B=gray] (inp)
-  {$\mathbf{X}\!\in\!\mathbb{R}^{N\times 1536}$,\enspace
+%% ════════════════════════════════════════════════════════════════
+%% LEFT — GAT Baseline (flat readout)
+%% ════════════════════════════════════════════════════════════════
+\begin{subfigure}[t]{0.45\textwidth}
+\centering
+\begin{tikzpicture}[node distance=0.28cm]
+
+\node[archB=gray] (inp)
+  {$\mathbf{X}\!\in\!\mathbb{R}^{N\times 1536}$,\;
    $\mathbf{A}\!\in\!\{0,1\}^{N\times N}$};
-\node[dim, right=0.22cm of inp] {$N\!\times\!1536$};
+\node[archdim, right=0.15cm of inp] {$N\!\times\!1536$};
 
-%% ── GAT LAYER 1 ───────────────────────────────────────────────
-\node[B=blue, below=0.38cm of inp] (g1)
-  {GATConv$_1$\enspace $1536\!\to\!128$,\enspace $H\!=\!4$, concat};
-\node[N, below=0.15cm of g1] (n1)
+\node[archB=blue, below=0.32cm of inp] (g1)
+  {GATConv$_1$\;$1536\!\to\!128$,\;$H\!=\!4$, concat};
+\node[archN, below=0.12cm of g1] (n1)
   {BatchNorm\;·\;ELU\;·\;Dropout};
-\node[dim, right=0.22cm of n1] {$N\!\times\!512$};
+\node[archdim, right=0.15cm of n1] {$N\!\times\!512$};
 
-%% ── DIFFPOOL 1 ────────────────────────────────────────────────
-\node[B=orange, below=0.38cm of n1] (p1)
-  {DiffPool$_1$\enspace $N \longrightarrow K_1$ super-nodes};
-\node[dim, right=0.22cm of p1] {$K_1\!\times\!128$};
-% aux loss annotation
-\node[aux, right=0.22cm of p1, yshift=-0.55cm] (al1)
-  {$+\;\mathcal{L}_{\text{link}} + \mathcal{L}_{\text{ent}}$};
-\draw[->, >=stealth, dashed, orange!45, line width=0.6pt]
-  (p1.south east) to[out=-10,in=180] (al1.west);
-
-%% ── GAT LAYER 2 ───────────────────────────────────────────────
-\node[B=blue, below=0.55cm of p1] (g2)
-  {GATConv$_2$\enspace $128\!\to\!128$,\enspace $H\!=\!4$, concat};
-\node[N, below=0.15cm of g2] (n2)
+\node[archB=blue, below=0.32cm of n1] (g2)
+  {GATConv$_2$\;$512\!\to\!128$,\;$H\!=\!4$, concat};
+\node[archN, below=0.12cm of g2] (n2)
   {BatchNorm\;·\;ELU\;·\;Dropout};
-\node[dim, right=0.22cm of n2] {$K_1\!\times\!512$};
+\node[archdim, right=0.15cm of n2] {$N\!\times\!512$};
 
-%% ── DIFFPOOL 2 ────────────────────────────────────────────────
-\node[B=orange, below=0.38cm of n2] (p2)
-  {DiffPool$_2$\enspace $K_1 \longrightarrow K_2$ super-nodes};
-\node[dim, right=0.22cm of p2] {$K_2\!\times\!128$};
-\node[aux, right=0.22cm of p2, yshift=-0.55cm] (al2)
-  {$+\;\mathcal{L}_{\text{link}} + \mathcal{L}_{\text{ent}}$};
-\draw[->, >=stealth, dashed, orange!45, line width=0.6pt]
-  (p2.south east) to[out=-10,in=180] (al2.west);
-
-%% ── GAT LAYER 3 ───────────────────────────────────────────────
-\node[B=blue, below=0.55cm of p2] (g3)
-  {GATConv$_3$\enspace $128\!\to\!128$,\enspace $H\!=\!1$, mean};
-\node[N, below=0.15cm of g3] (n3)
+\node[archB=blue, below=0.32cm of n2] (g3)
+  {GATConv$_3$\;$512\!\to\!128$,\;$H\!=\!1$, mean};
+\node[archN, below=0.12cm of g3] (n3)
   {BatchNorm\;·\;ELU};
-\node[dim, right=0.22cm of n3] {$K_2\!\times\!128$};
+\node[archdim, right=0.15cm of n3] {$N\!\times\!128$};
 
-%% ── READOUT ───────────────────────────────────────────────────
-\node[B=teal, below=0.38cm of n3] (ro)
-  {Readout\enspace mean\,$\Vert$\,max\enspace over $K_2$ nodes};
-\node[dim, right=0.22cm of ro] {$256$};
+\node[archB=teal, below=0.32cm of n3] (ro)
+  {Readout\;mean$\,\Vert\,$max\;sobre $N$ nodes};
+\node[archdim, right=0.15cm of ro] {$256$};
 
-%% ── MLP ───────────────────────────────────────────────────────
-\node[B=violet, below=0.38cm of ro] (m1)
+\node[archB=violet, below=0.32cm of ro] (m1)
   {Linear$_{256\to 128}$\;·\;ReLU\;·\;Dropout};
-\node[B=violet, below=0.15cm of m1] (m2)
+\node[archB=violet, below=0.12cm of m1] (m2)
   {Linear$_{128\to 2}$};
-\node[dim, right=0.22cm of m2] {$2$};
+\node[archdim, right=0.15cm of m2] {$2$};
 
-%% ── OUTPUT ────────────────────────────────────────────────────
-\node[B=green!60!black, below=0.38cm of m2] (out)
-  {Softmax\enspace$P(\text{N0}),\enspace P(\text{N1})$};
+\node[archB=green!60!black, below=0.32cm of m2] (out)
+  {Softmax\;$P(\text{N0}),\;P(\text{N1})$};
 
-%% ── ARROWS ────────────────────────────────────────────────────
-\foreach \a/\b in {inp/g1, g1/n1, n1/p1, p1/g2, g2/n2, n2/p2,
-                   p2/g3, g3/n3, n3/ro, ro/m1, m1/m2, m2/out}
-  \draw[arr] (\a)--(\b);
+\foreach \a/\b in {inp/g1,g1/n1,n1/g2,g2/n2,n2/g3,g3/n3,
+                   n3/ro,ro/m1,m1/m2,m2/out}
+  \draw[archarr] (\a)--(\b);
 
-%% ── LEFT SECTION LABELS ───────────────────────────────────────
-\draw[gray!30, line width=0.6pt]
-  ([xshift=-0.45cm]g1.north west) -- ([xshift=-0.45cm]n1.south west);
-\node[sec] at ([xshift=-0.5cm]$(g1.west)!0.5!(n1.west)$) {\rotatebox{90}{GAT 1}};
-
-\node[sec] at ([xshift=-0.5cm]p1.west) {\rotatebox{90}{Pool 1}};
-
-\draw[gray!30, line width=0.6pt]
-  ([xshift=-0.45cm]g2.north west) -- ([xshift=-0.45cm]n2.south west);
-\node[sec] at ([xshift=-0.5cm]$(g2.west)!0.5!(n2.west)$) {\rotatebox{90}{GAT 2}};
-
-\node[sec] at ([xshift=-0.5cm]p2.west) {\rotatebox{90}{Pool 2}};
-
-\draw[gray!30, line width=0.6pt]
-  ([xshift=-0.45cm]g3.north west) -- ([xshift=-0.45cm]n3.south west);
-\node[sec] at ([xshift=-0.5cm]$(g3.west)!0.5!(n3.west)$) {\rotatebox{90}{GAT 3}};
-
-\node[sec] at ([xshift=-0.5cm]ro.west)  {\rotatebox{90}{Pool}};
-
-\draw[gray!30, line width=0.6pt]
-  ([xshift=-0.45cm]m1.north west) -- ([xshift=-0.45cm]m2.south west);
-\node[sec] at ([xshift=-0.5cm]$(m1.west)!0.5!(m2.west)$) {\rotatebox{90}{MLP}};
+\node[archsec] at ([xshift=-0.5cm]$(g1.west)!0.5!(n1.west)$)
+  {\rotatebox{90}{GAT 1}};
+\node[archsec] at ([xshift=-0.5cm]$(g2.west)!0.5!(n2.west)$)
+  {\rotatebox{90}{GAT 2}};
+\node[archsec] at ([xshift=-0.5cm]$(g3.west)!0.5!(n3.west)$)
+  {\rotatebox{90}{GAT 3}};
+\node[archsec] at ([xshift=-0.5cm]ro.west)
+  {\rotatebox{90}{Pool}};
+\node[archsec] at ([xshift=-0.5cm]$(m1.west)!0.5!(m2.west)$)
+  {\rotatebox{90}{MLP}};
 
 \end{tikzpicture}
-\caption{Arquitectura detallada del \texttt{GATClassifier} amb \textit{pooling} jeràrquic. Les etiquetes
-a la dreta indiquen la forma del tensor de sortida de cada bloc ($h\!=\!128$, $H\!=\!4$, per tant
-$h{\cdot}H\!=\!512$). Les capes DiffPool aprenen una matriu d'assignació suau $\mathbf{S}$ i emeten una
-pèrdua auxiliar $\mathcal{L}_{\text{aux}}$ que es suma a la BCE principal. $K_1 \ll N$ i $K_2 \ll K_1$
-són els super-nodes dels dos nivells de reducció (p.~ex.\ $N\!\approx\!250$, $K_1\!=\!25$, $K_2\!=\!5$
-amb la configuració per defecte).}
+\caption{GAT Baseline — readout pla sobre els $N$ nodes originals.}
+\label{fig:arch-baseline}
+\end{subfigure}
+\hfill
+%% ════════════════════════════════════════════════════════════════
+%% RIGHT — GAT + DiffPool (hierarchical readout)
+%% ════════════════════════════════════════════════════════════════
+\begin{subfigure}[t]{0.50\textwidth}
+\centering
+\begin{tikzpicture}[node distance=0.28cm]
+
+\node[archB=gray] (inp)
+  {$\mathbf{X}\!\in\!\mathbb{R}^{N\times 1536}$,\;
+   $\mathbf{A}\!\in\!\{0,1\}^{N\times N}$};
+\node[archdim, right=0.15cm of inp] {$N\!\times\!1536$};
+
+\node[archB=blue, below=0.32cm of inp] (g1)
+  {GATConv$_1$\;$1536\!\to\!128$,\;$H\!=\!4$, concat};
+\node[archN, below=0.12cm of g1] (n1)
+  {BatchNorm\;·\;ELU\;·\;Dropout};
+\node[archdim, right=0.15cm of n1] {$N\!\times\!512$};
+
+\node[archB=orange, below=0.32cm of n1] (p1)
+  {DiffPool$_1$\;$N \longrightarrow K_1$ super-nodes};
+\node[archdim, right=0.15cm of p1] {$K_1\!\times\!128$};
+\node[archaux, right=0.15cm of p1, yshift=-0.50cm] (al1)
+  {$+\;\mathcal{L}_{\text{link}} + \mathcal{L}_{\text{ent}}$};
+\draw[->,>=stealth,dashed,orange!45,line width=0.6pt]
+  (p1.south east) to[out=-10,in=180] (al1.west);
+
+\node[archB=blue, below=0.50cm of p1] (g2)
+  {GATConv$_2$\;$128\!\to\!128$,\;$H\!=\!4$, concat};
+\node[archN, below=0.12cm of g2] (n2)
+  {BatchNorm\;·\;ELU\;·\;Dropout};
+\node[archdim, right=0.15cm of n2] {$K_1\!\times\!512$};
+
+\node[archB=orange, below=0.32cm of n2] (p2)
+  {DiffPool$_2$\;$K_1 \longrightarrow K_2$ super-nodes};
+\node[archdim, right=0.15cm of p2] {$K_2\!\times\!128$};
+\node[archaux, right=0.15cm of p2, yshift=-0.50cm] (al2)
+  {$+\;\mathcal{L}_{\text{link}} + \mathcal{L}_{\text{ent}}$};
+\draw[->,>=stealth,dashed,orange!45,line width=0.6pt]
+  (p2.south east) to[out=-10,in=180] (al2.west);
+
+\node[archB=blue, below=0.50cm of p2] (g3)
+  {GATConv$_3$\;$128\!\to\!128$,\;$H\!=\!1$, mean};
+\node[archN, below=0.12cm of g3] (n3)
+  {BatchNorm\;·\;ELU};
+\node[archdim, right=0.15cm of n3] {$K_2\!\times\!128$};
+
+\node[archB=teal, below=0.32cm of n3] (ro)
+  {Readout\;mean$\,\Vert\,$max\;sobre $K_2$ nodes};
+\node[archdim, right=0.15cm of ro] {$256$};
+
+\node[archB=violet, below=0.32cm of ro] (m1)
+  {Linear$_{256\to 128}$\;·\;ReLU\;·\;Dropout};
+\node[archB=violet, below=0.12cm of m1] (m2)
+  {Linear$_{128\to 2}$};
+\node[archdim, right=0.15cm of m2] {$2$};
+
+\node[archB=green!60!black, below=0.32cm of m2] (out)
+  {Softmax\;$P(\text{N0}),\;P(\text{N1})$};
+
+\foreach \a/\b in {inp/g1,g1/n1,n1/p1,p1/g2,g2/n2,n2/p2,
+                   p2/g3,g3/n3,n3/ro,ro/m1,m1/m2,m2/out}
+  \draw[archarr] (\a)--(\b);
+
+\node[archsec] at ([xshift=-0.5cm]$(g1.west)!0.5!(n1.west)$)
+  {\rotatebox{90}{GAT 1}};
+\node[archsec] at ([xshift=-0.5cm]p1.west)
+  {\rotatebox{90}{Pool 1}};
+\node[archsec] at ([xshift=-0.5cm]$(g2.west)!0.5!(n2.west)$)
+  {\rotatebox{90}{GAT 2}};
+\node[archsec] at ([xshift=-0.5cm]p2.west)
+  {\rotatebox{90}{Pool 2}};
+\node[archsec] at ([xshift=-0.5cm]$(g3.west)!0.5!(n3.west)$)
+  {\rotatebox{90}{GAT 3}};
+\node[archsec] at ([xshift=-0.5cm]ro.west)
+  {\rotatebox{90}{Pool}};
+\node[archsec] at ([xshift=-0.5cm]$(m1.west)!0.5!(m2.west)$)
+  {\rotatebox{90}{MLP}};
+
+\end{tikzpicture}
+\caption{GAT+DiffPool — DiffPool intercalat entre capes GAT; $K_1\!\ll\!N$,
+$K_2\!\ll\!K_1$ (p.~ex.\ $N\!\approx\!250$, $K_1\!=\!25$, $K_2\!=\!5$).}
+\label{fig:arch-diffpool}
+\end{subfigure}
+
+\caption{Comparació de les dues arquitectures \texttt{GATClassifier}.
+\textbf{Esquerra}: model de referència amb readout pla (mean\,$\Vert$\,max global);
+\textbf{Dreta}: model jeràrquic on DiffPool redueix progressivament $N\!\to\!K_1\!\to\!K_2$
+super-nodes, emetent a cada nivell una pèrdua auxiliar $\mathcal{L}_{\text{aux}}=
+\mathcal{L}_{\text{link}}+\mathcal{L}_{\text{ent}}$ que es suma a la BCE principal.
+Les dimensions del tensor de sortida s'indiquen a la dreta de cada bloc ($h\!=\!128$,
+$H\!=\!4$, per tant $h{\cdot}H\!=\!512$).}
 \label{fig:arch}
-\end{figure}
+\end{figure*}
 
 \section{Metodologia}
 
@@ -758,7 +813,8 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 \node[own, below=0.6cm of g1] (ro) {\textit{Readout}\\mean\,$\|$\,max};
 \node[own, right=of ro]        (ml) {MLP};
 \node[own, right=of ml]        (pr) {P(N1)\\secció};
-\draw[arr] (g3.south) to[out=270,in=0] (ro.east);
+% route below the readout/mlp/pred row to avoid overlap
+\draw[arr] (g3.south) -- ++(0,-1.5) -| (ro.south);
 \draw[arr] (ro)--(ml); \draw[arr] (ml)--(pr);
 
 %% --- Agregació pacient ---
