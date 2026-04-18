@@ -301,58 +301,80 @@ def print_data_diagnostics(
 
 # ── Verificació de cobertura de patches ──────────────────────────────────────
 
-def verify_patch_coverage(df_npz: pd.DataFrame, patches_dir: Path) -> None:
+def verify_patch_coverage(df_npz: pd.DataFrame, patches_dir: Path, cls_dir: Path) -> None:
     """
-    Quick patch coverage check using one bag from the first available slide.
-
-    Inspects the actual directory structure under patches_dir and checks
-    whether the central patch of one representative bag exists on disk.
+    Inspect NPZ keys and check naming convention in Patches/ for one representative bag.
     """
     print("\n── Verificació cobertura Patches ───────────────────────────────────")
     print(f"  Directori patches : {patches_dir}")
     print(f"  Bags totals als NPZ (= nodes del graf) : {len(df_npz):,}")
+
+    # Inspect all keys in first NPZ file
+    npz_files = sorted(cls_dir.glob("*_CLS.npz"))
+    if npz_files:
+        npz = np.load(npz_files[0], allow_pickle=True)
+        print(f"\n  Camps del NPZ ({npz_files[0].name}): {list(npz.keys())}")
+        for key in npz.keys():
+            arr = npz[key]
+            shape = arr.shape if hasattr(arr, "shape") else f"len={len(arr)}"
+            dtype = arr.dtype if hasattr(arr, "dtype") else type(arr)
+            sample = str(arr[0])[:80] if len(arr) > 0 else ""
+            print(f"    {key:20s} shape={shape}  dtype={dtype}  ex: {sample}")
 
     # Pick first bag from NPZ
     row        = df_npz.iloc[0]
     hospital   = str(row["Hospital"])
     patient_id = str(row["Patient_ID"])
     slide_id   = str(row["Slide"])
+    section_id = str(row["Section"])
     bag_coords = np.array(row["coords_bag"])   # (256, 2)
     centroid   = bag_coords.mean(axis=0)
     dists      = np.linalg.norm(bag_coords - centroid, axis=1)
-    j_c, i_c   = bag_coords[int(dists.argmin())]
-    j_c, i_c   = int(round(j_c)), int(round(i_c))
+    central_in_bag = int(dists.argmin())
+    j_c, i_c   = bag_coords[central_in_bag]
 
-    print(f"\n  Primer bag: hospital={hospital!r}  patient={patient_id!r}  slide={slide_id!r}")
-    print(f"  Coord central del bag (j, i) = ({j_c}, {i_c})")
+    print(f"\n  Primer bag: hospital={hospital!r}  patient={patient_id!r}  "
+          f"slide={slide_id!r}  section={section_id!r}")
+    print(f"  Coord central (j,i) = ({j_c:.0f}, {i_c:.0f})  "
+          f"  (índex dins bag: {central_in_bag}/255)")
 
-    # Expected path under Patches/
-    slide_dir  = patches_dir / hospital / patient_id / slide_id
-    fname      = f"{hospital}_{patient_id}_{slide_id}_{j_c}_{i_c}.jpg"
-    img_path   = slide_dir / fname
-    print(f"  Ruta esperada : {img_path}")
-    print(f"  Existeix      : {img_path.exists()}")
+    slide_dir = patches_dir / hospital / patient_id / slide_id
+    print(f"\n  Directori slide: {slide_dir}  exists={slide_dir.exists()}")
 
-    # If slide_dir doesn't exist, show what IS there to diagnose structure
-    if not slide_dir.exists():
-        hosp_dir = patches_dir / hospital
-        if not hosp_dir.exists():
-            print(f"\n  [WARN] Directori hospital no trobat: {hosp_dir}")
-            print(f"  Contingut de patches_dir: {[d.name for d in patches_dir.iterdir() if d.is_dir()][:10]}")
-        else:
-            pat_dir = hosp_dir / patient_id
-            if not pat_dir.exists():
-                print(f"\n  [WARN] Directori pacient no trobat: {pat_dir}")
-                sample_patients = [d.name for d in hosp_dir.iterdir() if d.is_dir()][:5]
-                print(f"  Pacients disponibles (mostra): {sample_patients}")
+    if slide_dir.exists():
+        all_files = sorted(slide_dir.iterdir())
+        print(f"  Total fitxers al directori: {len(all_files)}")
+        print(f"  Primeres 8 mostres:")
+        for f in all_files[:8]:
+            print(f"    {f.name}")
+        extensions = {f.suffix.lower() for f in all_files if f.is_file()}
+        print(f"  Extensions trobades: {extensions}")
+
+        # Try to infer naming: {hospital}_{patient}_{slide}_{section}_{index}.ext
+        prefix = f"{hospital}_{patient_id}_{slide_id}_{section_id}_"
+        section_files = sorted(
+            [f for f in all_files if f.name.startswith(prefix)],
+            key=lambda f: int(f.stem.split("_")[-1]) if f.stem.split("_")[-1].isdigit() else 0
+        )
+        print(f"\n  Fitxers de la secció {section_id!r} (prefix={prefix!r}): {len(section_files)}")
+        if section_files:
+            print(f"  Rang d'índexs: 0 … {len(section_files)-1}")
+            # Estimate which bag index (0-based) this row is within the section
+            df_section = df_npz[
+                (df_npz["Patient_ID"] == patient_id) &
+                (df_npz["Slide"]      == slide_id)   &
+                (df_npz["Section"]    == section_id) &
+                (df_npz["Hospital"]   == hospital)
+            ]
+            bag_idx_in_section = int(df_section.index.get_loc(df_npz.index[0]))
+            patch_global_idx   = bag_idx_in_section * 256 + central_in_bag
+            print(f"  Bag index dins secció: {bag_idx_in_section}  "
+                  f"→ patch global estimat: {patch_global_idx}")
+            if patch_global_idx < len(section_files):
+                guessed = section_files[patch_global_idx]
+                print(f"  Fitxer estimat pel patch central: {guessed.name}  exists={guessed.exists()}")
             else:
-                print(f"\n  [WARN] Directori slide no trobat: {slide_dir}")
-                sample_slides = [d.name for d in pat_dir.iterdir() if d.is_dir()][:5]
-                print(f"  Slides disponibles (mostra): {sample_slides}")
-    else:
-        # Slide dir exists — show a few files to confirm naming convention
-        sample_files = [f.name for f in slide_dir.iterdir() if f.is_file()][:5]
-        print(f"  Fitxers al directori slide (mostra): {sample_files}")
+                print(f"  [WARN] Índex estimat {patch_global_idx} fora de rang ({len(section_files)} fitxers)")
     print()
 
 
@@ -696,7 +718,7 @@ def main() -> None:
 
     try:
         patches_dir = find_patches_dir(iam_path)
-        verify_patch_coverage(df_npz, patches_dir)
+        verify_patch_coverage(df_npz, patches_dir, cls_dir)
     except FileNotFoundError as exc:
         print(f"[WARN] Patches dir not found, skipping coverage check: {exc}")
 
