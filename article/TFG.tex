@@ -17,6 +17,7 @@
 \usepackage{booktabs}
 \usepackage{subcaption}
 \usepackage{amsmath}
+\usepackage{tikz-cd}
 \usepackage{amssymb}
 \usepackage{xcolor}
 \usepackage{colortbl}
@@ -25,7 +26,7 @@
 \captionsetup[table]{textfont=sc}
 \usepackage[hidelinks]{hyperref}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning}
+\usetikzlibrary{arrows.meta,positioning,calc}
 
 \author{\LARGE\sffamily David Morillo Massagué}
 \title{\Huge{\sffamily Predicció de Metàstasis en Histopatologia en Càncer Colorrectal usant
@@ -314,18 +315,20 @@ amb capes de \textit{pooling} jeràrquic per a la classificació binària N0/N1.
 intercalar operacions de reducció del graf \textit{entre} les capes de propagació de missatges, de
 manera que cada estadi treballa sobre una representació progressivament més compacta del teixit:
 
-\begin{equation*}
+\begin{displaymath}
+\begin{tikzcd}[column sep=large, row sep=large]
   \underbrace{\mathbf{X}^{(0)},\,\mathbf{A}^{(0)}}_{N\text{ nodes}}
-  \xrightarrow{\text{GAT}_1}
-  \xrightarrow{\text{Pool}_1}
+  \arrow[d, "\text{GAT}_1 \circ \text{Pool}_1"] \\
+  %
   \underbrace{\mathbf{X}^{(1)},\,\mathbf{A}^{(1)}}_{K_1\text{ nodes}}
-  \xrightarrow{\text{GAT}_2}
-  \xrightarrow{\text{Pool}_2}
+  \arrow[d, "\text{GAT}_2 \circ \text{Pool}_2"] \\
+  %
   \underbrace{\mathbf{X}^{(2)},\,\mathbf{A}^{(2)}}_{K_2\text{ nodes}}
-  \xrightarrow{\text{GAT}_3}
-  \xrightarrow{\text{readout}}
+  \arrow[d, "\text{GAT}_3 \circ \text{readout}"] \\
+  %
   \mathbf{z}
-\end{equation*}
+\end{tikzcd}
+\end{displaymath}
 
 \noindent on $K_1 \ll N$ i $K_2 \ll K_1$ són el nombre de \textit{super-nodes} de cada nivell jeràrquic.
 
