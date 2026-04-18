@@ -76,9 +76,9 @@ Graph Attention Networks}}
 \textbf{Resum--}
 Aquest treball aborda la predicció de metàstasis en ganglis limfàtics en pacients amb càncer colorectal en estadi
 pT1 a partir d'imatges de gran format (\textit{Whole Slide Images}). S'utilitzen \textit{Graph Attention Networks}
-(GAT) sobre grafs construïts a partir dels \textit{embeddings} CLS de 1.536 dimensions del model de fundació
-\textit{UNI2}, amb \textit{pooling} jeràrquic diferenciable (DiffPool) per preservar l'estructura espacial del
-teixit. El conjunt de dades comprèn 963 grafs provinents de 230 pacients, dividits
+(GAT) sobre grafs on cada node representa un \textit{bag} de 256 \textit{patches} de $256{\times}256$\,px
+($\approx4096{\times}4096$\,px al WSI), caracteritzat per l'embedding CLS de 1.536 dimensions del model de
+fundació \textit{UNI2}. El \textit{pooling} pot ser jeràrquic (DiffPool) o pla (\textit{mean}, \textit{max}). El conjunt de dades comprèn 963 grafs provinents de 230 pacients, dividits
 estratificadament en entrenament i validació. Per afrontar el desbalanceig de classes (N0\,$\gg$\,N1), s'apliquen
 pesos per classe. Donat que el diagnòstic és per pacient, s'implementen diverses estratègies
 d'agregació (\textit{Multiple Instance Learning}, MIL) que integren les prediccions de totes les làmines d'un
@@ -93,9 +93,10 @@ Metàstasi, Estadi pT1, Aprenentatge per múltiples instàncies (MIL), Desbalanc
 \\
 \textbf{Abstract--}
 This work addresses lymph node metastasis prediction in pT1 colorectal cancer patients from Whole Slide Images.
-We propose a methodology based on Graph Attention Networks (GAT) built on top of 1,536-dimensional CLS embeddings
-from the UNI2 foundation model, with differentiable hierarchical pooling (DiffPool) to preserve tissue spatial
-structure. The dataset comprises 963 graphs from 230 patients, stratified into training and
+We propose a methodology based on Graph Attention Networks (GAT) where each node represents a bag of
+256 patches of $256{\times}256$\,px ($\approx4096{\times}4096$\,px at WSI level 0), characterised by a
+1,536-dimensional CLS embedding from the UNI2 foundation model. Pooling can be hierarchical (DiffPool)
+or flat (mean, max), adapting to the graph topology. The dataset comprises 963 graphs from 230 patients, stratified into training and
 validation splits. To handle class imbalance (N0\,$\gg$\,N1), class weighting is applied.
 Since the diagnosis is patient-level rather than slide-level, Multiple Instance Learning (MIL) aggregation
 strategies are implemented to integrate predictions across all slides of a patient. An initial grid search has
@@ -195,24 +196,72 @@ A partir d'aquestes s'obtenen màscares de segmentació codificades per color: v
     \label{fig-mask}
 \end{figure}
 
-\subsection{Extracció de Patches i Filtratge}
+\subsection{Extracció de Patches i Embeddings CLS}
 
-S'aplica una finestra lliscant (\textit{sliding window}) sense solapament per dividir el teixit en unitats de
-$256 \times 256$ píxels, agrupades en \textit{patches} de $2048 \times 2048$ píxels per obtenir una cobertura
-contextual millor. Per a cada \textit{patch} es calculen metadades de qualitat: percentatge d'àrea afectada,
-nivell de borrositat (via transformada de Fourier) i proporció de teixit no blanc. Només es retenen els
-\textit{patches} que superen els llindars de qualitat establerts.
+S'aplica una finestra lliscant (\textit{sliding window}) sense solapament per dividir cada làmina en
+\textit{patches} de $256 \times 256$ píxels. Aquests s'agrupen en \textbf{bags} de $16 \times 16$
+\textit{patches} (256 \textit{patches} per \textit{bag}), cadascun cobrint una regió de
+$\approx 4096 \times 4096$ píxels del WSI a resolució completa (nivell 0). El model de fundació
+\textbf{UNI2}~\cite{chen2024uni2} processa cada \textit{bag} i extreu el token \textit{CLS} de la
+seva sortida, obtenint un vector de \textbf{1.536 dimensions} que condensa la informació morfològica
+i textural de la regió. No s'aplica cap filtratge de qualitat previ (ni per borrositat ni per
+proporció de blanc): tots els \textit{bags} d'una secció generen un node del graf.
 
 \section{Construcció del Graf}
 
 \subsection{Nodes i característiques}
 
-Cada \textit{patch} vàlid constitueix un node del graf. No tots els \textit{patches} de la làmina generen un
-node: la màscara de qualitat descarta les regions de fons blanc i les imatges desenfocades. Les característiques
-de cada node són \textit{embeddings} del token \textit{CLS} de 1.536 dimensions generats pel model de fundació
-\textit{UNI2}~\cite{chen2024uni2}, que condensa la informació morfològica i textural d'un \textit{bag} de 256 \textit{patches} de
-$256 \times 256$ píxels. A la subfigura~\ref{fig:patches} es pot observar la distribució esparsa dels
-\textit{patches} extrets sobre una làmina real.
+Cada \textit{bag} (conjunt de 256 \textit{patches} de $256{\times}256$\,px que cobreix
+$\approx4096{\times}4096$\,px al WSI) constitueix un \textbf{node} del graf. El vector de
+característiques de cada node és l'embedding CLS de \textbf{1.536 dimensions} obtingut per UNI2.
+La posició del node al pla WSI és el centroide de les coordenades dels seus 256 \textit{patches}.
+A la subfigura~\ref{fig:patches} es pot observar la distribució esparsa dels \textit{bags}
+extrets sobre una làmina real.
+
+\subsection{Model de dades: dimensions i estructures}
+\label{sec:model-dades}
+
+Formalment, cada secció histològica es representa com un graf
+$\mathcal{G} = (\mathbf{X},\,\mathbf{A})$ on:
+\begin{itemize}
+  \item $\mathbf{X} \in \mathbb{R}^{N \times 1536}$ és la matriu de característiques dels $N$ nodes
+        (\textit{bags}).
+  \item $\mathbf{A} \in \{0,1\}^{N \times N}$ és la matriu d'adjacència construïda per triangulació
+        de Delaunay i posterior poda d'arestes llargues.
+\end{itemize}
+
+Després de les tres capes GAT i l'operació de \textit{pooling}, s'obté una representació global del
+graf que s'alimenta al capçal MLP per produir $P(\text{N1})$ per a la secció. Amb \textit{flat
+pooling} (\textit{mean}, \textit{max}\dots) es redueix directament als $d_h$ dimensions del
+\textit{readout}; amb DiffPool s'obté un graf reduït de $K \ll N$ super-nodes que preserva
+l'estructura topològica.
+
+\textbf{Model 1 --- Múltiples grafs + agregació MIL.}
+Cada secció genera un graf independent; les $S$ seccions d'un pacient es processen per separat i les
+probabilitats $\{P(\text{N1}_i)\}_{i=1}^{S}$ s'agreguen a posteriori (Secció~\ref{sec:mil}).
+
+\textbf{Model 2 --- Mega-graf pacient (un sol graf).}
+Com a alternativa, es pot construir un únic graf per pacient concatenant verticalment les matrius de
+característiques i col·locant les matrius d'adjacència en la diagonal d'una mega-matriu per blocs:
+
+\begin{equation}
+  \mathbf{X}_{\text{pac}} =
+  \begin{pmatrix} \mathbf{X}_1 \\ \vdots \\ \mathbf{X}_S \end{pmatrix}
+  \in \mathbb{R}^{\left(\sum_i N_i\right) \times 1536},
+  \qquad
+  \mathbf{A}_{\text{pac}} =
+  \begin{pmatrix}
+    \mathbf{A}_1 & \mathbf{0} & \cdots \\
+    \mathbf{0}   & \ddots     & \mathbf{0} \\
+    \cdots        & \mathbf{0} & \mathbf{A}_S
+  \end{pmatrix}
+\end{equation}
+
+Els triangles fora de la diagonal queden a zero, és a dir, no hi ha arestes entre seccions
+diferents. D'aquesta manera el mecanisme d'atenció del GAT opera sobre totes les seccions
+simultàniament, i un únic \textit{pooling} global produeix directament el diagnòstic del pacient
+sense necessitat d'una etapa d'agregació de probabilitats. La implementació actual correspon al
+Model 1; el Model 2 és una línia de treball futura.
 
 \subsection{Connectivitat per triangulació de Delaunay}
 
@@ -324,6 +373,7 @@ possibilitat d'integrar la pèrdua auxiliar de regularització.
 \section{Metodologia}
 
 \subsection{Agregació per Pacient (MIL)}
+\label{sec:mil}
 
 El diagnòstic és per \textbf{pacient}, no per làmina. Una mateixa secció histològica pot no presentar senyals
 visibles de metàstasi si s'analitza aïlladament, mentre que en una altra secció del mateix pacient sí que és
@@ -493,29 +543,29 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 %% --- Carril 1: Preparació de dades (gris) ---
 \node[ext] (wsi)  {WSI};
 \node[ext, right=of wsi] (sw)   {\textit{Sliding}\\window};
-\node[ext, right=of sw]  (pat)  {Patches\\$2048{\times}2048$};
-\node[ext, right=of pat] (fil)  {Filtratge\\blur + white};
-\node[ext, right=of fil] (uni)  {\textit{UNI2}};
+\node[ext, right=of sw]  (pat)  {Patches\\$256{\times}256$};
+\node[ext, right=of pat] (bag)  {\textit{Bag}\\$16{\times}16$\\(4096\,px)};
+\node[ext, right=of bag] (uni)  {\textit{UNI2}};
 \node[ext, right=of uni] (cls)  {\textit{CLS}\\1536-dim};
 \draw[arr] (wsi)--(sw); \draw[arr] (sw)--(pat);
-\draw[arr] (pat)--(fil); \draw[arr] (fil)--(uni); \draw[arr] (uni)--(cls);
+\draw[arr] (pat)--(bag); \draw[arr] (bag)--(uni); \draw[arr] (uni)--(cls);
 
 %% --- Carril 2: Construcció del graf (blau) ---
-\node[own, below=1.7cm of wsi] (coo) {Coord.\\$(i,j)$};
+\node[own, below=1.9cm of wsi] (coo) {Coord.\\$(i,j)$};
 \node[own, right=of coo]       (del) {Delaunay};
-\node[own, right=of del]       (pru) {Filtratge\\$>2{\times}\bar{d}$};
-\node[own, right=of pru]       (gra) {\textit{Data}(x,\\edge\_index)};
+\node[own, right=of del]       (pru) {Poda\\$>2{\times}\bar{d}$};
+\node[own, right=of pru]       (gra) {\textbf{Graf}\\$\mathbf{X}$\,[N${\times}$1536]\\$\mathbf{A}$\,[N${\times}$N]};
 \draw[arr] (coo)--(del); \draw[arr] (del)--(pru); \draw[arr] (pru)--(gra);
-\draw[arr] (fil.south) to[out=255,in=90] (coo.north);
+\draw[arr] (bag.south) to[out=270,in=90] (coo.north);
 \draw[arr] (cls.south) to[out=270,in=70] (gra.north);
 
 %% --- Carril 3: Model i classificació (blau) ---
-\node[own, below=1.7cm of coo] (g1) {GATConv 1\\+ BN};
-\node[own, right=of g1]        (g2) {GATConv 2\\+ BN};
-\node[own, right=of g2]        (g3) {GATConv 3\\+ BN};
-\node[own, right=of g3]        (po) {\textit{Pooling}\\jeràrquic};
+\node[own, below=2.0cm of coo] (g1) {GATConv 1\\+ BN + ELU};
+\node[own, right=of g1]        (g2) {GATConv 2\\+ BN + ELU};
+\node[own, right=of g2]        (g3) {GATConv 3\\+ BN + ELU};
+\node[own, right=of g3]        (po) {\textit{Pooling}\\DiffPool\,/\\mean\,/\,max\,\dots};
 \node[own, right=of po]        (ml) {MLP};
-\node[own, right=of ml]        (pr) {P(N1)\\làmina};
+\node[own, right=of ml]        (pr) {P(N1)\\secció};
 \draw[arr] (g1)--(g2); \draw[arr] (g2)--(g3);
 \draw[arr] (g3)--(po); \draw[arr] (po)--(ml); \draw[arr] (ml)--(pr);
 \draw[arr] (gra.south) to[out=255,in=90] (g1.north);
@@ -539,10 +589,14 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
     {\footnotesize Model i\\classificació};
 
 \end{tikzpicture}
-\caption{Diagrama de flux del \textit{pipeline} complet. Blocs en gris: etapes realitzades pels companys de
-l'equip. Blocs en blau (vora gruixuda): contribucions pròpies d'aquest TFG. La fletxa marcada amb ${\times}S$
-indica que les $S$ làmines d'un pacient es processen independentment i les seves probabilitats P(N1) s'agreguen
-via MIL per obtenir el diagnòstic final a nivell de pacient.}
+\caption{Diagrama de flux del \textit{pipeline} complet. \textit{Blocs grisos}: etapes realitzades
+pels companys de l'equip (extracció de \textit{patches} $256{\times}256$\,px agrupats en \textit{bags}
+de $16{\times}16$ = $4096{\times}4096$\,px, sense filtratge, i obtenció de l'embedding CLS via UNI2).
+\textit{Blocs blaus (vora gruixuda)}: contribucions d'aquest TFG. El \textit{pooling} pot ser
+jeràrquic (DiffPool, $K$ super-nodes) o pla (\textit{mean}, \textit{max}\dots). La fletxa
+${\times}S$ indica que les $S$ seccions d'un pacient es processen com a grafs independents i les
+probabilitats P(N1) s'agreguen via MIL per obtenir el diagnòstic final (Model 1); el Model 2
+(mega-graf, Secció~\ref{sec:model-dades}) és una alternativa sense etapa d'agregació.}
 \label{fig:pipeline}
 \end{figure*}
 
