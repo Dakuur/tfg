@@ -85,7 +85,7 @@ def render_simple_square(
     scale = rgb_w / slide_meta["w"]
 
     if rect_kw is None:
-        rect_kw = dict(linewidth=0.5, edgecolor="#00ff88", facecolor="none", alpha=0.85)
+        rect_kw = dict(linewidth=1, edgecolor="#000000", facecolor="none", alpha=0.85)
 
     fig, ax = plt.subplots(figsize=(14, 10))
     fig.patch.set_facecolor("#1a1a2e")
