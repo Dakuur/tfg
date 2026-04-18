@@ -323,55 +323,63 @@ def _infer_slide_full(
     with torch.no_grad():
         x, ei = g_dev.x, g_dev.edge_index
 
-        # GAT Capa 1
-        dlog(f"GAT Capa 1 — heads={model.conv1.heads}")
-        x1_raw, (ei1, a1) = model.conv1(x, ei, return_attention_weights=True)
-        x1 = F.elu(model.bn1(x1_raw))
-        x1 = F.dropout(x1, p=model.dropout, training=False)
-        a1_mean = a1.mean(dim=1).cpu().float()
+        if model.pooling_type == "diff":
+            # Hierarchical DiffPool changes node count and topology between layers;
+            # skip per-layer attention breakdown and run the full forward pass.
+            dlog("Pooling jeràrquic (diff): forward pass directe, sense desglossar atenció per capa")
+            logits  = model(x, ei, batch)
+            probs   = F.softmax(logits, dim=1)
+        else:
+            # GAT Capa 1
+            dlog(f"GAT Capa 1 — heads={model.conv1.heads}")
+            x1_raw, (ei1, a1) = model.conv1(x, ei, return_attention_weights=True)
+            x1 = F.elu(model.bn1(x1_raw))
+            x1 = F.dropout(x1, p=model.dropout, training=False)
+            a1_mean = a1.mean(dim=1).cpu().float()
 
-        # GAT Capa 2
-        dlog(f"GAT Capa 2 — heads={model.conv2.heads}")
-        x2_raw, (ei2, a2) = model.conv2(x1, ei, return_attention_weights=True)
-        x2 = F.elu(model.bn2(x2_raw))
-        x2 = F.dropout(x2, p=model.dropout, training=False)
-        a2_mean = a2.mean(dim=1).cpu().float()
+            # GAT Capa 2
+            dlog(f"GAT Capa 2 — heads={model.conv2.heads}")
+            x2_raw, (ei2, a2) = model.conv2(x1, ei, return_attention_weights=True)
+            x2 = F.elu(model.bn2(x2_raw))
+            x2 = F.dropout(x2, p=model.dropout, training=False)
+            a2_mean = a2.mean(dim=1).cpu().float()
 
-        # GAT Capa 3
-        dlog(f"GAT Capa 3 — heads={model.conv3.heads}")
-        x3_raw, (ei3, a3) = model.conv3(x2, ei, return_attention_weights=True)
-        x3 = F.elu(model.bn3(x3_raw))
-        a3_mean = a3.mean(dim=1).cpu().float()
+            # GAT Capa 3
+            dlog(f"GAT Capa 3 — heads={model.conv3.heads}")
+            x3_raw, (ei3, a3) = model.conv3(x2, ei, return_attention_weights=True)
+            x3 = F.elu(model.bn3(x3_raw))
+            a3_mean = a3.mean(dim=1).cpu().float()
 
-        # Aggregate per-node attention
-        for name, ei_l, a_mean, a_full in [
-            ("layer1", ei1, a1_mean, a1),
-            ("layer2", ei2, a2_mean, a2),
-            ("layer3", ei3, a3_mean, a3),
-        ]:
-            ei_cpu    = ei_l.cpu()
-            node_attn = torch.zeros(num_nodes)
-            counts    = torch.zeros(num_nodes)
-            for k in range(ei_cpu.shape[1]):
-                dst = ei_cpu[1, k].item()
-                if dst < num_nodes:
-                    node_attn[dst] += a_mean[k].item()
-                    counts[dst]    += 1
-            counts    = counts.clamp(min=1)
-            attention_layers[name] = {
-                "edge_index":       ei_l.cpu().numpy().tolist(),
-                "weights_mean":     a_mean.numpy().tolist(),
-                "weights_per_head": a_full.cpu().float().numpy().tolist(),
-                "node_attention":   (node_attn / counts).numpy().tolist(),
-                "num_heads":        a_full.shape[1],
-            }
+            # Aggregate per-node attention
+            for name, ei_l, a_mean, a_full in [
+                ("layer1", ei1, a1_mean, a1),
+                ("layer2", ei2, a2_mean, a2),
+                ("layer3", ei3, a3_mean, a3),
+            ]:
+                ei_cpu    = ei_l.cpu()
+                node_attn = torch.zeros(num_nodes)
+                counts    = torch.zeros(num_nodes)
+                for k in range(ei_cpu.shape[1]):
+                    dst = ei_cpu[1, k].item()
+                    if dst < num_nodes:
+                        node_attn[dst] += a_mean[k].item()
+                        counts[dst]    += 1
+                counts    = counts.clamp(min=1)
+                attention_layers[name] = {
+                    "edge_index":       ei_l.cpu().numpy().tolist(),
+                    "weights_mean":     a_mean.numpy().tolist(),
+                    "weights_per_head": a_full.cpu().float().numpy().tolist(),
+                    "node_attention":   (node_attn / counts).numpy().tolist(),
+                    "num_heads":        a_full.shape[1],
+                }
 
-        # Pooling + MLP
-        dlog(f"Pooling ({model.pooling_type}) + MLP…")
-        h      = model.pool_readout(x3, ei, batch)
-        logits = model.mlp(h)
-        probs  = F.softmax(logits, dim=1)
-        pred   = int(probs.argmax(dim=1).item())
+            # Pooling + MLP
+            dlog(f"Pooling ({model.pooling_type}) + MLP…")
+            h      = model.pool_readout(x3, ei, batch)
+            logits = model.mlp(h)
+            probs  = F.softmax(logits, dim=1)
+
+        pred    = int(probs.argmax(dim=1).item())
         prob_n0 = float(probs[0, 0].item())
         prob_n1 = float(probs[0, 1].item())
 
@@ -425,6 +433,12 @@ def _compute_gradcam(g: Data, model: GATClassifier, device: str, num_nodes: int)
     g_dev = g.to(device)
     batch = torch.zeros(num_nodes, dtype=torch.long, device=device)
     x, ei = g_dev.x, g_dev.edge_index
+
+    if model.pooling_type == "diff":
+        # Hierarchical DiffPool changes node count between layers; GradCAM on
+        # original nodes is not directly applicable — fall back to uniform.
+        log.debug("GradCAM: pooling=diff, retornant scores uniformes")
+        return [0.5] * num_nodes
 
     with torch.enable_grad():
         x1 = F.elu(model.bn1(model.conv1(x, ei)))
