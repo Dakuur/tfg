@@ -55,53 +55,50 @@ def render(
     removed_edges: np.ndarray,
     title: str,
     out_path: Path,
+    rgb_img: np.ndarray,
+    slide_meta: dict,
     mask_img: "np.ndarray | None" = None,
-    rgb_img: "np.ndarray | None" = None,
-    slide_meta: "dict | None" = None,
     overlay_mode: str = "mask",
 ) -> None:
-    """Single-panel figure: background image + Delaunay graph with dot nodes."""
-    cx = coords[:, 0].astype(float)   # WSI j (column) coords
-    cy = coords[:, 1].astype(float)   # WSI i (row) coords
+    """Single-panel figure: RGB slide + optional mask overlay + Delaunay graph."""
+    rgb_h, rgb_w = rgb_img.shape[:2]
+    scale  = rgb_w / slide_meta["w"]
+    j_base = slide_meta["j_base"]
+    i_base = slide_meta["i_base"]
 
-    # extent for background image: [left, right, bottom, top] with origin="upper"
-    if slide_meta is not None:
-        jb, ib = slide_meta["j_base"], slide_meta["i_base"]
-        extent = [jb, jb + slide_meta["w"], ib + slide_meta["h"], ib]
-    else:
-        margin = 4096
-        extent = [cx.min() - margin, cx.max() + margin,
-                  cy.max() + margin, cy.min() - margin]
+    # WSI level-0 coords → display pixel coords (same transform as patch_vis.py)
+    cx = (coords[:, 0] - j_base) * scale
+    cy = (coords[:, 1] - i_base) * scale
 
-    bg_img = mask_img if overlay_mode == "mask" else rgb_img
-
-    fig, ax = plt.subplots(figsize=(12, 10))
+    fig, ax = plt.subplots(figsize=(14, 10))
     fig.patch.set_facecolor("#1a1a2e")
     ax.set_facecolor("#1a1a2e")
     ax.axis("off")
     ax.set_title(title, color="white", fontsize=9, pad=6)
 
-    if bg_img is not None:
-        ax.imshow(bg_img, extent=extent, origin="upper", aspect="auto",
-                  alpha=0.1, zorder=1)
+    ax.imshow(rgb_img, origin="upper", zorder=1)
+
+    if overlay_mode == "mask" and mask_img is not None:
+        alpha_ch  = (mask_img.sum(axis=-1) > 0).astype(np.uint8) * 180
+        mask_rgba = np.dstack([mask_img, alpha_ch])
+        ax.imshow(mask_rgba, origin="upper", alpha=0.45, zorder=2)
 
     # removed edges (crossed non-tissue) in red
     for u, v in removed_edges:
         ax.plot([cx[u], cx[v]], [cy[u], cy[v]],
-                color="#ff0000", alpha=0.9, linewidth=2, zorder=2)
+                color="#ff4444", alpha=0.7, linewidth=1.0, zorder=3)
 
     # kept edges
     for u, v in edges:
         ax.plot([cx[u], cx[v]], [cy[u], cy[v]],
-                color="black", alpha=0.9, linewidth=2, zorder=3)
+                color="black", alpha=0.85, linewidth=1.2, zorder=4)
 
     # nodes
-    ax.scatter(cx, cy, color="#00d4ff", s=12, alpha=0.9,
-               linewidths=0.3, edgecolors="white", zorder=4)
+    ax.scatter(cx, cy, color="#00d4ff", s=14, alpha=0.9,
+               linewidths=0.4, edgecolors="white", zorder=5)
 
-    pad = 2000
-    ax.set_xlim(cx.min() - pad, cx.max() + pad)
-    ax.set_ylim(cy.max() + pad, cy.min() - pad)   # invert y (WSI origin top-left)
+    ax.set_xlim(-0.5, rgb_w - 0.5)
+    ax.set_ylim(rgb_h - 0.5, -0.5)
 
     plt.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -191,14 +188,17 @@ def main() -> None:
     centroids    = coord_arrays.mean(axis=1)                           # (N, 2)
 
     slide_meta = load_slide_meta(iam_path, hospital, patient_id, slide_id)
-    mask_img   = load_mask_image(iam_path, hospital, patient_id, slide_id)
     rgb_img    = load_rgb_image(iam_path, hospital, patient_id, slide_id)
+    mask_img   = load_mask_image(iam_path, hospital, patient_id, slide_id)
+
+    if rgb_img is None or slide_meta is None:
+        sys.exit("[ERROR] RGB image and slide metadata are required for rendering.")
 
     edges, _ = build_delaunay_edges(centroids, distance_factor=2.0)
     print(f"[INFO] Graph    : {len(centroids)} nodes | {len(edges)} edges (before mask filter)")
 
     removed_edges = np.empty((0, 2), dtype=np.int64)
-    if mask_img is not None and slide_meta is not None:
+    if mask_img is not None:
         edges, removed_edges = filter_edges_by_mask(
             edges, centroids, mask_img,
             j_base=slide_meta["j_base"], i_base=slide_meta["i_base"],
@@ -207,10 +207,7 @@ def main() -> None:
         )
         print(f"[INFO] Edges after mask filter: {len(edges)} kept, {len(removed_edges)} removed")
     else:
-        if mask_img is None:
-            print("[WARN] Mask not available — skipping edge mask filter.")
-        if slide_meta is None:
-            print("[WARN] Slide metadata not available — skipping edge mask filter.")
+        print("[WARN] Mask not available — skipping edge mask filter.")
 
     export_graph(centroids, edges, out_path=Path(args.output))
 
@@ -225,9 +222,9 @@ def main() -> None:
         removed_edges=removed_edges,
         title=title,
         out_path=Path(args.output),
-        mask_img=mask_img,
         rgb_img=rgb_img,
         slide_meta=slide_meta,
+        mask_img=mask_img,
         overlay_mode=OVERLAY_MODE,
     )
 
