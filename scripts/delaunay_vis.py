@@ -75,6 +75,7 @@ from wsi_io import (  # noqa: E402
     load_slide_meta,
     load_mask_image,
     load_rgb_image,
+    assemble_bag_image,
 )
 
 # ── single-line toggle ─────────────────────────────────────────────────────────
@@ -378,46 +379,42 @@ def main() -> None:
     coord_arrays = np.stack(df_slide["coords_bag"].tolist(), axis=0)  # (N, 256, 2)
     centroids    = coord_arrays.mean(axis=1)                           # (N, 2)
 
-    # ── load one representative patch image per bag ────────────────────────────
-    from PIL import Image as _PILImage
+    # ── assemble one bag image per bag (all 256 patches in 16×16 grid) ───────────
     slide_dir   = patches_dir / hospital / patient_id / slide_id
     images:     list[np.ndarray]        = []
     coords_out: list[np.ndarray]        = []
     non_white:  list[float]             = []
 
     for n in range(len(df_slide)):
-        bag_coords = coord_arrays[n]
-        centroid   = centroids[n]
-        dists      = np.linalg.norm(bag_coords - centroid, axis=1)
-        central_idx = int(dists.argmin())
+        bag_coords = coord_arrays[n]        # (256, 2)
+        paths_bag  = np.array(df_slide.iloc[n]["paths_bag"])  # (256,)
 
-        path_str  = str(np.array(df_slide.iloc[n]["paths_bag"])[central_idx])
-        basename  = path_str.replace("\\", "/").split("/")[-1]
-        img_path  = slide_dir / basename
-
-        if not img_path.exists():
-            continue
-        try:
-            img = np.array(_PILImage.open(img_path).convert("RGB"))
-        except Exception:
+        assembled = assemble_bag_image(slide_dir, paths_bag, bag_coords, border=2)
+        if assembled.max() == 0:
+            # All patches missing — skip this bag
             continue
 
-        images.append(img)
-        coords_out.append(centroids[n])
-        non_white.append(1.0)   # no quality metadata in Patches/; treat all as valid
+        # Position = top-left corner of the bag (j_min, i_min) so the assembled
+        # image aligns correctly when placed by build_canvas at patch_size=4096
+        j_min_bag = float(bag_coords[:, 0].min())
+        i_min_bag = float(bag_coords[:, 1].min())
+
+        images.append(assembled)
+        coords_out.append(np.array([j_min_bag, i_min_bag]))
+        non_white.append(1.0)
 
     coords = np.array(coords_out)
 
     if len(images) < 3:
         sys.exit(
-            f"[ERROR] Only {len(images)} patch(es) loaded — need at least 3 for Delaunay.\n"
+            f"[ERROR] Only {len(images)} bag(s) assembled — need at least 3 for Delaunay.\n"
             f"  Slide dir : {slide_dir}\n"
             f"  Exists    : {slide_dir.exists()}"
         )
-    print(f"[INFO] Loaded   : {len(images)} patch images")
+    print(f"[INFO] Assembled: {len(images)} bag images (each ~4096×4096)")
 
-    # detect patch size from coord spacing (used for canvas assembly and edge filter)
-    patch_size = _estimate_patch_size(coord_arrays)
+    # Each assembled bag covers ~4096×4096 WSI level-0 pixels (256 patches × 256 px)
+    patch_size = 4096
 
     # ── load slide-level metadata (for background alignment) ──────────────────
     slide_meta = load_slide_meta(iam_path, hospital, patient_id, slide_id)

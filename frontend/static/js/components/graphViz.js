@@ -47,7 +47,7 @@ function _closeModal() {
 
 function _openPatchModal(nodeData, slideInfo) {
   _ensureModal();
-  const { hospital, patient_id, slide_id, section_id, patch_idx, patch_j, patch_i } = slideInfo;
+  const { hospital, graph_id } = slideInfo;
   const idx = nodeData.id;
 
   const modal = document.getElementById("patch-modal");
@@ -58,37 +58,16 @@ function _openPatchModal(nodeData, slideInfo) {
   label.textContent = `Node ${idx}  ·  atenció: ${(nodeData.attn * 100).toFixed(1)}%`;
   modal.style.display = "flex";
 
-  let url, metaText;
-
-  // Preferred: section_id + patch_idx (new graphs)
-  if (section_id != null && patch_idx != null) {
-    const pIdx = patch_idx[idx];
-    url      = `/api/patch_image?hospital=${encodeURIComponent(hospital)}`
-             + `&patient_id=${encodeURIComponent(patient_id)}`
-             + `&slide_id=${encodeURIComponent(slide_id)}`
-             + `&section_id=${encodeURIComponent(section_id)}`
-             + `&patch_idx=${pIdx}`;
-    metaText = `sec=${section_id}  idx=${pIdx}  ·  ${hospital}`;
-  } else {
-    // Legacy fallback: j + i coords
-    const j = patch_j?.[idx];
-    const i = patch_i?.[idx];
-    if (j == null || i == null) {
-      img.removeAttribute("src");
-      meta.textContent = "Coordenades no disponibles — cal re-executar build_dataset.py";
-      return;
-    }
-    url      = `/api/patch_image?hospital=${encodeURIComponent(hospital)}`
-             + `&patient_id=${encodeURIComponent(patient_id)}`
-             + `&slide_id=${encodeURIComponent(slide_id)}`
-             + `&j=${j}&i=${i}`;
-    metaText = `j=${j}  i=${i}  ·  ${hospital}`;
+  if (!graph_id) {
+    meta.textContent = "graph_id no disponible — actualitza la pàgina";
+    return;
   }
 
-  meta.textContent = "Carregant patch…";
+  const url = `/api/bag_image?graph_id=${encodeURIComponent(graph_id)}&node_idx=${idx}`;
+  meta.textContent = "Assemblant bag (256 patches)…";
   img.src = "";
-  img.onload  = () => { meta.textContent = metaText; };
-  img.onerror = () => { meta.textContent = "No s'ha pogut carregar el patch des del servidor"; };
+  img.onload  = () => { meta.textContent = `Node ${idx} · bag assembled · ${hospital}`; };
+  img.onerror = () => { meta.textContent = "No s'ha pogut assemblar el bag — comprova que els patches estan disponibles"; };
   img.src = url;
 }
 

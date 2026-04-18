@@ -243,6 +243,54 @@ def load_patches(
     return images, coords, non_white
 
 
+# ── bag assembly ──────────────────────────────────────────────────────────────
+
+def assemble_bag_image(
+    slide_dir: Path,
+    paths_256: np.ndarray,    # (256,) Windows path strings
+    coords_256: np.ndarray,   # (256, 2) (j, i) WSI level-0 coords
+    patch_px: int = 256,
+    border: int = 2,
+) -> np.ndarray:
+    """
+    Assemble 256 patch PNGs into a 16×16 grid with thin black borders.
+
+    Positions each patch using its (j, i) WSI coordinates relative to the
+    bag's top-left corner.  Missing files leave black cells.
+
+    Returns (H, W, 3) uint8 array — approximately (4096+borders) × (4096+borders).
+    """
+    coords = np.array(coords_256)
+    j_min  = int(coords[:, 0].min())
+    i_min  = int(coords[:, 1].min())
+
+    cols = np.round((coords[:, 0] - j_min) / patch_px).astype(int)
+    rows = np.round((coords[:, 1] - i_min) / patch_px).astype(int)
+
+    n_cols = int(cols.max()) + 1
+    n_rows = int(rows.max()) + 1
+
+    cell     = patch_px + border
+    canvas_w = border + n_cols * cell
+    canvas_h = border + n_rows * cell
+    canvas   = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)  # black = borders
+
+    for path_str, col, row in zip(paths_256, cols, rows):
+        basename = str(path_str).replace("\\", "/").split("/")[-1]
+        img_path = slide_dir / basename
+        if not img_path.exists():
+            continue
+        try:
+            img = np.array(Image.open(img_path).convert("RGB"))
+        except Exception:
+            continue
+        x = border + col * cell
+        y = border + row * cell
+        canvas[y : y + patch_px, x : x + patch_px] = img
+
+    return canvas
+
+
 # ── NPZ / label loading ────────────────────────────────────────────────────────
 
 def load_all_npz(cls_dir: Path) -> pd.DataFrame:

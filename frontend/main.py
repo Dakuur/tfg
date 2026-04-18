@@ -45,7 +45,8 @@ sys.path.insert(0, str(ROOT))
 from scripts.model    import GATClassifier                          # noqa: E402
 from scripts.training import aggregate_patient_probs               # noqa: E402
 from scripts.wsi_io   import (find_patches_dir, find_rgb_images_dir,  # noqa: E402
-                               load_slide_meta)                    # noqa: E402
+                               load_slide_meta, assemble_bag_image,
+                               CLS_DIR_SUBPATH)                    # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
@@ -86,6 +87,19 @@ except FileNotFoundError:
 
 _RGB_DIR: Optional[Path] = find_rgb_images_dir(_IAM_PATH)
 log.info(f"RGB images dir: {_RGB_DIR}")
+
+# NPZ cache — loaded on demand, one entry per hospital
+_npz_cache: Dict[str, object] = {}
+
+def _get_npz(hospital: str):
+    """Return the loaded NPZ for a hospital, caching after first load."""
+    if hospital not in _npz_cache:
+        npz_path = _IAM_PATH / CLS_DIR_SUBPATH / f"{hospital}_CLS.npz"
+        if not npz_path.exists():
+            return None
+        _npz_cache[hospital] = np.load(npz_path, allow_pickle=True)
+        log.info(f"Loaded NPZ for '{hospital}'")
+    return _npz_cache[hospital]
 
 
 # ── model loading ──────────────────────────────────────────────────────────────
@@ -928,6 +942,84 @@ def _nearest_patch(index: dict, j: float, i: float) -> Optional[Path]:
     if dists[best] > (8192 ** 2):   # > 8192 px away → probably wrong slide
         return None
     return index[tuple(coords[best].astype(int))]
+
+
+@app.get("/api/bag_image")
+async def bag_image(
+    graph_id: str = Query(...),
+    node_idx: int = Query(...),
+):
+    """
+    Assemble and return the full 4096×4096 bag image for a graph node.
+
+    Loads all 256 PNG patches from the NPZ paths field, assembles them into
+    a 16×16 grid with 2 px black borders between patches, and returns JPEG.
+    """
+    all_g = STATE.graphs["train"] + STATE.graphs["val"]
+    entry = next((g for g in all_g if g["id"] == graph_id), None)
+    if not entry:
+        raise HTTPException(404, f"Graph not found: {graph_id}")
+
+    g = _load_pt(Path(entry["path"]))
+    if g is None:
+        raise HTTPException(500, "Could not load graph")
+    if not (hasattr(g, "patch_idx") and g.patch_idx is not None):
+        raise HTTPException(422, "Graph has no patch_idx — rebuild with build_dataset.py")
+
+    hospital   = str(g.hospital)
+    patient_id = str(g.patient_id)
+    slide_id   = str(g.slide_id)
+    section_id = str(g.section_id)
+    target_idx = int(g.patch_idx[node_idx].item())
+
+    npz = _get_npz(hospital)
+    if npz is None:
+        raise HTTPException(503, f"NPZ not found for hospital '{hospital}'")
+
+    mask = (
+        (npz["patient_list"].astype(str) == patient_id) &
+        (npz["slides"].astype(str)       == slide_id)   &
+        (npz["sections"].astype(str)     == section_id)
+    )
+    if not mask.any():
+        raise HTTPException(404, "No bags found in NPZ for this section")
+
+    paths_all  = npz["paths"][mask]   # (N_bags, 256)
+    coords_all = npz["coords"][mask]  # (N_bags, 256, 2)
+
+    # Find the bag whose central patch index matches target_idx
+    found_paths = found_coords = None
+    for bag_paths, bag_coords in zip(paths_all, coords_all):
+        centroid    = bag_coords.mean(axis=0)
+        dists       = np.linalg.norm(bag_coords - centroid, axis=1)
+        central_i   = int(dists.argmin())
+        basename    = str(bag_paths[central_i]).replace("\\", "/").split("/")[-1]
+        stem        = basename.rsplit(".", 1)[0]
+        if int(stem.split("_")[-1]) == target_idx:
+            found_paths  = bag_paths
+            found_coords = bag_coords
+            break
+
+    if found_paths is None:
+        raise HTTPException(404, f"Bag with central patch_idx={target_idx} not found in NPZ")
+
+    if PATCHES_DIR is None:
+        raise HTTPException(503, "Patches directory not available on this server")
+
+    slide_dir = PATCHES_DIR / hospital / patient_id / slide_id
+    canvas    = assemble_bag_image(slide_dir, found_paths, found_coords, border=2)
+
+    # Downscale to 900 px max side for fast transfer
+    img = PILImage.fromarray(canvas)
+    if max(img.size) > 900:
+        scale    = 900 / max(img.size)
+        img      = img.resize((int(img.width * scale), int(img.height * scale)),
+                               PILImage.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=88)
+    buf.seek(0)
+    return Response(content=buf.read(), media_type="image/jpeg")
 
 
 @app.get("/api/patch_image")
