@@ -346,12 +346,25 @@ function _rebuildSlideTable(container, slides, r) {
     row.addEventListener("click", async () => {
       const gid = row.dataset.gid;
       if (!gid || gid === _vizGraphId) return;
-      await vizSlide(container, gid, r.slide_results);
+      await vizSlide(container, gid);
     });
   });
 }
 
-async function vizSlide(container, graphId, slides) {
+/** Update ▶ viz marker and row highlight in-place without rebuilding the table */
+function _updateVizMarker(container, graphId) {
+  container.querySelector("#slides-content").querySelectorAll("tbody tr").forEach(row => {
+    const isViz = row.dataset.gid === graphId;
+    row.classList.toggle("selected", isViz);
+    const lastTd = row.querySelector("td:last-child");
+    if (lastTd) {
+      lastTd.style.color = isViz ? "var(--accent-light)" : "var(--text3)";
+      lastTd.innerHTML   = isViz ? "▶ viz" : "<span style='opacity:0.4'>viz</span>";
+    }
+  });
+}
+
+async function vizSlide(container, graphId) {
   const vizLabel   = container.querySelector("#viz-slide-label");
   const vizLoading = container.querySelector("#viz-loading");
   if (vizLoading) vizLoading.style.display = "";
@@ -360,10 +373,7 @@ async function vizSlide(container, graphId, slides) {
   try {
     const viz = await API.inference(graphId, false);
     _vizGraphId = graphId;
-
-    // Rebuild slide table to update the ▶ viz marker
-    if (slides) _rebuildSlideTable(container, slides, {});
-
+    _updateVizMarker(container, graphId);
     await _drawViz(container, viz, graphId);
   } catch (e) {
     if (vizLoading) vizLoading.style.display = "none";
