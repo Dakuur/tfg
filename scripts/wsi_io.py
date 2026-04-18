@@ -7,7 +7,7 @@ delaunay_vis.py and build_dataset.py share a single source of truth.
 
 Functions
 ---------
-find_patches_dir    – locate the Patches_2048 directory
+find_patches_dir    – locate the Patches directory
 find_rgb_images_dir – locate the RGB_Images directory
 find_masks_dir      – locate the Segmentation_Masks directory
 load_metadata       – read the per-patch CSV for a hospital
@@ -36,7 +36,7 @@ Image.MAX_IMAGE_PIXELS = 400_000_000
 
 # ── dataset path constants ─────────────────────────────────────────────────────
 PATCHES_SUBPATH = (
-    "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON/Images/Patches_2048"
+    "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON/Images/Patches"
 )
 RGB_IMAGES_SUBPATH = (
     "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON/Images/RGB_Images"
@@ -59,7 +59,7 @@ LABELS_SUBPATH = (
 # ── path resolution ────────────────────────────────────────────────────────────
 
 def find_patches_dir(iam_path: Path) -> Path:
-    """Return the Patches_2048 directory, searching common locations under iam_path."""
+    """Return the Patches directory (individual patch JPEGs), searching common locations under iam_path."""
     for candidate in [iam_path / "Patches", iam_path / PATCHES_SUBPATH]:
         if candidate.is_dir():
             return candidate

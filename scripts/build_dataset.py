@@ -91,7 +91,7 @@ def generate_coverage_report(
       in_excel        : apareix a l'Excel i el diagnòstic NO és NX
       excel_score     : N0, N1, NX o "-" (no trobat a l'Excel)
       in_cls          : apareix en algun fitxer *_CLS.npz
-      in_patches_2048 : existeix el directori Patches_2048/{hospital}/{patient_id}
+      in_patches      : existeix el directori Patches/{hospital}/{patient_id}
 
     L'informe cobreix la unió de tots els pacients coneguts (Excel + CLS NPZ).
     """
@@ -153,7 +153,7 @@ def generate_coverage_report(
         patches_dir: Path | None = find_patches_dir(iam_path)
     except FileNotFoundError:
         patches_dir = None
-        print("[WARN] coverage_report: Patches_2048 directory not found — in_patches_2048 will be False")
+        print("[WARN] coverage_report: Patches directory not found — in_patches will be False")
 
     records: list[dict] = []
     for pid in sorted(all_patients):
@@ -184,7 +184,7 @@ def generate_coverage_report(
                     "excel_score":      score,
                     "in_excel":         in_excel_valid,
                     "in_cls":           True,
-                    "in_patches_2048":  in_patches,
+                    "in_patches":  in_patches,
                 })
         else:
             records.append({
@@ -193,12 +193,12 @@ def generate_coverage_report(
                 "excel_score":      score,
                 "in_excel":         in_excel_valid,
                 "in_cls":           False,
-                "in_patches_2048":  in_patches,
+                "in_patches":       in_patches,
             })
 
     df_report = pd.DataFrame(records, columns=[
         "patient_id", "hospital", "excel_score",
-        "in_excel", "in_cls", "in_patches_2048",
+        "in_excel", "in_cls", "in_patches",
     ])
     df_report.sort_values(["hospital", "patient_id"], inplace=True)
 
@@ -210,7 +210,7 @@ def generate_coverage_report(
     n_both    = ((df_report["in_excel"]) & (df_report["in_cls"])).sum()
     n_only_e  = ((df_report["in_excel"]) & (~df_report["in_cls"])).sum()
     n_only_c  = ((~df_report["in_excel"]) & (df_report["in_cls"])).sum()
-    n_patches = df_report["in_patches_2048"].sum()
+    n_patches = df_report["in_patches"].sum()
     print(f"\n── Coverage report ─────────────────────────────────────────────────")
     print(f"  Pacients totals : {total}")
     print(f"  Excel ∩ CLS     : {n_both}   (usables per entrenament)")
@@ -296,6 +296,68 @@ def print_data_diagnostics(
     else:
         print("\n  [OK] Tots els pacients de l'Excel tenen dades CLS als NPZ.")
 
+    print()
+
+
+# ── Verificació de cobertura de patches ──────────────────────────────────────
+
+def verify_patch_coverage(df_npz: pd.DataFrame, patches_dir: Path, sample_size: int = 200) -> None:
+    """
+    Compare node counts in NPZ with image files in Patches directory.
+
+    Prints:
+      - Total bags in NPZ (= nodes that will become graph nodes)
+      - Total JPG files found under patches_dir
+      - For a random sample of bags, how many central-patch files exist on disk
+        (exact match using the {hospital}_{patient}_{slide}_{j}_{i}.jpg convention)
+    """
+    print("\n── Verificació cobertura Patches ───────────────────────────────────")
+    print(f"  Directori patches : {patches_dir}")
+
+    total_bags = len(df_npz)
+    print(f"  Bags totals als NPZ (= nodes del graf) : {total_bags:,}")
+
+    # Comptar fitxers JPG per hospital sota patches_dir
+    print("\n  Fitxers JPG per hospital:")
+    grand_total_files = 0
+    for hosp_dir in sorted(patches_dir.iterdir()):
+        if not hosp_dir.is_dir():
+            continue
+        n_jpg = sum(1 for _ in hosp_dir.rglob("*.jpg"))
+        grand_total_files += n_jpg
+        bags_hosp = len(df_npz[df_npz["Hospital"] == hosp_dir.name])
+        print(f"    {hosp_dir.name}: {n_jpg:,} JPGs  |  {bags_hosp:,} bags NPZ")
+    print(f"\n  Total JPGs al disc : {grand_total_files:,}")
+
+    # Mostreig: verificar existència del patch central per cada bag
+    rng     = np.random.default_rng(42)
+    indices = rng.choice(len(df_npz), size=min(sample_size, len(df_npz)), replace=False)
+    sample  = df_npz.iloc[indices].reset_index(drop=True)
+
+    found = 0
+    for _, row in sample.iterrows():
+        hospital   = str(row["Hospital"])
+        patient_id = str(row["Patient_ID"])
+        slide_id   = str(row["Slide"])
+        bag_coords = np.array(row["coords_bag"])          # (256, 2)
+        centroid   = bag_coords.mean(axis=0)
+        dists      = np.linalg.norm(bag_coords - centroid, axis=1)
+        idx        = int(dists.argmin())
+        j_c, i_c   = bag_coords[idx]
+        j_c, i_c   = int(round(j_c)), int(round(i_c))
+
+        fname    = f"{hospital}_{patient_id}_{slide_id}_{j_c}_{i_c}.jpg"
+        img_path = patches_dir / hospital / patient_id / slide_id / fname
+        if img_path.exists():
+            found += 1
+
+    pct = 100.0 * found / len(sample)
+    print(f"\n  Mostreig {len(sample)} bags → patch central trobat: {found}/{len(sample)}  ({pct:.1f}%)")
+    if pct < 50:
+        print("  [WARN] Menys del 50% dels patches centrals trobats al disc.")
+        print("         Verifica que PATCHES_SUBPATH apunta al directori correcte.")
+    else:
+        print("  [OK] Cobertura de patches correcta.")
     print()
 
 
@@ -636,6 +698,12 @@ def main() -> None:
 
     generate_coverage_report(df_npz, iam_path, out_dir)
     print_data_diagnostics(df_npz, df_labels, cls_dir)
+
+    try:
+        patches_dir = find_patches_dir(iam_path)
+        verify_patch_coverage(df_npz, patches_dir)
+    except FileNotFoundError as exc:
+        print(f"[WARN] Patches dir not found, skipping coverage check: {exc}")
 
     df_full = df_npz.merge(df_labels, on="Patient_ID", how="inner")
     print(
