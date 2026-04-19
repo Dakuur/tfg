@@ -15,7 +15,6 @@ Provides:
 import copy
 import random
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import torch
@@ -169,49 +168,38 @@ def aggregate_patient_probs(
 
 
 def train_epoch_patient(
-    model:              torch.nn.Module,
+    model:         torch.nn.Module,
     loader,
-    optimizer:          torch.optim.Optimizer,
-    class_weights:      torch.Tensor,
-    scaler:             torch.amp.GradScaler,
-    device:             torch.device,
-    aggregation:        str = "noisy_or",
-    patient_aggregator: Optional[torch.nn.Module] = None,
+    optimizer:     torch.optim.Optimizer,
+    class_weights: torch.Tensor,
+    scaler:        torch.amp.GradScaler,
+    device:        torch.device,
 ) -> dict:
     """One patient-level MIL training epoch.
 
-    All slides from all patients in the batch are processed in a single
-    forward pass; then per-patient probabilities are aggregated and a
-    single BCE loss is back-propagated per patient.
+    Expects model.forward to accept patient_batch kwarg (GATClassifier).
+    Returns per-patient logits (n_patients, 2) via the model's internal
+    aggregation strategy; loss is cross-entropy with class weights.
     """
     model.train()
-    if patient_aggregator is not None:
-        patient_aggregator.train()
-
     total_loss = 0.0
     all_true, all_pred = [], []
 
     for all_graphs, labels, slide_counts in loader:
         pyg_batch = Batch.from_data_list([g.to(device) for g in all_graphs])
         labels    = labels.to(device)
+        patient_batch = torch.cat([
+            torch.full((c,), i, dtype=torch.long)
+            for i, c in enumerate(slide_counts)
+        ]).to(device)
 
         optimizer.zero_grad()
 
         with torch.amp.autocast("cuda", enabled=device.type == "cuda"):
-            pat_probs = _forward_patient(
-                model, pyg_batch, slide_counts, aggregation, patient_aggregator, device
-            )
+            logits   = model(pyg_batch.x, pyg_batch.edge_index,
+                             pyg_batch.batch, patient_batch)
             aux_loss = model.aux_loss.to(device)
-
-        # BCE is unsafe inside autocast (requires float32 inputs)
-        labels_float = labels.float()
-        sample_w = torch.where(
-            labels.bool(),
-            class_weights[1].to(device),
-            class_weights[0].to(device),
-        )
-        main_loss = F.binary_cross_entropy(pat_probs.float(), labels_float, weight=sample_w)
-        loss = main_loss + aux_loss
+            loss     = F.cross_entropy(logits, labels, weight=class_weights) + aux_loss
 
         scaler.scale(loss).backward()
         scaler.step(optimizer)
@@ -219,94 +207,47 @@ def train_epoch_patient(
 
         total_loss += loss.item()
         all_true.extend(labels.cpu().tolist())
-        all_pred.extend((pat_probs.detach() > 0.5).long().cpu().tolist())
+        all_pred.extend(logits.detach().argmax(dim=1).cpu().tolist())
 
     n = len(loader)
-    return {
-        "loss": total_loss / n,
-        "acc":  accuracy_score(all_true, all_pred),
-    }
+    return {"loss": total_loss / n, "acc": accuracy_score(all_true, all_pred)}
 
 
 @torch.no_grad()
 def val_epoch_patient(
-    model:              torch.nn.Module,
+    model:         torch.nn.Module,
     loader,
-    class_weights:      torch.Tensor,
-    device:             torch.device,
-    aggregation:        str = "noisy_or",
-    patient_aggregator: Optional[torch.nn.Module] = None,
+    class_weights: torch.Tensor,
+    device:        torch.device,
 ) -> dict:
     """One patient-level MIL validation epoch."""
     model.eval()
-    if patient_aggregator is not None:
-        patient_aggregator.eval()
-
     total_loss = 0.0
     all_true, all_pred, all_scores = [], [], []
 
     for all_graphs, labels, slide_counts in loader:
         pyg_batch = Batch.from_data_list([g.to(device) for g in all_graphs])
         labels    = labels.to(device)
+        patient_batch = torch.cat([
+            torch.full((c,), i, dtype=torch.long)
+            for i, c in enumerate(slide_counts)
+        ]).to(device)
 
-        pat_probs = _forward_patient(
-            model, pyg_batch, slide_counts, aggregation, patient_aggregator, device
-        )
-
-        labels_float = labels.float()
-        sample_w = torch.where(
-            labels.bool(),
-            class_weights[1].to(device),
-            class_weights[0].to(device),
-        )
-        loss = F.binary_cross_entropy(pat_probs.float(), labels_float, weight=sample_w)
+        logits = model(pyg_batch.x, pyg_batch.edge_index,
+                       pyg_batch.batch, patient_batch)
+        loss   = F.cross_entropy(logits, labels, weight=class_weights)
 
         total_loss += loss.item()
+        probs = F.softmax(logits, dim=1)
         all_true.extend(labels.cpu().tolist())
-        all_pred.extend((pat_probs > 0.5).long().cpu().tolist())
-        all_scores.extend(pat_probs.cpu().tolist())
+        all_pred.extend(probs.argmax(dim=1).cpu().tolist())
+        all_scores.extend(probs[:, 1].cpu().tolist())
 
     n = len(loader)
     return _metrics_dict(total_loss / n, all_true, all_pred, all_scores)
 
 
 # ── internal helpers ───────────────────────────────────────────────────────────
-
-def _forward_patient(
-    model:              torch.nn.Module,
-    pyg_batch:          Batch,
-    slide_counts:       list[int],
-    aggregation:        str,
-    patient_aggregator: Optional[torch.nn.Module],
-    device:             torch.device,
-) -> torch.Tensor:
-    """Run one batched forward pass and return patient-level P(N1) tensor.
-
-    Returns: 1-D FloatTensor of shape (n_patients,), values in (0, 1).
-    """
-    pat_probs: list[torch.Tensor] = []
-    start = 0
-
-    if aggregation == "attention" and patient_aggregator is not None:
-        # Gated Attention MIL: encode → aggregate per patient → mlp → P(N1)
-        h_all = model.encode(pyg_batch.x, pyg_batch.edge_index, pyg_batch.batch)
-        for count in slide_counts:
-            h_pat = h_all[start:start + count]          # (count, D)
-            h_agg = patient_aggregator(h_pat)            # (1, D)
-            logit = model.mlp(h_agg)                     # (1, 2)
-            prob  = F.softmax(logit, dim=1)[0, 1]
-            pat_probs.append(prob)
-            start += count
-    else:
-        # Prob-based aggregation: slide probs → aggregate function
-        logits_all = model(pyg_batch.x, pyg_batch.edge_index, pyg_batch.batch)
-        probs_all  = F.softmax(logits_all, dim=1)[:, 1]
-        for count in slide_counts:
-            slide_probs = probs_all[start:start + count]
-            pat_probs.append(aggregate_patient_probs(slide_probs, method=aggregation))
-            start += count
-
-    return torch.stack(pat_probs)   # (n_patients,)
 
 
 def _metrics_dict(loss: float, all_true: list, all_pred: list, all_scores: list) -> dict:
@@ -331,21 +272,17 @@ def _metrics_dict(loss: float, all_true: list, all_pred: list, all_scores: list)
 # ── checkpoint ─────────────────────────────────────────────────────────────────
 
 def save_checkpoint(
-    model:              torch.nn.Module,
-    optimizer:          torch.optim.Optimizer,
-    epoch:              int,
-    metrics:            dict,
-    path:               Path,
-    patient_aggregator: Optional[torch.nn.Module] = None,
+    model:     torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    epoch:     int,
+    metrics:   dict,
+    path:      Path,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    ckpt = {
+    torch.save({
         "epoch":        epoch,
         "val_auc":      metrics.get("auc"),
         "val_f1_macro": metrics.get("f1_macro"),
         "model":        model.state_dict(),
         "optimizer":    optimizer.state_dict(),
-    }
-    if patient_aggregator is not None:
-        ckpt["patient_aggregator"] = patient_aggregator.state_dict()
-    torch.save(ckpt, path)
+    }, path)

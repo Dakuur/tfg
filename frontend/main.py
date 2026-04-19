@@ -152,6 +152,7 @@ def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
     model = GATClassifier(
         in_channels=in_channels, hidden=hidden, heads=heads,
         dropout=dropout, pooling=pooling, diff_clusters=diff_clusters,
+        patient_aggregation=aggregation,
     )
     model.load_state_dict(sd)
     model.eval()

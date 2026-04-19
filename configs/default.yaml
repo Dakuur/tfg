@@ -1,10 +1,13 @@
 # HistoGAT — Training Configuration
 #
-# Any scalar value can be replaced by a list to run a grid search.
-# train.py will execute one training run per combination.
+# Any scalar value can be replaced by a list to trigger a grid search.
+# train.py executes one run per combination.
 #
-# Current grid: 4 poolings × 5 aggregations × 2 lr × 2 monitors = 80 runs
-# Fixed from prior experiments: hidden=128, heads=2, dropout=0.5, diff_clusters=25
+# Recommended usage with k-fold CV:
+#   python train.py --kfold 5 --run_name exp_grid
+#
+# Current grid: 2 poolings × 2 aggregations × 2 lr = 8 combos
+# With --kfold 5 → 40 total runs
 
 # ── Data ───────────────────────────────────────────────────────────────────────
 data:
@@ -14,24 +17,21 @@ data:
 # ── Model ──────────────────────────────────────────────────────────────────────
 model:
   hidden:  128
-  heads:   2
+  heads:   4
   dropout: 0.5
 
-  # Readout pooling strategy (str or list):
-  #   mean_max — concat(global_mean_pool, global_max_pool)
-  #   mean     — global_mean_pool
-  #   max      — global_max_pool
-  #   sum      — global_add_pool
-  #   diff     — Differential Hierarchical Pooling (DiffPool)
-  pooling:       "diff"
-  diff_clusters: [5, 25, 50]     # only used if pooling=diff
+  # Readout pooling strategy:
+  #   mean_max — concat(global_mean_pool, global_max_pool)  [GAT Baseline]
+  #   diff     — Hierarchical DiffPool (N → K1 → K2)       [GAT+DiffPool]
+  pooling:       ["mean_max", "diff"]
+  diff_clusters: 25     # K1; K2 = max(K1//3, 5) = 8
 
 # ── Training ───────────────────────────────────────────────────────────────────
 training:
   lr:           [1.0e-4, 1.0e-5]
   weight_decay: 1.0e-3
   epochs:       100
-  batch_size:   128
+  batch_size:   32
 
   # ReduceLROnPlateau
   scheduler_factor:   0.5
@@ -42,20 +42,16 @@ training:
   patience: 15
   seed:     123
 
-  # Metric used for checkpointing:
-  #   val_auc      — validation ROC-AUC
-  #   val_f1_macro — macro-averaged F1 (N0 + N1)
-  monitor: ["val_f1_macro", "val_auc"]
+  # Metric used for checkpointing
+  monitor: "val_auc"
 
+  # Patient-level MIL training (recommended)
   patient_level: true
 
-  # How to aggregate per-slide P(N1) → patient probability:
-  #   noisy_or — P(pat=N1) = 1 - Π(1-P(slide_i))  [default]
-  #   max      — max(P(slide_i))
-  #   lse      — log-sum-exp smooth maximum
-  #   mean     — mean(P(slide_i))
+  # Per-slide aggregation → patient probability:
+  #   noisy_or  — probabilistic OR (P=1-Π(1-p_i))
   #   attention — Gated Attention MIL (Ilse et al., 2018)
-  aggregation: ["noisy_or", "max", "mean", "attention"]
+  aggregation: ["noisy_or", "attention"]
 
 # ── W&B ────────────────────────────────────────────────────────────────────────
 wandb:

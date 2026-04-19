@@ -30,6 +30,8 @@ For patient-level training (all slides at once):
     logits = model.mlp(pat_h)                     # (1, 2)
 """
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -42,8 +44,8 @@ try:
 except ImportError:
     _DIFF_POOL_OK = False
 
-POOLING_OPTIONS      = ("mean_max", "mean", "max", "sum", "diff")
-AGGREGATION_OPTIONS  = ("noisy_or", "max", "lse", "mean", "attention")
+POOLING_OPTIONS     = ("mean_max", "mean", "max", "sum", "diff")
+AGGREGATION_OPTIONS = ("noisy_or", "max", "lse", "mean", "attention")
 
 
 # ── Hierarchical DiffPool step ─────────────────────────────────────────────────
@@ -148,13 +150,9 @@ class PatientAggregator(nn.Module):
 
     def forward(self, H: torch.Tensor) -> torch.Tensor:
         """H: (n_slides, embed_dim)  →  (1, embed_dim)"""
-        A = self.w(torch.tanh(self.V(H)) * torch.sigmoid(self.U(H)))  # (n_slides, 1)
+        A = self.w(torch.tanh(self.V(H)) * torch.sigmoid(self.U(H)))
         A = F.softmax(A, dim=0)
-        return (A * H).sum(dim=0, keepdim=True)                        # (1, embed_dim)
-
-    @property
-    def embed_dim(self) -> int:
-        return self.V.in_features
+        return (A * H).sum(dim=0, keepdim=True)
 
 
 # ── Main model ─────────────────────────────────────────────────────────────────
@@ -182,19 +180,24 @@ class GATClassifier(nn.Module):
 
     def __init__(
         self,
-        in_channels:   int,
-        hidden:        int,
-        heads:         int,
-        dropout:       float,
-        pooling:       str = "mean_max",
-        diff_clusters: int = 10,
+        in_channels:         int,
+        hidden:              int,
+        heads:               int,
+        dropout:             float,
+        pooling:             str = "mean_max",
+        diff_clusters:       int = 10,
+        patient_aggregation: str = "noisy_or",
     ):
         super().__init__()
         assert pooling in POOLING_OPTIONS, (
             f"pooling must be one of {POOLING_OPTIONS}, got '{pooling}'"
         )
-        self.dropout      = dropout
-        self.pooling_type = pooling
+        assert patient_aggregation in AGGREGATION_OPTIONS, (
+            f"patient_aggregation must be one of {AGGREGATION_OPTIONS}"
+        )
+        self.dropout             = dropout
+        self.pooling_type        = pooling
+        self.patient_aggregation = patient_aggregation
 
         # Layer 1 — same for all pooling types
         self.conv1 = GATConv(in_channels, hidden, heads=heads, concat=True, dropout=dropout)
@@ -218,6 +221,9 @@ class GATClassifier(nn.Module):
             self.conv3 = GATConv(hidden * heads, hidden, heads=1,     concat=False, dropout=dropout)
             self.bn3   = nn.BatchNorm1d(hidden)
             pool_out   = hidden * 2 if pooling == "mean_max" else hidden
+
+        if patient_aggregation == "attention":
+            self.patient_aggregator = PatientAggregator(pool_out)
 
         self.mlp = nn.Sequential(
             nn.Linear(pool_out, hidden),
@@ -285,10 +291,62 @@ class GATClassifier(nn.Module):
         return torch.cat([global_mean_pool(x, batch),
                           global_max_pool(x, batch)], dim=1)
 
+    # ── patient-level aggregation ──────────────────────────────────────────────
+
+    def _aggregate_patients(
+        self, h: torch.Tensor, patient_batch: torch.Tensor
+    ) -> torch.Tensor:
+        """Aggregate slide embeddings → patient logits (n_patients, 2).
+
+        Args:
+            h             : (n_slides, pool_out) — output of encode()
+            patient_batch : (n_slides,) — patient index per slide (0-based)
+        Returns:
+            logits (n_patients, 2)
+        """
+        n_patients = int(patient_batch.max().item()) + 1
+
+        if self.patient_aggregation == "attention":
+            pat_h = torch.cat(
+                [self.patient_aggregator(h[patient_batch == i])
+                 for i in range(n_patients)],
+                dim=0,
+            )
+            return self.mlp(pat_h)
+
+        slide_logits = self.mlp(h)
+        results: list[torch.Tensor] = []
+        for i in range(n_patients):
+            sl = slide_logits[patient_batch == i]
+            if self.patient_aggregation == "lse":
+                logit_pat = torch.logsumexp(sl[:, 1], dim=0)
+            else:
+                p_n1 = F.softmax(sl, dim=1)[:, 1]
+                if self.patient_aggregation == "noisy_or":
+                    p_pat = 1.0 - torch.prod(1.0 - p_n1)
+                elif self.patient_aggregation == "mean":
+                    p_pat = p_n1.mean()
+                else:  # max
+                    p_pat = p_n1.max()
+                p_pat     = p_pat.clamp(1e-7, 1.0 - 1e-7)
+                logit_pat = torch.log(p_pat / (1.0 - p_pat))
+            results.append(torch.stack([torch.zeros_like(logit_pat), logit_pat]))
+
+        return torch.stack(results, dim=0)  # (n_patients, 2)
+
     # ── forward ────────────────────────────────────────────────────────────────
 
-    def forward(self, x, edge_index, batch):
-        return self.mlp(self.encode(x, edge_index, batch))
+    def forward(
+        self,
+        x:             torch.Tensor,
+        edge_index:    torch.Tensor,
+        batch:         torch.Tensor,
+        patient_batch: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        h = self.encode(x, edge_index, batch)
+        if patient_batch is None:
+            return self.mlp(h)
+        return self._aggregate_patients(h, patient_batch)
 
     # ── aux loss ───────────────────────────────────────────────────────────────
 

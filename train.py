@@ -49,7 +49,7 @@ from scripts.data     import (  # noqa: E402
     compute_class_weights, make_loaders,
     compute_patient_class_weights, make_patient_loaders,
 )
-from scripts.model    import GATClassifier, PatientAggregator                    # noqa: E402
+from scripts.model    import GATClassifier                                         # noqa: E402
 from scripts.training import (  # noqa: E402
     fix_seeds, EarlyStopping,
     train_epoch,         val_epoch,
@@ -201,34 +201,22 @@ def _train_body(
 
     # ── Model ─────────────────────────────────────────────────────────────────
     model = GATClassifier(
-        in_channels   = in_ch,
-        hidden        = m["hidden"],
-        heads         = m["heads"],
-        dropout       = m["dropout"],
-        pooling       = m["pooling"],
-        diff_clusters = m.get("diff_clusters", 10),
+        in_channels         = in_ch,
+        hidden              = m["hidden"],
+        heads               = m["heads"],
+        dropout             = m["dropout"],
+        pooling             = m["pooling"],
+        diff_clusters       = m.get("diff_clusters", 10),
+        patient_aggregation = aggregation if patient_level else "noisy_or",
     ).to(device)
 
-    # PatientAggregator only for attention MIL
-    patient_aggregator = None
-    if patient_level and aggregation == "attention":
-        pool_out = m["hidden"] * 2 if m["pooling"] in ("mean_max", "diff") else m["hidden"]
-        patient_aggregator = PatientAggregator(embed_dim=pool_out).to(device)
-        print(f"[INFO] PatientAggregator: embed_dim={pool_out}")
-
     n_params = sum(p.numel() for p in model.parameters())
-    if patient_aggregator is not None:
-        n_params += sum(p.numel() for p in patient_aggregator.parameters())
-    print(f"[INFO] Total params: {n_params:,}  |  pooling={m['pooling']}")
+    print(f"[INFO] Total params: {n_params:,}  |  pooling={m['pooling']}  aggregation={aggregation if patient_level else 'n/a'}")
     wandb.config.update({"n_params": n_params, "in_channels": in_ch}, allow_val_change=True)
 
     # ── Optimiser & scheduler ─────────────────────────────────────────────────
-    all_params = list(model.parameters())
-    if patient_aggregator is not None:
-        all_params += list(patient_aggregator.parameters())
-
     optimizer = torch.optim.Adam(
-        all_params,
+        model.parameters(),
         lr=t["lr"],
         weight_decay=t.get("weight_decay", 1e-3),
     )
@@ -266,11 +254,9 @@ def _train_body(
         if patient_level:
             tr = train_epoch_patient(
                 model, train_loader, optimizer, class_weights, scaler, device,
-                aggregation=aggregation, patient_aggregator=patient_aggregator,
             )
             va = val_epoch_patient(
                 model, val_loader, class_weights, device,
-                aggregation=aggregation, patient_aggregator=patient_aggregator,
             )
         else:
             tr = train_epoch(model, train_loader, optimizer, criterion, scaler, device)
@@ -310,10 +296,7 @@ def _train_body(
             best_score       = score
             best_epoch       = epoch
             best_val_metrics = va.copy()
-            save_checkpoint(
-                model, optimizer, epoch, va, ckpt_path,
-                patient_aggregator=patient_aggregator,
-            )
+            save_checkpoint(model, optimizer, epoch, va, ckpt_path)
             # Save a config copy alongside the weights
             run_cfg = copy.deepcopy(cfg)
             run_cfg["_run"] = {"name": run.name, "url": run.url}
