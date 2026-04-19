@@ -164,6 +164,65 @@ de grafs i les xarxes neuronals profundes que vull explorar dins de l'Enginyeria
     \item Proporcionar una eina interactiva de visualització i inferència en temps real.
 \end{itemize}
 
+\section{Estat de l'Art}
+
+\subsection{Classificació de WSI amb MIL}
+
+El processament de \textit{Whole Slide Images} comporta un repte computacional fonamental:
+les imatges, amb resolucions de fins a $150\,000 \times 150\,000$ píxels, no poden
+processar-se directament amb arquitectures convencionals. L'enfocament dominant és el
+\textit{Multiple Instance Learning} (MIL) sobre \textit{bags} de \textit{patches}.
+Ilse et al.~\cite{ilse2018attentionbaseddeepmultipleinstance} van introduir l'agregació
+per atenció (\textit{attention-based MIL}), que aprèn pesos d'importància per a cada
+instància i n'obté una representació global ponderada. Lu et
+al.~\cite{lu2020dataefficientweaklysupervised} van escalar aquest paradigma a grans
+conjunts de dades clínics (CLAM), afegint guia d'instàncies per millorar la
+interpretabilitat. Li et al.~\cite{li2021dualstreammultipleinstancelearning} van proposar
+DSMIL, que combina una branca a nivell de \textit{patch} i una a nivell de làmina amb
+aprenentatge contrastiu auto-supervisat. La predicció de l'estat ganglionar a partir
+d'histopatologia s'ha abordat en altres tipus de càncer: Muti et al.~\cite{muti2023deep}
+demostren que models de \textit{deep learning} entrenats sobre làmines de càncer gàstric
+poden predir l'estat N0/N1 amb resultats clínicament rellevants.
+
+\subsection{Grafs i GNN en Patologia Digital}
+
+Les \textit{Graph Neural Networks} permeten representar el teixit com una estructura
+relacional, capturant la topologia espacial entre regions de manera explícita. Jaume et
+al.~\cite{jaume2021histocartographytoolkitgraphanalytics} van presentar HistoCartography,
+un marc de treball per a l'anàlisi de grafs en patologia digital que demostra la
+superioritat dels grafs sobre les CNN en tasques de classificació de biòpsies. El
+mecanisme d'atenció de les GAT~\cite{veličković2018graphattentionnetworks} és especialment
+adequat per a aquest domini, on no tots els veïns d'una regió contribueixen igualment al
+diagnòstic. Les estratègies de \textit{pooling} jeràrquic com DiffPool~\cite{ying2019hierarchicalgraphrepresentationlearning}
+han demostrat la seva utilitat per capturar representacions multi-escala en grafs de
+propietats moleculars i estructures biològiques; Grattarola et al.~\cite{Grattarola_2024}
+ofereixen una revisió sistemàtica de les fortaleses i limitacions de les
+diverses estratègies de \textit{pooling}.
+
+\subsection{Models de Fundació per a Histopatologia}
+
+L'extracció de característiques de \textit{patches} histopatològics ha experimentat una
+evolució accelerada amb l'aparició de \textit{foundation models} preentrenats a gran
+escala. UNI2~\cite{chen2024uni2} és un \textit{vision transformer} entrenat sobre més de
+100 milions de \textit{patches} de 20 tipus de teixit, assolint l'estat de l'art en
+nombroses tasques \textit{downstream}. CONCH~\cite{lu2024conch} estén aquest paradigma
+amb alineament text-imatge, permetent la cerca semàntica sobre representacions
+histopatològiques. La qualitat dels embeddings generats per aquests models és determinant
+per a la representació dels nodes en el graf, substituint avantajosament les tècniques
+d'extracció tradicionals basades en CNNs genèriques.
+
+\subsection{Treball Previ al CVC sobre pT1 CRC}
+
+El present projecte s'emmarca en una línia de recerca del grup IAM del CVC. Martí et
+al.~\cite{ddd.uab.cat:317556} van analitzar el mateix conjunt de dades pT1 CRC comparant
+CNNs, ViTs i GNNs per a la classificació de \textit{patches} individuals, obtenint la
+millor AUC ($0{,}954 \pm 0{,}077$) amb una arquitectura híbrida ViT+NN. Tanmateix,
+aquell enfocament opera a nivell de \textit{patch} i no modela explícitament la topologia
+espacial del teixit ni el diagnòstic a nivell de pacient. El present treball construeix
+sobre els embeddings CLS del model UNI2 i proposa una arquitectura específicament
+dissenyada per explotar les relacions espacials entre regions histològiques i per al
+diagnòstic a nivell de pacient via MIL.
+
 \section{Dades i Preprocessament}
 
 Aquest projecte es realitza en col·laboració amb un equip de la UAB que cobreix des de la recollida de dades fins
@@ -685,14 +744,6 @@ seva pròpia \textit{run} a W\&B), i al final es reporta la mitjana $\pm$ desvia
 mètriques clau (AUC, F1-macro, F1-N1, \textit{recall}-N1). Aquesta modalitat és compatible amb el
 \textit{grid search}: si es combinen totes dues opcions, s'executen $n_{\text{combos}} \times k$ runs.
 
-\subsection{Atenció Supervisada amb Màscares}
-
-Una línia d'investigació planificada és l'ús de les màscares binàries d'anotació expert (displàsia, infiltració)
-per supervisar els pesos d'atenció del model GAT. L'objectiu és que les regions anotades amb patologia actuïn com
-a guia de supervisió feble, forçant el model a focalitzar l'atenció sobre les àrees d'interès clínic
-independentment de l'etiqueta N0/N1 final. Això permetria aprofitar les anotacions disponibles més enllà del
-diagnòstic binari, afegint un senyal de regularització espacialment informat.
-
 \section{Resultats Preliminars}
 
 El \textit{grid search} amb validació creuada de 5 \textit{folds} estratificada per pacient ha avaluat 4 configuracions:
@@ -823,6 +874,58 @@ les $S$ seccions d'un pacient es processen com a grafs independents i les probab
 s'agreguen via MIL per obtenir el diagnòstic final a nivell de pacient.}
 \label{fig:pipeline}
 \end{figure*}
+
+\section{Conclusions i Treball Futur}
+
+\subsection{Conclusions Parcials}
+
+S'ha dissenyat i implementat un \textit{pipeline} complet de classificació N0/N1 per a
+la predicció de metàstasi ganglionar en càncer colorectal pT1, des de la construcció de
+grafs espacials de Delaunay sobre embeddings UNI2 fins a l'entrenament amb validació
+creuada de 5 particions. Els resultats preliminars (millor AUC $0{,}817 \pm 0{,}073$)
+validen la viabilitat de l'enfocament. Se'n destaquen tres observacions:
+
+\begin{itemize}
+  \item L'agregació per atenció MIL (\texttt{PatientAggregator}) és determinant: la
+  mateixa arquitectura GAT Baseline passa d'AUC $0{,}581$ amb \textit{noisy-OR} a
+  $0{,}817$ amb \textit{attention}, confirmant que el paradigma MIL requereix un
+  mecanisme d'agregació expressiu per a un conjunt de dades desbalancejat.
+  \item GAT+DiffPool amb \textit{attention} obté la menor variabilitat entre
+  \textit{folds} ($\sigma\!=\!0{,}042$) i el millor F1-N1 ($0{,}679 \pm 0{,}058$),
+  indicant que el \textit{pooling} jeràrquic pot aportar una representació més estable
+  tot i no superar clarament el model de referència en AUC.
+  \item L'espai d'hiperparàmetres explorat és reduït i el dataset és limitat; no és
+  possible extreure conclusions definitives en aquesta fase del projecte.
+\end{itemize}
+
+\subsection{Treball Futur}
+
+\textbf{Cerca d'hiperparàmetres exhaustiva.} L'exploració actual cobreix 4 combinacions.
+S'implementarà un \textit{random search} o cerca bayesiana (Optuna) sobre un espai més
+ampli que inclogui $h_{\text{hidden}}$, $K_1$/$K_2$ per a DiffPool, profunditat del MLP,
+\textit{dropout}, \textit{weight decay} i estratègia d'optimitzador.
+
+\textbf{Supervisió amb màscares d'anotació.} S'explorarà l'ús de les màscares binàries
+(displàsia, infiltració) anotades per la Dra.\ Musulén per guiar els pesos d'atenció del
+GAT, seguint l'enfocament de Tourniaire et al.~\cite{TOURNIAIRE2023102763} (MS-CLAM), on
+entre el 12\,\% i el 62\,\% de les anotacions parcials és suficient per millorar la
+localització i la classificació. Això permetria aprofitar les anotacions disponibles com
+a supervisió feble espacialment informada, afegint un senyal de regularització al model.
+
+\textbf{Ampliació del dataset.} Dels 370 pacients amb diagnòstic vàlid, 140 (el 38\,\%)
+no disposen d'embeddings UNI2 perquè el \textit{pipeline} d'extracció no s'ha executat
+sobre les seves làmines (notablement tot l'H.\ 12 de Octubre amb 48 pacients). Generar
+aquests embeddings podria pràcticament doblar el dataset efectiu i millorar
+substancialment la capacitat de generalització.
+
+\textbf{Comparació amb baselines MIL sense graf.} Per quantificar l'aportació real de
+la informació topològica, es compararà el model GAT contra ABMIL/CLAM~\cite{lu2020dataefficientweaklysupervised}
+aplicat sobre els mateixos embeddings UNI2 però sense estructura de graf, permetent
+aïllar la contribució de les arestes de Delaunay.
+
+\textbf{Ablació de la connectivitat.} Es compararan els grafs de Delaunay amb alternatives
+($k$-NN, radi fix, graf completament connectat) per verificar si la topologia espacial
+real del teixit aporta avantatge respecte de connexions menys informades.
 
 \printbibliography
 
