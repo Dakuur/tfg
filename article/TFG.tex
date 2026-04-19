@@ -676,27 +676,7 @@ El \textit{grid search} amb validació creuada de 5 \textit{folds} estratificada
 els dos tipus de \textit{pooling} (GAT Baseline \textit{mean\_max} i GAT+DiffPool \textit{diff}) creuats amb els
 dos mètodes d'agregació MIL (\textit{noisy-OR} i \textit{attention}). Per a cada combinació es va seleccionar
 el millor \textit{learning rate} entre $\{10^{-4}, 10^{-5}\}$. Les mètriques de validació a nivell de pacient
-(mitjana $\pm$ desviació estàndard dels 5 \textit{folds}) es presenten a la Taula~\ref{tab:grid}, i la
-configuració del millor model a la Taula~\ref{tab:hparams}.
-
-\begin{table}[h]
-\centering
-\caption{Configuració del millor model (GAT Baseline + \textit{attention}).}
-\label{tab:hparams}
-\small
-\begin{tabular}{lc}
-\toprule
-\textbf{Paràmetre} & \textbf{Valor} \\
-\midrule
-\textit{Pooling}      & \textit{mean\_max} \\
-Agregació MIL         & \textit{attention} \\
-\textit{Learning rate}& $10^{-5}$          \\
-\textit{Dropout}      & 0{,}5              \\
-\textit{Weight decay} & $10^{-3}$          \\
-Validació             & 5-\textit{fold} CV \\
-\bottomrule
-\end{tabular}
-\end{table}
+(mitjana $\pm$ desviació estàndard dels 5 \textit{folds}) es presenten a la Taula~\ref{tab:grid}.
 
 \begin{table*}[t]
 \centering
@@ -759,13 +739,6 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
                 align=center, font=\small},
     ext/.style={box, draw=gray!55, fill=gray!12},
     own/.style={box, draw=blue!65!black, line width=1.3pt, fill=blue!7},
-    % compact nodes for model row
-    cmp/.style={rectangle, rounded corners=3pt, draw=blue!65!black, line width=1pt,
-                fill=blue!7, minimum width=1.45cm, minimum height=0.60cm,
-                align=center, font=\scriptsize},
-    dpl/.style={rectangle, rounded corners=3pt, draw=orange!70!black, line width=1pt,
-                fill=orange!10, minimum width=1.1cm, minimum height=0.60cm,
-                align=center, font=\scriptsize},
     arr/.style={->, >=stealth, thick},
     lbl/.style={font=\small\bfseries, align=right},
 ]
@@ -789,32 +762,18 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 \draw[arr] (bag.south) to[out=270,in=90] (coo.north);
 \draw[arr] (cls.south) to[out=270,in=70] (gra.north);
 
-%% --- Carril 3a: Backbone GAT+DiffPool (nodes compactes) ---
-\node[cmp, below=2.0cm of coo] (g1) {GAT$_1$\\$N{\to}N$};
-\node[dpl, right=0.18cm of g1] (p1) {DP$_1$\\$N{\to}K_1$};
-\node[cmp, right=0.18cm of p1] (g2) {GAT$_2$\\$K_1{\to}K_1$};
-\node[dpl, right=0.18cm of g2] (p2) {DP$_2$\\$K_1{\to}K_2$};
-\node[cmp, right=0.18cm of p2] (g3) {GAT$_3$\\$K_2{\to}K_2$};
-\draw[arr] (g1)--(p1); \draw[arr] (p1)--(g2);
-\draw[arr] (g2)--(p2); \draw[arr] (p2)--(g3);
-\draw[arr] (gra.south) to[out=255,in=90] (g1.north);
-
-%% --- Carril 3b: Readout + MLP + predicció ---
-\node[own, below=0.6cm of g1] (ro) {\textit{Readout}\\mean\,$\|$\,max};
-\node[own, right=of ro]        (ml) {MLP};
-\node[own, right=of ml]        (pr) {P(N1)\\secció};
-% route below the readout/mlp/pred row to avoid overlap
-\draw[arr] (g3.south) -- ++(0,-1.5) -| (ro.south);
-\draw[arr] (ro)--(ml); \draw[arr] (ml)--(pr);
+%% --- P(N1) per graf ---
+\node[own, below=1.5cm of gra] (pn1) {$P(\text{N1})$\\per graf};
+\draw[arr] (gra.south)--(pn1.north);
 
 %% --- Agregació pacient ---
-\node[own, below=0.8cm of ml]  (agg)  {Agregació\\MIL pacient};
+\node[own, below=0.9cm of pn1] (agg)  {Agregació\\MIL pacient};
 \node[own, right=of agg]       (diag) {N0\,/\,N1\\pacient};
-\draw[arr] (pr.south) to[out=270,in=30] node[right, font=\scriptsize] {${\times}S$} (agg.north east);
+\draw[arr] (pn1.south) -- node[right, font=\scriptsize] {${\times}S$} (agg.north);
 \draw[arr] (agg)--(diag);
 
 %% --- Validació ---
-\node[ext, below=0.8cm of diag] (exc) {Excel\\(\textit{ground truth})};
+\node[ext, below=0.9cm of diag] (exc) {Excel\\(\textit{ground truth})};
 \draw[arr] (exc.north)--(diag.south);
 
 %% --- Etiquetes de carril ---
@@ -822,21 +781,13 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
     {\footnotesize Preparació\\de dades};
 \node[lbl, left=0.25cm of coo, anchor=east]
     {\footnotesize Construcció\\del graf};
-\node[lbl, left=0.25cm of g1,  anchor=east]
-    {\footnotesize Model};
 
 \end{tikzpicture}
 \caption{Diagrama de flux del \textit{pipeline} complet. \textit{Blocs grisos}: etapes realitzades
-pels companys de l'equip (extracció de \textit{patches} $256{\times}256$\,px agrupats en \textit{bags}
-de $16{\times}16$ = $4096{\times}4096$\,px, sense filtratge, i obtenció de l'embedding CLS via UNI2).
-\textit{Blocs blaus (vora gruixuda)}: contribucions d'aquest TFG. El model alterna capes GAT amb
-capes DiffPool intercalades: la primera DiffPool redueix el graf de $N$ nodes a $K_1$ super-nodes i
-la segona a $K_2 \ll K_1$; un \textit{readout} final agrega els $K_2$ nodes en un vector global. Com
-a alternativa sense pooling jeràrquic, s'aplica directament \textit{mean} o \textit{max} sobre la
-darrera capa GAT. La fletxa ${\times}S$ indica que les $S$ seccions d'un pacient es processen com a
-grafs independents i les probabilitats P(N1) s'agreguen via MIL per obtenir el diagnòstic final
-(Model 1); el Model 2 (mega-graf, Secció~\ref{sec:model-dades}) és una alternativa sense etapa
-d'agregació.}
+pels companys de l'equip (extracció de \textit{patches} i obtenció de l'embedding CLS via UNI2).
+\textit{Blocs blaus (vora gruixuda)}: contribucions d'aquest TFG. La fletxa ${\times}S$ indica que
+les $S$ seccions d'un pacient es processen com a grafs independents i les probabilitats $P(\text{N1})$
+s'agreguen via MIL per obtenir el diagnòstic final a nivell de pacient.}
 \label{fig:pipeline}
 \end{figure*}
 
