@@ -143,8 +143,6 @@ grup IAM del CVC (iam.cvc.uab.es) sota la supervisió de la Dra.\ Debora Gil, co
 amb \textit{readout} pla contra un model amb \textit{pooling} jeràrquic (DiffPool) intercalat, i proposa
 estratègies d'agregació MIL per al diagnòstic a nivell de pacient.
 
-\section{Motivació}
-
 Dues raons complementàries justifiquen la tria d'aquest projecte. Des del punt de vista clínic, els sistemes d'IA
 demostren una capacitat creixent per identificar patrons morfològics subtils de manera consistent, amb el potencial
 real de reduir cirurgies innecessàries. Des del punt de vista tècnic, la combinació de xarxes d'atenció sobre grafs
@@ -178,9 +176,30 @@ tintades amb hematoxilina-eosina, emmagatzemades en format MIRAX (\textit{.mrxs}
 els 30.000 i els 150.000 píxels per costat, amb una quantitat significativa d'espai buit o artefactes que
 requereixen tractament previ.
 
-El conjunt de dades comprèn \textbf{963 grafs}, un per secció histològica (cadascun amb una o diverses components
-connexes), provinents de \textbf{230 pacients} en total. S'aplica una divisió estratificada 80/20 a nivell de
-pacient per evitar la filtració d'informació entre entrenament i validació.
+El conjunt de dades efectiu comprèn \textbf{963 grafs} (un per secció histològica), provinents de
+\textbf{230 pacients} distribuits de forma desequilibrada entre les dues classes
+(Taula~\ref{tab:dataset}). D'un total de 606 pacients a la base de dades clínica, 236 es descarten
+per diagnòstic indeterminat (NX), i dels 370 restants amb diagnòstic vàlid, 140 no disposen encara
+d'embeddings UNI2 generats, deixant 230 pacients usables. L'avaluació es realitza amb validació
+creuada estratificada de 5 particions a nivell de pacient.
+
+\begin{table}[h]
+\centering
+\caption{Composició del dataset efectiu (26 hospitals).}
+\label{tab:dataset}
+\small
+\begin{tabular}{lrrr}
+\toprule
+ & \textbf{N0} & \textbf{N1} & \textbf{Total} \\
+\midrule
+Pacients         & 160 & 70 & 230      \\
+Slides úniques   & —   & —  & 448      \\
+Seccions (grafs) & —   & —  & 963      \\
+Bags (nodes)     & —   & —  & 89\,637  \\
+\bottomrule
+\multicolumn{4}{l}{\scriptsize Bags per secció: mín.\,3 / mitjana\,93 / màx.\,619} \\
+\end{tabular}
+\end{table}
 
 \subsection{Anotacions i Màscares de Segmentació}
 
@@ -521,10 +540,6 @@ possibilitat d'integrar la pèrdua auxiliar de regularització.
 \node[archB=orange, below=0.32cm of n1] (p1)
   {DiffPool$_1$\;$N \longrightarrow K_1$ super-nodes};
 \node[archdim, right=0.15cm of p1] {$K_1\!\times\!128$};
-\node[archaux, right=0.15cm of p1, yshift=-0.50cm] (al1)
-  {$+\;\mathcal{L}_{\text{link}} + \mathcal{L}_{\text{ent}}$};
-\draw[->,>=stealth,dashed,orange!45,line width=0.6pt]
-  (p1.south east) to[out=-10,in=180] (al1.west);
 
 \node[archB=blue, below=0.50cm of p1] (g2)
   {GATConv$_2$\;$128\!\to\!128$,\;$H\!=\!4$, concat};
@@ -535,10 +550,6 @@ possibilitat d'integrar la pèrdua auxiliar de regularització.
 \node[archB=orange, below=0.32cm of n2] (p2)
   {DiffPool$_2$\;$K_1 \longrightarrow K_2$ super-nodes};
 \node[archdim, right=0.15cm of p2] {$K_2\!\times\!128$};
-\node[archaux, right=0.15cm of p2, yshift=-0.50cm] (al2)
-  {$+\;\mathcal{L}_{\text{link}} + \mathcal{L}_{\text{ent}}$};
-\draw[->,>=stealth,dashed,orange!45,line width=0.6pt]
-  (p2.south east) to[out=-10,in=180] (al2.west);
 
 \node[archB=blue, below=0.50cm of p2] (g3)
   {GATConv$_3$\;$128\!\to\!128$,\;$H\!=\!1$, mean};
@@ -580,17 +591,15 @@ possibilitat d'integrar la pèrdua auxiliar de regularització.
 
 \end{tikzpicture}
 \caption{GAT+DiffPool — DiffPool intercalat entre capes GAT; $K_1\!\ll\!N$,
-$K_2\!\ll\!K_1$ (p.~ex.\ $N\!\approx\!250$, $K_1\!=\!25$, $K_2\!=\!5$).}
+$K_2\!\ll\!K_1$ (p.~ex.\ $N\!\approx\!250$, $K_1\!=\!25$, $K_2\!=\!8$).}
 \label{fig:arch-diffpool}
 \end{subfigure}
 
 \caption{Comparació de les dues arquitectures \texttt{GATClassifier}.
 \textbf{Esquerra}: model de referència amb readout pla (mean\,$\Vert$\,max global);
 \textbf{Dreta}: model jeràrquic on DiffPool redueix progressivament $N\!\to\!K_1\!\to\!K_2$
-super-nodes, emetent a cada nivell una pèrdua auxiliar $\mathcal{L}_{\text{aux}}=
-\mathcal{L}_{\text{link}}+\mathcal{L}_{\text{ent}}$ que es suma a la BCE principal.
-Les dimensions del tensor de sortida s'indiquen a la dreta de cada bloc ($h\!=\!128$,
-$H\!=\!4$, per tant $h{\cdot}H\!=\!512$).}
+super-nodes. Les dimensions del tensor de sortida s'indiquen a la dreta de cada bloc
+($h\!=\!128$, $H\!=\!4$, per tant $h{\cdot}H\!=\!512$).}
 \label{fig:arch}
 \end{figure*}
 
@@ -605,7 +614,7 @@ apreciable. Si s'entrena a nivell de làmina, les seccions N1 de pacients N1 que
 reben un senyal de supervisió incorrecte (N0), contaminant l'entrenament.
 
 Per solucionar-ho, s'adopta un paradigma d'\textbf{aprenentatge per múltiples instàncies}
-(\textit{Multiple Instance Learning}, MIL) \cite{ilse2018attentionbaseddeepmultipleinstance}: cada pacient és
+(\textit{Multiple Instance Learning}, MIL): cada pacient és
 un \textit{bag} i les seves làmines (instàncies) comparteixen l'etiqueta del \textit{bag}. El model aprèn a
 classificar el \textit{bag} a partir de les instàncies.
 
@@ -624,15 +633,29 @@ les estratègies d'agregació següents:
     pacient s'obté com la suma ponderada dels embeddings de les seves làmines.
 \end{itemize}
 
+Formalment, per a l'agregació per atenció, donat l'embedding $\mathbf{h}_i \in \mathbb{R}^{d}$ de la
+làmina $i$ produït per l'encoder GAT, els pesos d'atenció i la representació del pacient s'obtenen com:
+\begin{align*}
+  a_i &= \frac{
+    \exp\!\left(\mathbf{w}^{\!\top}\!\left(\tanh(\mathbf{V}\mathbf{h}_i)\odot\sigma(\mathbf{U}\mathbf{h}_i)\right)\right)
+  }{
+    \displaystyle\sum_{j=1}^{S}\exp\!\left(\mathbf{w}^{\!\top}\!\left(\tanh(\mathbf{V}\mathbf{h}_j)\odot\sigma(\mathbf{U}\mathbf{h}_j)\right)\right)
+  } \\[6pt]
+  \mathbf{z}_p &= \sum_{i=1}^{S} a_i\,\mathbf{h}_i
+\end{align*}
+on $\mathbf{w}$, $\mathbf{V}$, $\mathbf{U}$ són paràmetres aprenibles, $\odot$ és la multiplicació
+element a element i $\mathbf{z}_p$ és l'embedding del pacient que entra al capçal MLP per a la
+predicció final N0/N1.
+
 \subsection{Desbalanceig de Classes}
 
 El conjunt de dades presenta un fort desbalanceig: els casos N0 superen àmpliament els N1 (proporció aproximada
 80/20). Per combatre-ho s'apliquen tres mesures complementàries.
 
-\textbf{(1) Divisió estratificada.} La partició entrenament/validació (80/20) es realitza de forma
-estratificada a nivell de pacient: s'assegura que la proporció N0/N1 sigui equivalent en ambdós subconjunts.
-Sense estratificació, amb un conjunt petit i desbalancejat, el conjunt de validació podria contenir per
-atzar una proporció de N1 molt diferent a la real, invalidant les mètriques.
+\textbf{(1) Validació creuada estratificada.} S'utilitza una validació creuada de $k\!=\!5$ particions
+estratificades a nivell de pacient, assegurant que la proporció N0/N1 sigui representativa en cada
+partició. Sense estratificació, amb un conjunt petit i desequilibrat, algunes particions podrien
+contenir per atzar una proporció de N1 molt diferent a la real, invalidant les mètriques.
 
 \textbf{(2) Pesos de classe.} S'apliquen pesos balancejats $w_c = N / (C \cdot n_c)$, on $n_c$ és el
 nombre de pacients de la classe $c$, incorporats directament a la funció de pèrdua BCE. Així, cada error
@@ -705,6 +728,14 @@ l'agregació \textit{noisy-OR} sense \textit{attention} presenta resultats clara
 especialment per al GAT Baseline ($0{,}581 \pm 0{,}142$), confirmant la importància de
 l'agregació per atenció en el paradigma MIL per a aquest conjunt de dades desbalancejat.
 
+Cal remarcar que aquests resultats són \textbf{preliminars}: corresponen a la segona entrega
+del TFG, en un moment en què l'arquitectura del model i les estratègies d'entrenament encara
+s'estan definint. No és possible extreure conclusions definitives sobre la superioritat d'un
+model respecte de l'altre; les diferències observades entre configuracions podrien variar
+significativament amb un espai de cerca d'hiperparàmetres més ampli, més dades o ajustaments
+al preprocés. En fases posteriors del projecte es duran a terme experiments més exhaustius
+i una avaluació final consolidada.
+
 \section{Implementació i Frontend}
 
 La implementació segueix un disseny modular: la construcció de grafs, el model, el codi d'entrenament i els
@@ -762,13 +793,15 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 \draw[arr] (bag.south) to[out=270,in=90] (coo.north);
 \draw[arr] (cls.south) to[out=270,in=70] (gra.north);
 
-%% --- P(N1) per graf ---
-\node[own, below=1.5cm of gra] (pn1) {$P(\text{N1})$\\per graf};
-\draw[arr] (gra.south)--(pn1.north);
+%% --- Model + P(N1) per graf ---
+\node[own, below=1.5cm of gra] (mod) {GATClassifier};
+\node[own, below=0.9cm of mod] (pn1) {$P(\text{N1})$\\per graf};
+\draw[arr] (gra.south)--(mod.north);
+\draw[arr] (mod.south)--(pn1.north);
 
 %% --- Agregació pacient ---
 \node[own, below=0.9cm of pn1] (agg)  {Agregació\\MIL pacient};
-\node[own, right=of agg]       (diag) {N0\,/\,N1\\pacient};
+\node[own, right=of agg]       (diag) {$P(\text{N1})$\\per pacient};
 \draw[arr] (pn1.south) -- node[right, font=\scriptsize] {${\times}S$} (agg.north);
 \draw[arr] (agg)--(diag);
 
