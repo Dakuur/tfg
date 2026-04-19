@@ -6,52 +6,31 @@ Data sources
 ------------
 - CLS embeddings : /mnt/iam/Experiments/MedImaging/ColonCancer/
                    cls_info_plus_pipeline/cls_ALL/{Hospital}_CLS.npz
-  Each npz row is one **bag** of 256 patches with:
-    patient_list   (N,)        patient ID
-    slides         (N,)        slide ID
-    sections       (N,)        section/bag ID
-    hospitals      (N,)        hospital name
-    embeddingCLS   (N, 1536)   real UNI2 CLS token for the bag
-    coords         (N, 256, 2) patch-level (x, y) coordinates for the bag
-
 - Labels          : .../xlsx_files/24_09_2025_..._fixed_N0s.xlsx
-  Joined on patient CODE → Metastasis_score (N0 / N1, NX dropped)
 
 Graph structure (per section)
 ------------------------------
-  Nodes      = bags belonging to that section
-  x          = CLS embedding   [N_bags, 1536]
-  pos        = centroid of the bag's 256 patch coords   [N_bags, 2]
-  edge_index = Delaunay triangulation on centroids (bidirectional, pruned)
-  y          = patient-level label {0=N0, 1=N1}
+  Nodes = bags; x = CLS embedding [N, 1536]; edge_index = Delaunay; y = patient label.
 
-Phases
-------
-1. Build patient/slide/section index (npz → label join, min-bag filter)
-2. 80/20 stratified split at patient level (no data leakage)
-3. Construct graphs and save as .pt files
-4. Verification summary
+All graphs are written to a single flat directory (no train/val split).
+The split is handled by k-fold CV in train.py at training time.
 
 Usage
 -----
-    python scripts/build_dataset.py                   # full run (one graph per section)
-    python scripts/build_dataset.py --dry_run         # index + split, no .pt files
-    python scripts/build_dataset.py --iam_path /mnt/iam
+    python scripts/build_dataset.py                   # one graph per section
+    python scripts/build_dataset.py --dry_run
     python scripts/build_dataset.py --mega            # one mega-graph per patient
 
 Outputs
 -------
 Standard mode:
-    outputs/graphs/train/{patient_id}_{slide_id}_sec{section_id}.pt
-    outputs/graphs/val/{patient_id}_{slide_id}_sec{section_id}.pt
+    outputs/graphs/{patient_id}_{slide_id}_sec{section_id}.pt
 
 Mega-graph mode (--mega):
-    outputs/graphs/train/{patient_id}.pt  (one graph per patient, block-diagonal adjacency)
-    outputs/graphs/val/{patient_id}.pt
+    outputs/graphs/{patient_id}.pt
 
 Both modes write:
-    outputs/graphs/train_index.csv
-    outputs/graphs/val_index.csv
+    outputs/graphs/index.csv
 """
 
 import argparse
@@ -61,7 +40,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.model_selection import train_test_split
 from torch_geometric.data import Data
 from tqdm import tqdm
 
@@ -455,51 +433,6 @@ def build_slide_index(df_npz: pd.DataFrame, df_labels: pd.DataFrame) -> pd.DataF
 
 # ── Phase 2 ───────────────────────────────────────────────────────────────────
 
-def split_patients(section_index: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Phase 2: 80/20 stratified split at patient level (no data leakage across sections)."""
-    print("\n── Phase 2: Stratified 80/20 split ────────────────────────────────")
-
-    patient_labels = (
-        section_index[["Patient_ID", "label"]]
-        .drop_duplicates("Patient_ID")
-        .reset_index(drop=True)
-    )
-
-    train_ids, val_ids = train_test_split(
-        patient_labels["Patient_ID"],
-        test_size=0.20,
-        random_state=RANDOM_STATE,
-        stratify=patient_labels["label"],
-    )
-
-    train_idx = section_index[section_index["Patient_ID"].isin(set(train_ids))].copy()
-    val_idx   = section_index[section_index["Patient_ID"].isin(set(val_ids))].copy()
-
-    def _counts(df: pd.DataFrame) -> tuple[int, int]:
-        vc = df.drop_duplicates("Patient_ID")["label"].value_counts()
-        return int(vc.get(0, 0)), int(vc.get(1, 0))
-
-    tr_n0, tr_n1 = _counts(train_idx)
-    va_n0, va_n1 = _counts(val_idx)
-
-    print(
-        f"  Train: {train_idx['Patient_ID'].nunique()} pacientes, "
-        f"{len(train_idx)} sections/grafos, "
-        f"{train_idx['n_bags'].sum()} bags totales"
-    )
-    print(
-        f"  Val  : {val_idx['Patient_ID'].nunique()} pacientes, "
-        f"{len(val_idx)} sections/grafos, "
-        f"{val_idx['n_bags'].sum()} bags totales"
-    )
-    print(f"  Ratio N0/N1 en train : {tr_n0}/{tr_n1}")
-    print(f"  Ratio N0/N1 en val   : {va_n0}/{va_n1}")
-
-    return train_idx, val_idx
-
-
-# ── Phase 3 ───────────────────────────────────────────────────────────────────
-
 def build_graph_for_section(
     patient_id: str,
     slide_id: str,
@@ -593,23 +526,20 @@ def build_graph_for_section(
 
 
 def build_and_save_graphs(
-    split_index: pd.DataFrame,
-    split_name: str,
+    section_index: pd.DataFrame,
     out_dir: Path,
     df_npz: pd.DataFrame,
     dry_run: bool,
 ) -> list[dict]:
-    """Phase 3: build one graph per (patient, slide, section), optionally save to disk."""
-    records   = []
-    split_dir = out_dir / split_name
-
+    """Phase 2: build one graph per (patient, slide, section), optionally save to disk."""
+    records = []
     if not dry_run:
-        split_dir.mkdir(parents=True, exist_ok=True)
+        out_dir.mkdir(parents=True, exist_ok=True)
 
     for _, row in tqdm(
-        split_index.iterrows(),
-        total=len(split_index),
-        desc=f"Building {split_name} graphs",
+        section_index.iterrows(),
+        total=len(section_index),
+        desc="Building graphs",
         unit="section",
     ):
         patient_id       = str(row["Patient_ID"])
@@ -640,13 +570,10 @@ def build_and_save_graphs(
             )
             continue
 
-        n_nodes = data.x.shape[0]
-        n_edges = data.edge_index.shape[1]
-
         if not dry_run:
             safe_slide = slide_id.replace("/", "_")
             fname      = f"{patient_id}_{safe_slide}_sec{section_id}.pt"
-            torch.save(data, split_dir / fname)
+            torch.save(data, out_dir / fname)
 
         records.append({
             "patient_id":       patient_id,
@@ -655,8 +582,8 @@ def build_and_save_graphs(
             "hospital":         hospital,
             "metastasis_score": metastasis_score,
             "label":            label,
-            "n_nodes":          n_nodes,
-            "n_edges":          n_edges,
+            "n_nodes":          data.x.shape[0],
+            "n_edges":          data.edge_index.shape[1],
         })
 
     return records
@@ -728,22 +655,19 @@ def build_patient_mega_graph(
 
 
 def build_and_save_mega_graphs(
-    split_index: pd.DataFrame,
-    split_name: str,
+    section_index: pd.DataFrame,
     out_dir: Path,
     df_npz: pd.DataFrame,
     dry_run: bool,
 ) -> list[dict]:
-    """Phase 3 (mega mode): build one graph per patient from all its sections."""
-    records   = []
-    split_dir = out_dir / split_name
-
+    """Phase 2 (mega mode): build one graph per patient from all its sections."""
+    records = []
     if not dry_run:
-        split_dir.mkdir(parents=True, exist_ok=True)
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-    patient_ids = split_index["Patient_ID"].unique()
-    for patient_id in tqdm(patient_ids, desc=f"Building {split_name} mega-graphs", unit="patient"):
-        patient_rows = split_index[split_index["Patient_ID"] == patient_id]
+    patient_ids = section_index["Patient_ID"].unique()
+    for patient_id in tqdm(patient_ids, desc="Building mega-graphs", unit="patient"):
+        patient_rows = section_index[section_index["Patient_ID"] == patient_id]
         try:
             data = build_patient_mega_graph(patient_id, patient_rows, df_npz)
         except Exception as exc:
@@ -754,22 +678,17 @@ def build_and_save_mega_graphs(
             print(f"[WARN] Skipping {patient_id} — could not build any section graph.")
             continue
 
-        n_nodes = data.x.shape[0]
-        n_edges = data.edge_index.shape[1]
-        n_sections = len(patient_rows)
-
         if not dry_run:
-            fname = f"{patient_id}.pt"
-            torch.save(data, split_dir / fname)
+            torch.save(data, out_dir / f"{patient_id}.pt")
 
         records.append({
             "patient_id":       patient_id,
             "hospital":         data.hospital,
             "metastasis_score": data.metastasis_score,
             "label":            data.y.item(),
-            "n_sections":       n_sections,
-            "n_nodes":          n_nodes,
-            "n_edges":          n_edges,
+            "n_sections":       len(patient_rows),
+            "n_nodes":          data.x.shape[0],
+            "n_edges":          data.edge_index.shape[1],
         })
 
     return records
@@ -777,38 +696,38 @@ def build_and_save_mega_graphs(
 
 # ── Phase 4 ───────────────────────────────────────────────────────────────────
 
-def print_verification(
-    train_records: list[dict],
-    val_records: list[dict],
-    out_dir: Path,
-    dry_run: bool,
-) -> None:
-    """Phase 4: summary statistics and one example graph load."""
-    print("\n── Phase 4: Verification ──────────────────────────────────────────")
+def print_verification(records: list[dict], out_dir: Path, dry_run: bool) -> None:
+    """Phase 3: summary statistics and one example graph load."""
+    print("\n── Phase 3: Verification ──────────────────────────────────────────")
 
-    def _stats(records: list[dict], key: str) -> tuple[int, float, int]:
+    if not records:
+        print("  No graphs built.")
+        return
+
+    def _stats(key: str) -> tuple[int, float, int]:
         vals = [r[key] for r in records]
         return int(np.min(vals)), float(np.mean(vals)), int(np.max(vals))
 
-    for name, records in [("Train", train_records), ("Val", val_records)]:
-        if not records:
-            print(f"  {name}: no graphs built.")
-            continue
-        nd = _stats(records, "n_nodes")
-        ne = _stats(records, "n_edges")
-        print(f"  {name} grafos : {len(records)}")
-        print(f"  {name} nodos  (min/med/max) : {nd[0]} / {nd[1]:.1f} / {nd[2]}")
-        print(f"  {name} aristas(min/med/max) : {ne[0]} / {ne[1]:.1f} / {ne[2]}")
+    nd = _stats("n_nodes")
+    ne = _stats("n_edges")
+    n_patients = len({r["patient_id"] for r in records})
+    n0 = sum(1 for r in records if r["label"] == 0)
+    n1 = sum(1 for r in records if r["label"] == 1)
+
+    print(f"  Grafos totals  : {len(records)}")
+    print(f"  Pacients únics : {n_patients}  (N0 grafos={n0}, N1 grafos={n1})")
+    print(f"  Nodes  (min/med/max) : {nd[0]} / {nd[1]:.1f} / {nd[2]}")
+    print(f"  Arestes(min/med/max) : {ne[0]} / {ne[1]:.1f} / {ne[2]}")
 
     if not dry_run and out_dir.exists():
-        total_bytes = sum(f.stat().st_size for f in out_dir.rglob("*.pt"))
+        total_bytes = sum(f.stat().st_size for f in out_dir.glob("*.pt"))
         print(f"\n  Tamaño en disco : {total_bytes / 1e9:.3f} GB")
 
-        pt_files = sorted((out_dir / "train").glob("*.pt"))
+        pt_files = sorted(out_dir.glob("*.pt"))
         if pt_files:
             try:
                 g = torch.load(pt_files[0], weights_only=False)
-                print(f"\n  Ejemplo: {pt_files[0].name}")
+                print(f"\n  Exemple: {pt_files[0].name}")
                 print(f"    {g}")
                 print(f"    patient_id       = {g.patient_id}")
                 print(f"    metastasis_score = {g.metastasis_score}")
@@ -877,38 +796,19 @@ def main() -> None:
     if section_index.empty:
         sys.exit("[ERROR] No valid sections after filtering.")
 
-    # ── Phase 2 ───────────────────────────────────────────────────────────────
-    train_idx, val_idx = split_patients(section_index)
-
-    # ── Phase 3 ───────────────────────────────────────────────────────────────
-    print("\n── Phase 3: Building graphs ────────────────────────────────────────")
+    # ── Phase 2: Build graphs (all in one flat directory) ─────────────────────
+    print("\n── Phase 2: Building graphs ────────────────────────────────────────")
 
     if mega:
-        train_records = build_and_save_mega_graphs(
-            split_index=train_idx,
-            split_name="train",
-            out_dir=out_dir,
-            df_npz=df_npz,
-            dry_run=dry_run,
-        )
-        val_records = build_and_save_mega_graphs(
-            split_index=val_idx,
-            split_name="val",
+        records = build_and_save_mega_graphs(
+            section_index=section_index,
             out_dir=out_dir,
             df_npz=df_npz,
             dry_run=dry_run,
         )
     else:
-        train_records = build_and_save_graphs(
-            split_index=train_idx,
-            split_name="train",
-            out_dir=out_dir,
-            df_npz=df_npz,
-            dry_run=dry_run,
-        )
-        val_records = build_and_save_graphs(
-            split_index=val_idx,
-            split_name="val",
+        records = build_and_save_graphs(
+            section_index=section_index,
             out_dir=out_dir,
             df_npz=df_npz,
             dry_run=dry_run,
@@ -916,12 +816,11 @@ def main() -> None:
 
     if not dry_run:
         out_dir.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame(train_records).to_csv(out_dir / "train_index.csv", index=False)
-        pd.DataFrame(val_records).to_csv(out_dir / "val_index.csv",     index=False)
-        print(f"[INFO] Index CSVs → {out_dir.resolve()}")
+        pd.DataFrame(records).to_csv(out_dir / "index.csv", index=False)
+        print(f"[INFO] Index CSV → {out_dir.resolve()}")
 
-    # ── Phase 4 ───────────────────────────────────────────────────────────────
-    print_verification(train_records, val_records, out_dir, dry_run)
+    # ── Phase 3: Verification ─────────────────────────────────────────────────
+    print_verification(records, out_dir, dry_run)
     print("\n[INFO] Done.")
 
 

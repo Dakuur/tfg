@@ -38,7 +38,7 @@ import numpy as np
 import torch
 import wandb
 import yaml
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, train_test_split
 
 # ── project modules ────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent
@@ -179,9 +179,20 @@ def _train_body(
 
     # ── Data ──────────────────────────────────────────────────────────────────
     if train_graphs is None or val_graphs is None:
-        graphs_dir   = Path(d["graphs_dir"])
-        train_graphs = load_graphs(graphs_dir / "train")
-        val_graphs   = load_graphs(graphs_dir / "val")
+        graphs_dir = Path(d["graphs_dir"])
+        all_graphs = load_graphs(graphs_dir)
+        # 80/20 stratified split at patient level
+        _pat: dict = defaultdict(list)
+        for g in all_graphs:
+            _pat[g.patient_id].append(g)
+        _pids    = list(_pat.keys())
+        _plabels = [_pat[p][0].y.item() for p in _pids]
+        _tr_pids, _va_pids = train_test_split(
+            _pids, test_size=0.20, stratify=_plabels,
+            random_state=t.get("seed", 123),
+        )
+        train_graphs = [g for p in _tr_pids for g in _pat[p]]
+        val_graphs   = [g for p in _va_pids  for g in _pat[p]]
 
     in_ch = train_graphs[0].x.shape[1]
     print(f"[INFO] Train: {len(train_graphs)}  Val: {len(val_graphs)}  Features: {in_ch}")
@@ -367,13 +378,7 @@ def run_kfold_cv(cfg: dict, run_name_base: str | None, k: int = 5) -> None:
 
     # ── load all available graphs ─────────────────────────────────────────────
     graphs_dir = Path(d["graphs_dir"])
-    all_graphs: list = []
-    for split in ("train", "val"):
-        split_dir = graphs_dir / split
-        if split_dir.exists():
-            all_graphs.extend(load_graphs(split_dir))
-    if not all_graphs:
-        sys.exit(f"[ERROR] No graphs found in {graphs_dir}")
+    all_graphs = load_graphs(graphs_dir)
     print(f"[INFO] K-Fold: {len(all_graphs)} graphs total, k={k}")
 
     # ── group by patient ──────────────────────────────────────────────────────

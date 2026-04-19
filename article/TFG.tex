@@ -83,7 +83,7 @@ característiques. Cada node és un \textit{bag} de 256 \textit{patches} caracte
 CLS (1.536 dim.) del model de fundació UNI2. Es comparen dues arquitectures: un GAT de referència
 amb \textit{readout} pla i un GAT amb \textbf{DiffPool jeràrquic} intercalat ($N\!\to\!K_1\!\to\!K_2$
 super-nodes), que captura representació multi-escala del teixit. El diagnòstic per pacient s'obté per
-agregació MIL sobre les seccions. El millor model assoleix un AUC de 0{,}846 sobre 230 pacients.
+agregació MIL sobre les seccions. El millor model assoleix un AUC de $0{,}817 \pm 0{,}073$ (5-\textit{fold} CV, 230 pacients).
 \\
 \\
 \textbf{Paraules clau-- } Càncer colorectal pT1, Histopatologia digital, Graph Attention Networks,
@@ -100,7 +100,7 @@ feature-similarity graph approaches. Each node is a bag of 256 patches character
 \textbf{GAT baseline} with flat readout (mean/max) and a \textbf{hierarchical GAT+DiffPool} model
 with pooling layers interleaved between GAT layers ($N\!\to\!K_1\!\to\!K_2$ super-nodes), enabling
 multi-scale tissue representations. Patient-level diagnosis is obtained via MIL aggregation over
-histological sections. The best model achieves an AUC of 0.846 on 230 patients (stratified 80/20 split).
+histological sections. The best model achieves an AUC of $0.817 \pm 0.073$ (5-fold CV, 230 patients).
 \\
 \\
 \textbf{Keywords-- } pT1 colorectal cancer, Digital histopathology, Graph Attention Networks,
@@ -672,68 +672,58 @@ diagnòstic binari, afegint un senyal de regularització espacialment informat.
 
 \section{Resultats Preliminars}
 
-El \textit{grid search} inicial ha identificat un model candidat amb els hiperparàmetres de la
-Taula~\ref{tab:hparams}. Les mètriques de validació a nivell de pacient es presenten a la
-Taula~\ref{tab:metrics} i la Taula~\ref{tab:cm}.
+El \textit{grid search} amb validació creuada de 5 \textit{folds} estratificada per pacient ha avaluat 4 configuracions:
+els dos tipus de \textit{pooling} (GAT Baseline \textit{mean\_max} i GAT+DiffPool \textit{diff}) creuats amb els
+dos mètodes d'agregació MIL (\textit{noisy-OR} i \textit{attention}). Per a cada combinació es va seleccionar
+el millor \textit{learning rate} entre $\{10^{-4}, 10^{-5}\}$. Les mètriques de validació a nivell de pacient
+(mitjana $\pm$ desviació estàndard dels 5 \textit{folds}) es presenten a la Taula~\ref{tab:grid}, i la
+configuració del millor model a la Taula~\ref{tab:hparams}.
 
 \begin{table}[h]
 \centering
-\caption{Hiperparàmetres del model candidat.}
+\caption{Configuració del millor model (GAT Baseline + \textit{attention}).}
 \label{tab:hparams}
 \small
 \begin{tabular}{lc}
 \toprule
 \textbf{Paràmetre} & \textbf{Valor} \\
 \midrule
-\textit{Hidden} ($d_h$) & 128 \\
-Caps d'atenció ($H$) & 2 \\
-\textit{Pooling} & \textit{diff} \\
-Clústers DiffPool ($K$) & 5 \\
-\textit{Dropout} & 0{,}5 \\
-Agregació pacient & \textit{mean} \\
-Millor epoch & 34 \\
+\textit{Pooling}      & \textit{mean\_max} \\
+Agregació MIL         & \textit{attention} \\
+\textit{Learning rate}& $10^{-5}$          \\
+\textit{Dropout}      & 0{,}5              \\
+\textit{Weight decay} & $10^{-3}$          \\
+Validació             & 5-\textit{fold} CV \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{table}[h]
+\begin{table*}[t]
 \centering
-\caption{Mètriques de validació del model candidat. AUC: \textbf{0{,}846}.}
-\label{tab:metrics}
+\caption{Resultats del \textit{grid search} (5-\textit{fold} CV, nivell de pacient). Per a cada
+combinació es mostra el \textit{learning rate} òptim. \textbf{Negreta}: millor valor per columna.
+Mètriques reportades com a mitjana $\pm$ desviació estàndard.}
+\label{tab:grid}
 \small
-\begin{tabular}{lccc}
+\begin{tabular}{llllll}
 \toprule
- & \textbf{N0} & \textbf{N1} & \textbf{Mitjana} \\
+\textbf{Model} & \textbf{Pooling} & \textbf{Agregació MIL} & \textbf{AUC} & \textbf{F1-macro} & \textbf{F1-N1} \\
 \midrule
-Precisió  & 0{,}867 & 0{,}625 & 0{,}746 \\
-Recall    & 0{,}813 & 0{,}714 & 0{,}763 \\
-F1-Score  & 0{,}839 & 0{,}667 & 0{,}753 \\
+GAT Baseline & \textit{mean\_max} & \textit{noisy-OR}  & $0{,}581 \pm 0{,}142$ & $0{,}498 \pm 0{,}123$ & $0{,}499 \pm 0{,}070$ \\
+GAT Baseline & \textit{mean\_max} & \textit{attention} & $\mathbf{0{,}817 \pm 0{,}073}$ & $\mathbf{0{,}751 \pm 0{,}083}$ & $0{,}641 \pm 0{,}126$ \\
+GAT+DiffPool & \textit{diff}      & \textit{noisy-OR}  & $0{,}754 \pm 0{,}059$ & $0{,}653 \pm 0{,}046$ & $0{,}568 \pm 0{,}052$ \\
+GAT+DiffPool & \textit{diff}      & \textit{attention} & $0{,}801 \pm 0{,}042$ & $0{,}749 \pm 0{,}061$ & $\mathbf{0{,}679 \pm 0{,}058}$ \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
-\begin{table}[h]
-\centering
-\caption{Matriu de confusió (validació, nivell de pacient).}
-\label{tab:cm}
-\small
-\begin{tabular}{cc|cc}
-\toprule
-& & \multicolumn{2}{c}{\textbf{Predicció}} \\
-& & \textbf{N0} & \textbf{N1} \\
-\midrule
-\multirow{2}{*}{\textbf{Real}}
-  & N0 & \cellcolor{green!20}26 & \cellcolor{red!15}4 \\
-  & N1 & \cellcolor{red!15}4  & \cellcolor{green!20}10 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-L'AUC de 0{,}846 sobre 44 pacients de validació (30 N0, 14 N1) és un resultat prometedor tenint en compte el
-desbalanceig de classes i la dificultat intrínseca del problema. El model mostra una millor capacitat de
-discriminació per a N0 (recall 0{,}813) que per a N1 (recall 0{,}714), fet esperable per la menor representació
-dels casos positius. Cal destacar que tan sols 4 falsos positius i 4 falsos negatius sobre 44 pacients indiquen
-un bon potencial clínic.
+El model GAT Baseline amb agregació \textit{attention} assoleix el millor AUC
+($0{,}817 \pm 0{,}073$). El model GAT+DiffPool amb \textit{attention} obté un AUC comparable
+($0{,}801 \pm 0{,}042$) amb la menor variabilitat entre \textit{folds} i el millor F1-N1
+($0{,}679 \pm 0{,}058$), indicant una detecció de casos positius més estable. En contrast,
+l'agregació \textit{noisy-OR} sense \textit{attention} presenta resultats clarament inferiors,
+especialment per al GAT Baseline ($0{,}581 \pm 0{,}142$), confirmant la importància de
+l'agregació per atenció en el paradigma MIL per a aquest conjunt de dades desbalancejat.
 
 \section{Implementació i Frontend}
 
