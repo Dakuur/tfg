@@ -75,15 +75,15 @@ Graph Attention Networks}}
 \parbox{0.915\textwidth}
 {\sffamily
 \textbf{Resum--}
-Es proposa un \textit{pipeline} de classificació N0/N1 per a la predicció de metàstasi en ganglis limfàtics
+Es presenta un sistema de classificació N0/N1 per a la detecció de metàstasi en ganglis limfàtics
 en càncer colorectal pT1 a partir de \textit{Whole Slide Images}. El teixit es representa com un
 \textbf{graf espacial} construït per triangulació de Delaunay sobre les coordenades dels \textit{bags},
-preservant l'arquitectura topològica del teixit —a diferència d'enfocaments basats en similitud de
-característiques. Cada node és un \textit{bag} de 256 \textit{patches} caracteritzat per l'embedding
-CLS (1.536 dim.) del model de fundació UNI2. Es comparen dues arquitectures: un GAT de referència
+de manera que es preserva la topologia real del teixit —a diferència d'enfocaments basats en similitud de
+característiques. Cada node és un \textit{bag} de 256 \textit{patches} representat per l'embedding
+CLS (1.536 dim.) del model UNI2. Es comparen dues arquitectures: un GAT de referència
 amb \textit{readout} pla i un GAT amb \textbf{DiffPool jeràrquic} intercalat ($N\!\to\!K_1\!\to\!K_2$
-super-nodes), que captura representació multi-escala del teixit. El diagnòstic per pacient s'obté per
-agregació MIL sobre les seccions. El millor model assoleix un AUC de $0{,}817 \pm 0{,}073$ (5-\textit{fold} CV, 230 pacients).
+super-nodes) per obtenir representacions a múltiples escales. El diagnòstic per pacient s'obté per
+agregació MIL sobre les seccions. El millor model obté un AUC de $0{,}817 \pm 0{,}073$ (5-\textit{fold} CV, 230 pacients).
 \\
 \\
 \textbf{Paraules clau-- } Càncer colorectal pT1, Histopatologia digital, Graph Attention Networks,
@@ -92,14 +92,14 @@ DiffPool jeràrquic, Graf espacial de Delaunay, MIL, Desbalanceig de classes.\\
 \bigskip
 \\
 \textbf{Abstract--}
-We propose an N0/N1 classification pipeline for lymph node metastasis prediction in pT1 colorectal
+We present an N0/N1 classification system for lymph node metastasis prediction in pT1 colorectal
 cancer from Whole Slide Images. Tissue is represented as a \textbf{spatial graph} built by Delaunay
-triangulation over bag coordinates, preserving the topological architecture of tissue —unlike
-feature-similarity graph approaches. Each node is a bag of 256 patches characterised by a
-1,536-dimensional CLS embedding from the UNI2 foundation model. Two architectures are compared: a
-\textbf{GAT baseline} with flat readout (mean/max) and a \textbf{hierarchical GAT+DiffPool} model
-with pooling layers interleaved between GAT layers ($N\!\to\!K_1\!\to\!K_2$ super-nodes), enabling
-multi-scale tissue representations. Patient-level diagnosis is obtained via MIL aggregation over
+triangulation over bag coordinates, preserving the real spatial topology of the tissue —unlike
+feature-similarity graph approaches. Each node is a bag of 256 patches represented by a
+1,536-dimensional CLS embedding from the UNI2 model. Two architectures are compared: a
+\textbf{GAT baseline} with flat readout (mean/max) and a \textbf{GAT+DiffPool} model
+with pooling layers interleaved between GAT layers ($N\!\to\!K_1\!\to\!K_2$ super-nodes) for
+multi-scale representations. Patient-level diagnosis is obtained via MIL aggregation over
 histological sections. The best model achieves an AUC of $0.817 \pm 0.073$ (5-fold CV, 230 patients).
 \\
 \\
@@ -168,60 +168,55 @@ de grafs i les xarxes neuronals profundes que vull explorar dins de l'Enginyeria
 
 \subsection{Classificació de WSI amb MIL}
 
-El processament de \textit{Whole Slide Images} comporta un repte computacional fonamental:
-les imatges, amb resolucions de fins a $150\,000 \times 150\,000$ píxels, no poden
-processar-se directament amb arquitectures convencionals. L'enfocament dominant és el
-\textit{Multiple Instance Learning} (MIL) sobre \textit{bags} de \textit{patches}.
-Ilse et al.~\cite{ilse2018attentionbaseddeepmultipleinstance} van introduir l'agregació
-per atenció (\textit{attention-based MIL}), que aprèn pesos d'importància per a cada
-instància i n'obté una representació global ponderada. Lu et
-al.~\cite{lu2020dataefficientweaklysupervised} van escalar aquest paradigma a grans
-conjunts de dades clínics (CLAM), afegint guia d'instàncies per millorar la
-interpretabilitat. Li et al.~\cite{li2021dualstreammultipleinstancelearning} van proposar
-DSMIL, que combina una branca a nivell de \textit{patch} i una a nivell de làmina amb
-aprenentatge contrastiu auto-supervisat. La predicció de l'estat ganglionar a partir
-d'histopatologia s'ha abordat en altres tipus de càncer: Muti et al.~\cite{muti2023deep}
-demostren que models de \textit{deep learning} entrenats sobre làmines de càncer gàstric
-poden predir l'estat N0/N1 amb resultats clínicament rellevants.
+Les \textit{Whole Slide Images} tenen resolucions de fins a $150\,000 \times 150\,000$
+píxels i no es poden processar directament amb xarxes convencionals. L'enfocament habitual
+és dividir la làmina en \textit{patches} petits i treballar amb \textit{Multiple Instance
+Learning} (MIL), on el model ha d'inferir l'etiqueta global a partir de fragments sense
+etiqueta individual. Ilse et al.~\cite{ilse2018attentionbaseddeepmultipleinstance} van
+proposar l'agregació per atenció (\textit{attention-based MIL}), que aprèn quins
+\textit{patches} són més rellevants per al diagnòstic. Lu et al.~\cite{lu2020dataefficientweaklysupervised}
+van aplicar aquest mètode a conjunts de dades clínics reals (CLAM), i Li et
+al.~\cite{li2021dualstreammultipleinstancelearning} van proposar DSMIL, que combina dues
+branques —a nivell de \textit{patch} i de làmina— amb aprenentatge contrastiu. La
+predicció de metàstasi ganglionar a partir d'histopatologia s'ha estudiat en altres càncers:
+Muti et al.~\cite{muti2023deep} mostren que és possible predir l'estat N0/N1 a partir de
+làmines de càncer gàstric, amb resultats prometedors.
 
 \subsection{Grafs i GNN en Patologia Digital}
 
-Les \textit{Graph Neural Networks} permeten representar el teixit com una estructura
-relacional, capturant la topologia espacial entre regions de manera explícita. Jaume et
-al.~\cite{jaume2021histocartographytoolkitgraphanalytics} van presentar HistoCartography,
-un marc de treball per a l'anàlisi de grafs en patologia digital que demostra la
-superioritat dels grafs sobre les CNN en tasques de classificació de biòpsies. El
-mecanisme d'atenció de les GAT~\cite{veličković2018graphattentionnetworks} és especialment
-adequat per a aquest domini, on no tots els veïns d'una regió contribueixen igualment al
-diagnòstic. Les estratègies de \textit{pooling} jeràrquic com DiffPool~\cite{ying2019hierarchicalgraphrepresentationlearning}
-han demostrat la seva utilitat per capturar representacions multi-escala en grafs de
-propietats moleculars i estructures biològiques; Grattarola et al.~\cite{Grattarola_2024}
-ofereixen una revisió sistemàtica de les fortaleses i limitacions de les
-diverses estratègies de \textit{pooling}.
+Les \textit{Graph Neural Networks} permeten tractar el teixit com una estructura on les
+regions estan connectades segons la seva proximitat, capturant relacions espacials que les
+CNN no modelen directament. Jaume et al.~\cite{jaume2021histocartographytoolkitgraphanalytics}
+van presentar HistoCartography, un entorn de treball per a l'anàlisi de grafs en patologia
+digital, amb resultats que mostren millores respecte de les CNN en classificació de
+biòpsies. Les GAT~\cite{veličković2018graphattentionnetworks} afegeixen un mecanisme
+d'atenció que permet al model ponderar cada veí de manera diferent, cosa especialment útil
+en histopatologia on no totes les regions del teixit aporten la mateixa informació. Pel que
+fa al \textit{pooling} en grafs, Grattarola et al.~\cite{Grattarola_2024} revisen els
+principals mètodes existents, entre ells DiffPool~\cite{ying2019hierarchicalgraphrepresentationlearning},
+que agrupa nodes en super-nodes de manera progressiva.
 
 \subsection{Models de Fundació per a Histopatologia}
 
-L'extracció de característiques de \textit{patches} histopatològics ha experimentat una
-evolució accelerada amb l'aparició de \textit{foundation models} preentrenats a gran
-escala. UNI2~\cite{chen2024uni2} és un \textit{vision transformer} entrenat sobre més de
-100 milions de \textit{patches} de 20 tipus de teixit, assolint l'estat de l'art en
-nombroses tasques \textit{downstream}. CONCH~\cite{lu2024conch} estén aquest paradigma
-amb alineament text-imatge, permetent la cerca semàntica sobre representacions
-histopatològiques. La qualitat dels embeddings generats per aquests models és determinant
-per a la representació dels nodes en el graf, substituint avantajosament les tècniques
-d'extracció tradicionals basades en CNNs genèriques.
+En els darrers anys han aparegut \textit{foundation models} preentrenats específicament
+sobre dades de patologia, que generen embeddings molt més informatius que les CNNs
+genèriques. UNI2~\cite{chen2024uni2} és un \textit{vision transformer} entrenat sobre
+més de 100 milions de \textit{patches} de 20 tipus de teixit, amb bons resultats en
+nombroses tasques de classificació histopatològica. CONCH~\cite{lu2024conch} és un model
+similar que incorpora a més alineament entre imatge i text. En aquest projecte s'utilitzen
+els embeddings de UNI2 com a vector de característiques de cada node, ja que estan
+preentrenats en el mateix domini i capturen informació morfològica rellevant.
 
 \subsection{Treball Previ al CVC sobre pT1 CRC}
 
-El present projecte s'emmarca en una línia de recerca del grup IAM del CVC. Martí et
-al.~\cite{ddd.uab.cat:317556} van analitzar el mateix conjunt de dades pT1 CRC comparant
-CNNs, ViTs i GNNs per a la classificació de \textit{patches} individuals, obtenint la
-millor AUC ($0{,}954 \pm 0{,}077$) amb una arquitectura híbrida ViT+NN. Tanmateix,
-aquell enfocament opera a nivell de \textit{patch} i no modela explícitament la topologia
-espacial del teixit ni el diagnòstic a nivell de pacient. El present treball construeix
-sobre els embeddings CLS del model UNI2 i proposa una arquitectura específicament
-dissenyada per explotar les relacions espacials entre regions histològiques i per al
-diagnòstic a nivell de pacient via MIL.
+Aquest treball s'integra dins una línia de recerca del grup IAM del CVC. Martí et
+al.~\cite{ddd.uab.cat:317556} van treballar sobre el mateix conjunt de dades pT1 CRC
+comparant CNNs, ViTs i GNNs per a la classificació de \textit{patches} individuals,
+obtenint la millor AUC ($0{,}954 \pm 0{,}077$) amb una arquitectura híbrida ViT+NN.
+Aquell treball, però, opera a nivell de \textit{patch} i no considera la topologia
+espacial del teixit ni el diagnòstic a nivell de pacient. El present TFG parteix dels
+embeddings CLS del model UNI2 per construir grafs espacials de les seccions i aborda
+el problema des d'una perspectiva de MIL a nivell de pacient.
 
 \section{Dades i Preprocessament}
 
@@ -360,12 +355,12 @@ pacient en lloc d'un per secció.
 
 \subsection{Connectivitat per triangulació de Delaunay}
 
-Una connectivitat fixa de reixeta no és adequada perquè la màscara exclou regions de fons, trencant la simetria
-de la quadrícula inicial. Per aquest motiu, s'aplica una \textbf{triangulació de Delaunay} sobre els nodes
-restants, que s'adapta orgànicament a distribucions irregulars. A continuació, s'eliminen les arestes que creuen
-píxels de valor zero en la màscara, evitant connexions entre regions separades per espai buit. Finalment,
-s'aplica un criteri de distància màxima: s'eliminen les arestes que superen el doble de la longitud mitjana del
-conjunt (\texttt{DISTANCE\_FACTOR} $= 2{,}0$). La subfigura~\ref{fig:delaunay-real} mostra el resultat sobre
+Una connectivitat fixa de reixeta no és adequada perquè la màscara exclou regions de fons i trenca la
+simetria de la quadrícula. Per aquest motiu, s'aplica una \textbf{triangulació de Delaunay} sobre els
+nodes restants, que s'adapta a distribucions irregulars de forma natural. A continuació, s'eliminen les
+arestes que travessen píxels de valor zero a la màscara, evitant connexions entre regions separades per
+espai buit. Finalment, s'aplica un criteri de distància màxima: s'eliminen les arestes que superen el
+doble de la longitud mitjana del conjunt (\texttt{DISTANCE\_FACTOR} $= 2{,}0$). La subfigura~\ref{fig:delaunay-real} mostra el resultat sobre
 la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en vermell.
 
 \begin{figure*}[h]
@@ -672,10 +667,10 @@ visibles de metàstasi si s'analitza aïlladament, mentre que en una altra secci
 apreciable. Si s'entrena a nivell de làmina, les seccions N1 de pacients N1 que no mostren metàstasi visible
 reben un senyal de supervisió incorrecte (N0), contaminant l'entrenament.
 
-Per solucionar-ho, s'adopta un paradigma d'\textbf{aprenentatge per múltiples instàncies}
-(\textit{Multiple Instance Learning}, MIL): cada pacient és
-un \textit{bag} i les seves làmines (instàncies) comparteixen l'etiqueta del \textit{bag}. El model aprèn a
-classificar el \textit{bag} a partir de les instàncies.
+Per evitar aquest problema, s'utilitza el paradigma d'\textbf{aprenentatge per múltiples instàncies}
+(\textit{Multiple Instance Learning}, MIL): cada pacient es tracta com un \textit{bag} i totes les seves
+làmines comparteixen la mateixa etiqueta. El model aprèn a classificar el pacient a partir de les
+seves seccions, sense necessitat d'etiquetes individuals per làmina.
 
 Donades les probabilitats $\{p_i = P(\text{N1}_i)\}_{i=1}^{S}$ de les $S$ làmines d'un pacient, s'implementen
 les estratègies d'agregació següents:
@@ -735,14 +730,13 @@ amb mètriques registrades a \textit{Weights \& Biases}. El millor model per AUC
 \textit{checkpoint}. L'entrenament inclou \textit{early stopping} amb 15 epochs de \textit{warm-up} i
 \textit{patience} de 10, basant el criteri d'aturada en la pèrdua de validació.
 
-Per a una avaluació estadísticament més robusta, s'implementa una validació creuada estratificada de
-$k$ particions ($k=5$ per defecte) a nivell de pacient, activable amb l'argument \texttt{-{}-kfold~5}
-de \texttt{train.py}. En mode \textit{k-fold}, tots els grafs (particions \textit{train} i \textit{val}
-predefinides) es reunifiquen i es reparteixen de nou en $k$ folds estratificats per la proporció N0/N1,
-garantint representativitat en cada partició. Cada \textit{fold} entrena un model independent (amb la
-seva pròpia \textit{run} a W\&B), i al final es reporta la mitjana $\pm$ desviació estàndard de les
-mètriques clau (AUC, F1-macro, F1-N1, \textit{recall}-N1). Aquesta modalitat és compatible amb el
-\textit{grid search}: si es combinen totes dues opcions, s'executen $n_{\text{combos}} \times k$ runs.
+Per obtenir una avaluació més fiable, s'utilitza una validació creuada de $k$ particions ($k=5$)
+estratificada a nivell de pacient, activable amb l'argument \texttt{-{}-kfold~5} de \texttt{train.py}.
+Cada \textit{fold} entrena un model independent i al final es reporta la mitjana $\pm$ desviació estàndard
+de les mètriques principals (AUC, F1-macro, F1-N1). Això és especialment important amb un conjunt
+de dades petit com el d'aquest projecte, on un únic split podria donar resultats poc representatius.
+El mode \textit{k-fold} és compatible amb el \textit{grid search}: si es combinen, s'executen
+$n_{\text{combos}} \times k$ entrenaments en total.
 
 \section{Resultats Preliminars}
 
@@ -771,13 +765,13 @@ GAT+DiffPool & \textit{diff}      & \textit{attention} & $0{,}801 \pm 0{,}042$ &
 \end{tabular}
 \end{table*}
 
-El model GAT Baseline amb agregació \textit{attention} assoleix el millor AUC
-($0{,}817 \pm 0{,}073$). El model GAT+DiffPool amb \textit{attention} obté un AUC comparable
-($0{,}801 \pm 0{,}042$) amb la menor variabilitat entre \textit{folds} i el millor F1-N1
-($0{,}679 \pm 0{,}058$), indicant una detecció de casos positius més estable. En contrast,
-l'agregació \textit{noisy-OR} sense \textit{attention} presenta resultats clarament inferiors,
-especialment per al GAT Baseline ($0{,}581 \pm 0{,}142$), confirmant la importància de
-l'agregació per atenció en el paradigma MIL per a aquest conjunt de dades desbalancejat.
+El GAT Baseline amb agregació \textit{attention} obté el millor AUC ($0{,}817 \pm 0{,}073$).
+El GAT+DiffPool amb \textit{attention} té un AUC semblant ($0{,}801 \pm 0{,}042$) però
+menys variabilitat entre \textit{folds} i el millor F1-N1 ($0{,}679 \pm 0{,}058$), cosa que
+indica que detecta els casos positius de manera més consistent. En canvi, les configuracions
+amb \textit{noisy-OR} donen resultats notablement pitjors, sobretot el GAT Baseline
+($0{,}581 \pm 0{,}142$), cosa que suggereix que el mètode d'agregació és molt rellevant
+per a aquest problema.
 
 Cal remarcar que aquests resultats són \textbf{preliminars}: corresponen a la segona entrega
 del TFG, en un moment en què l'arquitectura del model i les estratègies d'entrenament encara
@@ -879,53 +873,52 @@ s'agreguen via MIL per obtenir el diagnòstic final a nivell de pacient.}
 
 \subsection{Conclusions Parcials}
 
-S'ha dissenyat i implementat un \textit{pipeline} complet de classificació N0/N1 per a
-la predicció de metàstasi ganglionar en càncer colorectal pT1, des de la construcció de
-grafs espacials de Delaunay sobre embeddings UNI2 fins a l'entrenament amb validació
-creuada de 5 particions. Els resultats preliminars (millor AUC $0{,}817 \pm 0{,}073$)
-validen la viabilitat de l'enfocament. Se'n destaquen tres observacions:
+En aquest TFG s'ha construït un sistema complet de classificació N0/N1 per a càncer
+colorectal pT1 a partir de WSI, que inclou la generació de grafs espacials, l'entrenament
+del model GAT amb diverses configuracions i l'avaluació amb validació creuada de 5
+particions. L'AUC obtinguda ($0{,}817 \pm 0{,}073$) és un bon punt de partida per a un
+sistema que encara no ha estat optimitzat en profunditat. Se'n destaquen tres
+observacions:
 
 \begin{itemize}
-  \item L'agregació per atenció MIL (\texttt{PatientAggregator}) és determinant: la
-  mateixa arquitectura GAT Baseline passa d'AUC $0{,}581$ amb \textit{noisy-OR} a
-  $0{,}817$ amb \textit{attention}, confirmant que el paradigma MIL requereix un
-  mecanisme d'agregació expressiu per a un conjunt de dades desbalancejat.
-  \item GAT+DiffPool amb \textit{attention} obté la menor variabilitat entre
+  \item El mètode d'agregació MIL té un impacte molt gran: el GAT Baseline passa d'AUC
+  $0{,}581$ amb \textit{noisy-OR} a $0{,}817$ amb \textit{attention}. Triar bé com
+  s'agreguen les seccions d'un pacient és tan important com l'arquitectura del model.
+  \item GAT+DiffPool amb \textit{attention} obté menys variabilitat entre
   \textit{folds} ($\sigma\!=\!0{,}042$) i el millor F1-N1 ($0{,}679 \pm 0{,}058$),
-  indicant que el \textit{pooling} jeràrquic pot aportar una representació més estable
-  tot i no superar clarament el model de referència en AUC.
-  \item L'espai d'hiperparàmetres explorat és reduït i el dataset és limitat; no és
-  possible extreure conclusions definitives en aquesta fase del projecte.
+  però no supera clarament el model de referència en AUC. Caldrà fer experiments
+  més amplis per saber si el \textit{pooling} jeràrquic aporta avantatge real.
+  \item El nombre de pacients és petit (230) i l'espai de cerca d'hiperparàmetres és
+  molt limitat; no és possible treure conclusions definitives en aquesta fase.
 \end{itemize}
 
 \subsection{Treball Futur}
 
-\textbf{Cerca d'hiperparàmetres exhaustiva.} L'exploració actual cobreix 4 combinacions.
-S'implementarà un \textit{random search} o cerca bayesiana (Optuna) sobre un espai més
-ampli que inclogui $h_{\text{hidden}}$, $K_1$/$K_2$ per a DiffPool, profunditat del MLP,
-\textit{dropout}, \textit{weight decay} i estratègia d'optimitzador.
+\textbf{Ampliar la cerca d'hiperparàmetres.} Fins ara s'han provat 4 combinacions sobre
+un \textit{grid} molt reduït. En les pròximes fases s'ampliarà la cerca incloent valors
+de $h_{\text{hidden}}$, $K_1$/$K_2$ per a DiffPool, \textit{dropout} i
+\textit{learning rate}, entre d'altres, per trobar una configuració millor.
 
-\textbf{Supervisió amb màscares d'anotació.} S'explorarà l'ús de les màscares binàries
-(displàsia, infiltració) anotades per la Dra.\ Musulén per guiar els pesos d'atenció del
-GAT, seguint l'enfocament de Tourniaire et al.~\cite{TOURNIAIRE2023102763} (MS-CLAM), on
-entre el 12\,\% i el 62\,\% de les anotacions parcials és suficient per millorar la
-localització i la classificació. Això permetria aprofitar les anotacions disponibles com
-a supervisió feble espacialment informada, afegint un senyal de regularització al model.
+\textbf{Supervisió amb màscares d'anotació.} Les màscares de displàsia i infiltració
+anotades per la Dra.\ Musulén podrien fer-se servir per guiar els pesos d'atenció del
+GAT: les regions anotades haurien de rebre més atenció que les zones sanes. Tourniaire et
+al.~\cite{TOURNIAIRE2023102763} mostren que fins i tot amb un nombre limitat d'anotacions
+parcials es pot millorar la localització i la classificació del model.
 
-\textbf{Ampliació del dataset.} Dels 370 pacients amb diagnòstic vàlid, 140 (el 38\,\%)
-no disposen d'embeddings UNI2 perquè el \textit{pipeline} d'extracció no s'ha executat
-sobre les seves làmines (notablement tot l'H.\ 12 de Octubre amb 48 pacients). Generar
-aquests embeddings podria pràcticament doblar el dataset efectiu i millorar
-substancialment la capacitat de generalització.
+\textbf{Ampliar el dataset.} De moment, 140 dels 370 pacients amb diagnòstic vàlid no
+tenen embeddings UNI2 generats perquè el \textit{pipeline} d'extracció no s'ha executat
+sobre les seves làmines (per exemple, tot l'H.\ 12 de Octubre, amb 48 pacients). Generar
+aquests embeddings pràcticament doblaria el dataset i hauria de millorar els resultats.
 
-\textbf{Comparació amb baselines MIL sense graf.} Per quantificar l'aportació real de
-la informació topològica, es compararà el model GAT contra ABMIL/CLAM~\cite{lu2020dataefficientweaklysupervised}
-aplicat sobre els mateixos embeddings UNI2 però sense estructura de graf, permetent
-aïllar la contribució de les arestes de Delaunay.
+\textbf{Comparar amb un model sense graf.} Una de les preguntes clau és si el graf de
+Delaunay aporta informació útil respecte de simplement agregar els embeddings dels
+\textit{patches} sense cap estructura espacial. Es planeja comparar el model GAT amb
+CLAM~\cite{lu2020dataefficientweaklysupervised} aplicat sobre els mateixos embeddings
+UNI2 però sense grafs, per veure si la topologia espacial marca diferència.
 
-\textbf{Ablació de la connectivitat.} Es compararan els grafs de Delaunay amb alternatives
-($k$-NN, radi fix, graf completament connectat) per verificar si la topologia espacial
-real del teixit aporta avantatge respecte de connexions menys informades.
+\textbf{Ablació de la connectivitat.} També es compararan els grafs de Delaunay amb
+alternatives més senzilles ($k$-NN, radi fix) per saber si cal la triangulació o n'hi
+ha prou amb una connectivitat més simple.
 
 \printbibliography
 
