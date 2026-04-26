@@ -35,7 +35,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GATConv, global_max_pool, global_mean_pool, global_add_pool
+from torch_geometric.nn import GATConv, GlobalAttention, global_max_pool, global_mean_pool, global_add_pool
 
 try:
     from torch_geometric.nn import dense_diff_pool
@@ -44,7 +44,7 @@ try:
 except ImportError:
     _DIFF_POOL_OK = False
 
-POOLING_OPTIONS     = ("mean_max", "mean", "max", "sum", "diff")
+POOLING_OPTIONS     = ("mean_max", "mean", "max", "sum", "diff", "attention")
 AGGREGATION_OPTIONS = ("noisy_or", "max", "lse", "mean", "attention")
 
 
@@ -220,7 +220,13 @@ class GATClassifier(nn.Module):
             self.bn2   = nn.BatchNorm1d(hidden * heads)
             self.conv3 = GATConv(hidden * heads, hidden, heads=1,     concat=False, dropout=dropout)
             self.bn3   = nn.BatchNorm1d(hidden)
-            pool_out   = hidden * 2 if pooling == "mean_max" else hidden
+            if pooling == "mean_max":
+                pool_out = hidden * 2
+            elif pooling == "attention":
+                self.global_attn = GlobalAttention(nn.Linear(hidden, 1))
+                pool_out = hidden
+            else:
+                pool_out = hidden
 
         if patient_aggregation == "attention":
             self.patient_aggregator = PatientAggregator(pool_out)
@@ -245,6 +251,8 @@ class GATClassifier(nn.Module):
             return global_max_pool(x, batch)
         if self.pooling_type == "sum":
             return global_add_pool(x, batch)
+        if self.pooling_type == "attention":
+            return self.global_attn(x, batch)
 
     # ── encode (without MLP head) ──────────────────────────────────────────────
 

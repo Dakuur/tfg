@@ -1,0 +1,40 @@
+model:
+  in_channels: 1536
+  hidden: 256
+  heads: 4
+  dropout: 0.3
+  diff_clusters: 10
+
+training:
+  n_folds: 5
+  epochs: 100
+  patients_per_batch: 2        # per-slide: múltiples grafs petits per pacient
+  mega_patients_per_batch: 1   # mega-graph: 1 graf gran per pacient
+  minibatch_size: 2
+
+paths:
+  mega_graphs_dir: "outputs/graphs/mega"
+  slide_graphs_dir: "outputs/graphs"
+
+# Grid search
+# - pooling: només per gat-baseline  (gat-diffpool fixa "diff" internament)
+# - mil:     només per per-slide      (mega fixa "mean" perquè cada .pt ja és un pacient)
+grid:
+  model_arch:
+    - "gat-baseline"
+    - "gat-diffpool"
+  graph_type:
+    - "per-slide"
+    - "mega"
+  pooling:
+    - "mean_max"
+    - "attention"
+  mil:
+    - "mean"
+    - "noisy_or"
+    - "attention"
+  lr:
+    - 1.0e-3
+    - 1.0e-4
+    - 1.0e-5
+    - 1.0e-6
