@@ -29,17 +29,6 @@ export async function renderStatistics(container) {
   const dist  = data.class_distribution || {};
   const curAgg = data.aggregation ?? "noisy_or";
 
-  const AGG_LABELS = {
-    noisy_or: "Noisy-OR",
-    max:      "Max",
-    lse:      "LSE (smooth-max)",
-    mean:     "Mean",
-  };
-
-  const aggOptions = Object.entries(AGG_LABELS).map(([val, label]) =>
-    `<option value="${val}" ${val === curAgg ? "selected" : ""}>${label}</option>`
-  ).join("");
-
   container.innerHTML = `
     <div class="page-header">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:0.75rem">
@@ -47,11 +36,8 @@ export async function renderStatistics(container) {
           <h1 class="page-title">Estadístiques del model</h1>
           <p class="page-sub">Avaluat sobre el split de validació (${total} ${level})</p>
         </div>
-        <div style="display:flex;align-items:center;gap:0.5rem;padding-top:0.25rem">
-          <label for="agg-select" style="color:#888;font-size:0.85rem;white-space:nowrap">Agregació slides→pacient:</label>
-          <select id="agg-select" style="background:#1c1c1c;color:#e0e0e0;border:1px solid #333;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.85rem;cursor:pointer">
-            ${aggOptions}
-          </select>
+        <div style="padding-top:0.3rem;font-size:0.82rem;color:#666">
+          Agregació: <span style="color:#999;font-family:monospace">${curAgg}</span>
         </div>
       </div>
     </div>
@@ -103,16 +89,6 @@ export async function renderStatistics(container) {
   `;
 
   lucide.createIcons();
-
-  // ── Selector d'agregació ───────────────────────────────────────────────────
-  container.querySelector("#agg-select").addEventListener("change", async (e) => {
-    try {
-      await API.setAggregation(e.target.value);
-      await renderStatistics(container);
-    } catch (err) {
-      console.error("Error canviant agregació:", err);
-    }
-  });
 
   // ── Corba Precisió-Recall ──────────────────────────────────────────────────
   if (data.precision_recall) {

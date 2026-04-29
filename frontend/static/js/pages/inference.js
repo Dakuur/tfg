@@ -12,47 +12,11 @@ let _result        = null;   // patient-level result
 let _debugMode     = false;
 let _vizGraphId    = null;   // which slide is currently shown in viz
 
-// Viz state — cached between mode switches to avoid re-fetching graph data
-let _vizData       = null;   // full inference result of the current slide
-let _vizMode       = "attention_l3";
+// Viz state
+let _vizData       = null;
 let _vizBgImageUrl = null;
 let _vizWsiExtent  = null;
 let _vizSlideInfo  = null;
-
-// ── Viz mode definitions ───────────────────────────────────────────────────────
-const VIZ_MODES = {
-  attention_l3:  {
-    label: "Atenció L3",
-    desc:  "Atenció GAT capa 3 — atenció agregada que rep cada node dels seus veïns en la capa de sortida.",
-  },
-  attention_all: {
-    label: "Atenció ∑",
-    desc:  "Atenció GAT agregada de totes les capes (ponderació 20/30/50%) — visió global del flux d'informació.",
-  },
-  gradcam: {
-    label: "GradCAM",
-    desc:  "Gradient del logit N1 respecte als embeddings. Alta puntuació = node que influeix directament en la predicció de metàstasi.",
-  },
-  leave_one_out: {
-    label: "Leave-one-out",
-    desc:  "Caiguda de P(N1) en eliminar cada node. Identifica els nodes sense els quals el model deixa de detectar metàstasi.",
-  },
-};
-
-function _getLocalScores(viz, mode) {
-  const l3 = viz.attention?.layer3?.node_attention;
-  if (!l3) return null;
-  if (mode === "attention_l3") return l3;
-  if (mode === "attention_all") {
-    const n  = l3.length;
-    const l1 = viz.attention?.layer1?.node_attention ?? new Array(n).fill(0);
-    const l2 = viz.attention?.layer2?.node_attention ?? new Array(n).fill(0);
-    const raw = l3.map((v, i) => 0.2 * l1[i] + 0.3 * l2[i] + 0.5 * v);
-    const mx  = Math.max(...raw, 1e-9);
-    return raw.map(v => v / mx);
-  }
-  return null;  // gradcam / leave_one_out require server call
-}
 
 function _reRenderGraph(container, scores) {
   const svgContainer = container.querySelector("#graph-svg-container");
@@ -71,44 +35,6 @@ function _reRenderGraph(container, scores) {
     bgImageUrl:    _vizBgImageUrl,
     wsiExtent:     _vizWsiExtent,
   });
-}
-
-function _setModeUI(container, mode) {
-  container.querySelectorAll(".viz-mode-btn").forEach(b =>
-    b.classList.toggle("active", b.dataset.mode === mode)
-  );
-  const descEl = container.querySelector("#viz-mode-desc");
-  if (descEl) descEl.textContent = VIZ_MODES[mode]?.desc ?? "";
-}
-
-async function _applyVizMode(container, mode) {
-  if (!_vizData) return;
-  _vizMode = mode;
-  _setModeUI(container, mode);
-
-  // Disable buttons while computing
-  const btns      = container.querySelectorAll(".viz-mode-btn");
-  const computing = container.querySelector("#viz-mode-computing");
-  let scores = _getLocalScores(_vizData, mode);
-
-  if (!scores) {
-    btns.forEach(b => b.disabled = true);
-    if (computing) computing.style.display = "";
-    try {
-      const res = await API.nodeScores(_vizGraphId, mode);
-      scores = res.scores;
-    } catch (e) {
-      // Fallback to attention_l3 on error
-      scores = _getLocalScores(_vizData, "attention_l3");
-      _vizMode = "attention_l3";
-      _setModeUI(container, "attention_l3");
-    } finally {
-      btns.forEach(b => b.disabled = false);
-      if (computing) computing.style.display = "none";
-    }
-  }
-
-  _reRenderGraph(container, scores);
 }
 
 export async function renderInference(container, debugMode = false) {
@@ -206,21 +132,10 @@ function buildLayout() {
         <span id="viz-slide-label" style="font-size:12px;color:var(--text3);margin-left:8px"></span>
         <span id="viz-loading" style="display:none;font-size:11px;color:var(--accent-light);margin-left:8px">carregant…</span>
       </div>
-      <div style="margin-bottom:6px;font-size:12px;color:var(--text3)">
+      <div style="margin-bottom:10px;font-size:12px;color:var(--text3)">
         <i data-lucide="info" style="width:13px;height:13px;vertical-align:middle"></i>
-        Clic sobre un node per veure el patch d'histopatologia · Scroll per zoom
+        Clic sobre un node per veure el patch d'histopatologia · Scroll per zoom · Colors: atenció GAT capa 3
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-        <span style="font-size:11.5px;color:var(--text3);white-space:nowrap">Coloració nodes:</span>
-        <div id="viz-mode-selector" style="display:flex;gap:4px;flex-wrap:wrap">
-          <button class="viz-mode-btn active" data-mode="attention_l3">Atenció L3</button>
-          <button class="viz-mode-btn" data-mode="attention_all">Atenció ∑</button>
-          <button class="viz-mode-btn" data-mode="gradcam">GradCAM</button>
-          <button class="viz-mode-btn" data-mode="leave_one_out">Leave-one-out</button>
-        </div>
-        <span id="viz-mode-computing" style="display:none;font-size:11px;color:var(--accent-light)">calculant…</span>
-      </div>
-      <div id="viz-mode-desc" style="font-size:11px;color:var(--text3);margin-bottom:10px"></div>
       <div class="two-col" style="align-items:start">
         <div>
           <div class="graph-viz-wrap" id="graph-svg-container" style="height:440px"></div>
@@ -244,15 +159,7 @@ function attachEvents(container) {
   container.querySelector("#patient-search").addEventListener("input",  () => applyFilters(container));
   container.querySelector("#split-filter").addEventListener("change",   () => applyFilters(container));
   container.querySelector("#label-filter").addEventListener("change",   () => applyFilters(container));
-  container.querySelector("#run-btn").addEventListener("click",         () => runInference(container));
-
-  // Viz mode selector — event delegation so it survives slide switches
-  container.querySelector("#viz-mode-selector")?.addEventListener("click", e => {
-    const btn = e.target.closest(".viz-mode-btn");
-    if (!btn || btn.disabled) return;
-    const mode = btn.dataset.mode;
-    if (mode && mode !== _vizMode) _applyVizMode(container, mode);
-  });
+  container.querySelector("#run-btn").addEventListener("click", () => runInference(container));
 }
 
 function applyFilters(container) {
@@ -509,9 +416,7 @@ async function renderGraphViz(container, r) {
 }
 
 async function _drawViz(container, viz, graphId) {
-  // Cache viz state for mode switching without re-fetching
   _vizData       = viz;
-  _vizMode       = "attention_l3";
   _vizBgImageUrl = null;
   _vizWsiExtent  = null;
 
@@ -565,11 +470,7 @@ async function _drawViz(container, viz, graphId) {
     }
   }
 
-  // Reset mode selector to attention_l3
-  _setModeUI(container, "attention_l3");
-
-  // Initial render with layer-3 attention scores
-  _reRenderGraph(container, _getLocalScores(viz, "attention_l3"));
+  _reRenderGraph(container, viz.attention?.layer3?.node_attention ?? null);
 
   const bgStatusHtml = bgError
     ? `<div class="stat-row"><span class="stat-key">Imatge fons</span><span class="stat-val" style="color:var(--red);font-size:11px">${bgError}</span></div>`
