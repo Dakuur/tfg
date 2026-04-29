@@ -187,7 +187,7 @@ def _three_way_split(
         tr_va_pids, test_size=val_frac, stratify=tr_va_labels, random_state=42,
     )
 
-    split_json = graphs_dir / "per-slide" / "split.json"
+    split_json = graphs_dir / "split.json"
     if split_json.parent.exists():
         with open(split_json, "w") as f:
             json.dump({"train": tr_pids, "val": va_pids, "test": te_pids}, f, indent=2)
