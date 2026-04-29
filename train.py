@@ -29,6 +29,7 @@ Usage:
 import argparse
 import copy
 import itertools
+import json
 import sys
 import time
 from collections import defaultdict
@@ -154,6 +155,52 @@ def _make_sweep_fn(base_cfg: dict):
     return sweep_fn
 
 
+# ── data split ─────────────────────────────────────────────────────────────────
+
+def _three_way_split(
+    all_graphs: list,
+    t:          dict,
+    graphs_dir: Path,
+) -> tuple[list, list, list, list, list, list]:
+    """Stratified 70/15/15 split at patient level.
+
+    Returns (train_graphs, val_graphs, test_graphs, tr_pids, va_pids, te_pids).
+    Saves split.json to graphs_dir/per-slide/ so the frontend can restrict
+    display to the test set only (no data leakage).
+    """
+    pat: dict = defaultdict(list)
+    for g in all_graphs:
+        pat[g.patient_id].append(g)
+
+    pids    = list(pat.keys())
+    plabels = [pat[p][0].y.item() for p in pids]
+
+    p_test = t.get("split_test", 0.15)
+    p_val  = t.get("split_val",  0.15)
+
+    tr_va_pids, te_pids = train_test_split(
+        pids, test_size=p_test, stratify=plabels, random_state=42,
+    )
+    tr_va_labels = [pat[p][0].y.item() for p in tr_va_pids]
+    val_frac     = p_val / (1.0 - p_test)
+    tr_pids, va_pids = train_test_split(
+        tr_va_pids, test_size=val_frac, stratify=tr_va_labels, random_state=42,
+    )
+
+    split_json = graphs_dir / "per-slide" / "split.json"
+    if split_json.parent.exists():
+        with open(split_json, "w") as f:
+            json.dump({"train": tr_pids, "val": va_pids, "test": te_pids}, f, indent=2)
+        print(f"[INFO] split.json saved → {split_json}")
+
+    return (
+        [g for p in tr_pids for g in pat[p]],
+        [g for p in va_pids for g in pat[p]],
+        [g for p in te_pids for g in pat[p]],
+        tr_pids, va_pids, te_pids,
+    )
+
+
 # ── training body ──────────────────────────────────────────────────────────────
 
 def _train_body(
@@ -181,18 +228,8 @@ def _train_body(
     if train_graphs is None or val_graphs is None:
         graphs_dir = Path(d["graphs_dir"]).expanduser()
         all_graphs = load_graphs(graphs_dir)
-        # 80/20 stratified split at patient level
-        _pat: dict = defaultdict(list)
-        for g in all_graphs:
-            _pat[g.patient_id].append(g)
-        _pids    = list(_pat.keys())
-        _plabels = [_pat[p][0].y.item() for p in _pids]
-        _tr_pids, _va_pids = train_test_split(
-            _pids, test_size=0.20, stratify=_plabels,
-            random_state=t.get("seed", 123),
-        )
-        train_graphs = [g for p in _tr_pids for g in _pat[p]]
-        val_graphs   = [g for p in _va_pids  for g in _pat[p]]
+        # 70/15/15 stratified split at patient level (seed=42, matches PT1Diagnosis)
+        train_graphs, val_graphs, _, _, _, _ = _three_way_split(all_graphs, t, graphs_dir)
 
     in_ch = train_graphs[0].x.shape[1]
     print(f"[INFO] Train: {len(train_graphs)}  Val: {len(val_graphs)}  Features: {in_ch}")
@@ -374,21 +411,26 @@ def run_kfold_cv(cfg: dict, run_name_base: str | None, k: int = 5) -> None:
     """
     d    = cfg["data"]
     t    = cfg["training"]
-    seed = t.get("seed", 123)
+    seed = t.get("seed", 42)
 
     # ── load all available graphs ─────────────────────────────────────────────
-    graphs_dir = Path(d["graphs_dir"])
+    graphs_dir = Path(d["graphs_dir"]).expanduser()
     all_graphs = load_graphs(graphs_dir)
     print(f"[INFO] K-Fold: {len(all_graphs)} graphs total, k={k}")
 
-    # ── group by patient ──────────────────────────────────────────────────────
+    # ── reserve test set first (same 70/15/15 split used in training) ─────────
+    _, _, _, tr_pids_base, va_pids_base, te_pids = _three_way_split(all_graphs, t, graphs_dir)
+    tr_va_pids_all = tr_pids_base + va_pids_base
+    # tr_va_pids_all are the patients available for cross-validation
+    # (train + val portions combined; test is never touched)
     patient_graphs: dict[str, list] = defaultdict(list)
     for g in all_graphs:
         patient_graphs[g.patient_id].append(g)
 
-    patient_ids    = list(patient_graphs.keys())
+    tr_va_set      = set(tr_va_pids_all)
+    patient_ids    = [p for p in patient_graphs if p in tr_va_set]
     patient_labels = [patient_graphs[pid][0].y.item() for pid in patient_ids]
-    print(f"[INFO] K-Fold: {len(patient_ids)} patients  "
+    print(f"[INFO] K-Fold: {len(patient_ids)} patients (excl. {len(te_pids)} test)  "
           f"N0={sum(l == 0 for l in patient_labels)}  "
           f"N1={sum(l == 1 for l in patient_labels)}")
 

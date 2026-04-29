@@ -13,6 +13,7 @@ Predictions are aggregated at patient level:
 """
 
 import io
+import json
 import logging
 import os
 import sys
@@ -192,8 +193,9 @@ def _load_pt(path: Path) -> Optional[Data]:
 def _scan_graphs() -> Dict[str, List[Dict]]:
     result: Dict[str, List[Dict]] = {"train": [], "val": []}
 
-    def _add(pt_path: Path, split: str) -> None:
-        g = _load_pt(pt_path)
+    def _add(pt_path: Path, split: str, g=None) -> None:
+        if g is None:
+            g = _load_pt(pt_path)
         if g is None:
             return
         num_nodes = int(g.num_nodes) if g.num_nodes is not None else int(g.x.shape[0])
@@ -210,11 +212,26 @@ def _scan_graphs() -> Dict[str, List[Dict]]:
             "metastasis_score": str(getattr(g, "metastasis_score", "—")),
         })
 
-    # New flat format: per-slide/*.pt (all graphs labeled "val" for display)
+    # New flat format: per-slide/*.pt
     per_slide_dir = GRAPHS_DIR / "per-slide"
     if per_slide_dir.exists():
+        # If split.json exists, only expose test-set patients to avoid data leakage
+        test_pids: Optional[set] = None
+        split_json = per_slide_dir / "split.json"
+        if split_json.exists():
+            with open(split_json) as f:
+                test_pids = set(json.load(f).get("test", []))
+            log.info(f"split.json found — showing {len(test_pids)} test patients only")
+
         for pt_path in sorted(per_slide_dir.glob("*.pt")):
-            _add(pt_path, "val")
+            g = _load_pt(pt_path)
+            if g is None:
+                continue
+            if test_pids is not None:
+                pid = str(getattr(g, "patient_id", ""))
+                if pid not in test_pids:
+                    continue
+            _add(pt_path, "val", g)
         return result
 
     # Legacy format: train/*.pt and val/*.pt
@@ -926,8 +943,11 @@ def _slide_dir_patch_index(search_dir: Path, hospital: str, patient_id: str, sli
                            ) -> dict:
     """
     Scan search_dir for .jpg patch files and build a {(j,i): Path} index.
-    Patch filenames follow: {hospital}_{patient_id}_{slide_id}_{j}_{i}.jpg
-    Uses the prefix to handle names with underscores correctly.
+
+    Handles two filename formats:
+      Old: {hospital}_{patient}_{slide}_{j}_{i}.jpg        (2 coord parts)
+      New: {hospital}_{patient}_{slide}_{level}_{j}_{i}.jpg (3 coord parts)
+    In both cases the last two underscore-separated tokens are j and i.
     """
     prefix = f"{hospital}_{patient_id}_{slide_id}_"
     index: dict = {}
@@ -937,10 +957,10 @@ def _slide_dir_patch_index(search_dir: Path, hospital: str, patient_id: str, sli
             continue
         coord_part = stem[len(prefix):]
         parts = coord_part.split("_")
-        if len(parts) != 2:
+        if len(parts) < 2:
             continue
         try:
-            index[(int(parts[0]), int(parts[1]))] = p
+            index[(int(parts[-2]), int(parts[-1]))] = p
         except ValueError:
             continue
     return index
@@ -1064,11 +1084,19 @@ async def patch_image(
 
     # ── JPG by (j, i) coordinates (primary for PEARSON2 format) ───────────────
     if j is not None and i is not None:
+        # Exact match (old format: no intermediate fields)
         fname    = f"{hospital}_{patient_id}_{slide_id}_{j}_{i}.jpg"
         img_path = search_dir / fname
         if img_path.exists():
             return FileResponse(str(img_path), media_type="image/jpeg")
 
+        # Glob match: handles new format with extra field, e.g. *_{level}_{j}_{i}.jpg
+        prefix  = f"{hospital}_{patient_id}_{slide_id}_"
+        matches = list(search_dir.glob(f"{prefix}*_{j}_{i}.jpg"))
+        if matches:
+            return FileResponse(str(matches[0]), media_type="image/jpeg")
+
+        # Nearest-patch fallback (builds full index; tolerates coord offsets ≤8192 px)
         index = _slide_dir_patch_index(search_dir, hospital, patient_id, slide_id)
         best  = _nearest_patch(index, j, i)
         if best:

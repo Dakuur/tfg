@@ -47,7 +47,7 @@ function _closeModal() {
 
 function _openPatchModal(nodeData, slideInfo) {
   _ensureModal();
-  const { hospital, graph_id } = slideInfo;
+  const { hospital, patient_id, slide_id, patch_j, patch_i } = slideInfo;
   const idx = nodeData.id;
 
   const modal = document.getElementById("patch-modal");
@@ -57,17 +57,20 @@ function _openPatchModal(nodeData, slideInfo) {
 
   label.textContent = `Node ${idx}  ·  atenció: ${(nodeData.attn * 100).toFixed(1)}%`;
   modal.style.display = "flex";
+  img.src = "";
 
-  if (!graph_id) {
-    meta.textContent = "graph_id no disponible — actualitza la pàgina";
+  const j = patch_j ? patch_j[idx] : null;
+  const i = patch_i ? patch_i[idx] : null;
+
+  if (j == null || i == null || !hospital || !patient_id || !slide_id) {
+    meta.textContent = "Coordenades del patch no disponibles — reconstrueix el dataset";
     return;
   }
 
-  const url = `/api/bag_image?graph_id=${encodeURIComponent(graph_id)}&node_idx=${idx}`;
-  meta.textContent = "Assemblant bag (256 patches)…";
-  img.src = "";
-  img.onload  = () => { meta.textContent = `Node ${idx} · bag assembled · ${hospital}`; };
-  img.onerror = () => { meta.textContent = "No s'ha pogut assemblar el bag — comprova que els patches estan disponibles"; };
+  const url = `/api/patch_image?hospital=${encodeURIComponent(hospital)}&patient_id=${encodeURIComponent(patient_id)}&slide_id=${encodeURIComponent(slide_id)}&j=${j}&i=${i}`;
+  meta.textContent = "Carregant patch 2048×2048…";
+  img.onload  = () => { meta.textContent = `Node ${idx} · (${j}, ${i}) · ${hospital}`; };
+  img.onerror = () => { meta.textContent = "No s'ha pogut carregar el patch — comprova que els patches estan disponibles al servidor"; };
   img.src = url;
 }
 

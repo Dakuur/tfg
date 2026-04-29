@@ -40,7 +40,10 @@ training:
 
   warm_up:  10
   patience: 15
-  seed:     123
+  seed:     42
+
+  split_test: 0.15
+  split_val:  0.15
 
   # Metric used for checkpointing
   monitor: "val_auc"
