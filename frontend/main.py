@@ -73,8 +73,8 @@ class _State:
 
 STATE = _State()
 
-CKPT_DIR   = ROOT / "outputs" / "checkpoints"
-GRAPHS_DIR = ROOT / "outputs" / "graphs"
+CKPT_DIR   = Path.home() / "outputs" / "checkpoints"
+GRAPHS_DIR = Path.home() / "outputs" / "graphs"
 
 # Image serving — requires access to /mnt/iam (or IAM_PATH env var)
 _IAM_PATH = Path(os.environ.get("IAM_PATH", "/mnt/iam"))
@@ -94,7 +94,7 @@ _npz_cache: Dict[str, object] = {}
 def _get_npz(hospital: str):
     """Return the loaded NPZ for a hospital, caching after first load."""
     if hospital not in _npz_cache:
-        npz_path = _IAM_PATH / CLS_DIR_SUBPATH / f"{hospital}_CLS.npz"
+        npz_path = _IAM_PATH / CLS_DIR_SUBPATH / f"{hospital}_CLS_2048.npz"
         if not npz_path.exists():
             return None
         _npz_cache[hospital] = np.load(npz_path, allow_pickle=True)
@@ -191,27 +191,40 @@ def _load_pt(path: Path) -> Optional[Data]:
 
 def _scan_graphs() -> Dict[str, List[Dict]]:
     result: Dict[str, List[Dict]] = {"train": [], "val": []}
+
+    def _add(pt_path: Path, split: str) -> None:
+        g = _load_pt(pt_path)
+        if g is None:
+            return
+        num_nodes = int(g.num_nodes) if g.num_nodes is not None else int(g.x.shape[0])
+        result[split].append({
+            "id":               f"{split}/{pt_path.stem}",
+            "path":             str(pt_path.resolve()),
+            "split":            split,
+            "stem":             pt_path.stem,
+            "num_nodes":        num_nodes,
+            "num_edges":        int(g.edge_index.shape[1]) if g.edge_index is not None else 0,
+            "label":            int(g.y.item()) if hasattr(g, "y") and g.y is not None else -1,
+            "patient_id":       str(getattr(g, "patient_id",       pt_path.stem)),
+            "hospital":         str(getattr(g, "hospital",         "Unknown")),
+            "metastasis_score": str(getattr(g, "metastasis_score", "—")),
+        })
+
+    # New flat format: per-slide/*.pt (all graphs labeled "val" for display)
+    per_slide_dir = GRAPHS_DIR / "per-slide"
+    if per_slide_dir.exists():
+        for pt_path in sorted(per_slide_dir.glob("*.pt")):
+            _add(pt_path, "val")
+        return result
+
+    # Legacy format: train/*.pt and val/*.pt
     for split in ("train", "val"):
         split_dir = GRAPHS_DIR / split
         if not split_dir.exists():
             continue
         for pt_path in sorted(split_dir.glob("*.pt")):
-            g = _load_pt(pt_path)
-            if g is None:
-                continue
-            num_nodes = int(g.num_nodes) if g.num_nodes is not None else int(g.x.shape[0])
-            result[split].append({
-                "id":               f"{split}/{pt_path.stem}",
-                "path":             str(pt_path.resolve()),
-                "split":            split,
-                "stem":             pt_path.stem,
-                "num_nodes":        num_nodes,
-                "num_edges":        int(g.edge_index.shape[1]) if g.edge_index is not None else 0,
-                "label":            int(g.y.item()) if hasattr(g, "y") and g.y is not None else -1,
-                "patient_id":       str(getattr(g, "patient_id",       pt_path.stem)),
-                "hospital":         str(getattr(g, "hospital",         "Unknown")),
-                "metastasis_score": str(getattr(g, "metastasis_score", "—")),
-            })
+            _add(pt_path, split)
+
     return result
 
 
@@ -909,16 +922,16 @@ async def stats():
     return STATE.val_stats or JSONResponse({"error": "Could not compute statistics"}, status_code=500)
 
 
-def _slide_dir_patch_index(slide_dir: Path, hospital: str, patient_id: str, slide_id: str
+def _slide_dir_patch_index(search_dir: Path, hospital: str, patient_id: str, slide_id: str
                            ) -> dict:
     """
-    Scan slide_dir for .jpg patch files and build a {(j,i): Path} index.
+    Scan search_dir for .jpg patch files and build a {(j,i): Path} index.
     Patch filenames follow: {hospital}_{patient_id}_{slide_id}_{j}_{i}.jpg
     Uses the prefix to handle names with underscores correctly.
     """
     prefix = f"{hospital}_{patient_id}_{slide_id}_"
     index: dict = {}
-    for p in slide_dir.glob("*.jpg"):
+    for p in search_dir.glob("*.jpg"):
         stem = p.stem
         if not stem.startswith(prefix):
             continue
@@ -1007,7 +1020,7 @@ async def bag_image(
     if PATCHES_DIR is None:
         raise HTTPException(503, "Patches directory not available on this server")
 
-    slide_dir = PATCHES_DIR / hospital / patient_id / slide_id
+    slide_dir = PATCHES_DIR / hospital / patient_id / slide_id / "patches"
     canvas    = assemble_bag_image(slide_dir, found_paths, found_coords, border=2)
 
     # Downscale to 900 px max side for fast transfer
@@ -1035,40 +1048,44 @@ async def patch_image(
 ):
     """Serve a patch image for a graph node.
 
-    Preferred: section_id + patch_idx → Patches/{h}/{p}/{s}/{h}_{p}_{s}_{sec}_{idx}.png
-    Fallback:  j + i → Patches/{h}/{p}/{s}/{h}_{p}_{s}_{j}_{i}.jpg  (legacy graphs)
+    Primary:  j + i → Patches2048/{h}/{p}/{s}/patches/{h}_{p}_{s}_{j}_{i}.jpg
+    Fallback: section_id + patch_idx → legacy sequential PNG format
     """
     if PATCHES_DIR is None:
         raise HTTPException(503, "Patches directory not available on this server")
 
-    slide_dir = PATCHES_DIR / hospital / patient_id / slide_id
+    # New format: patches are in {slide}/patches/ subdir
+    slide_dir        = PATCHES_DIR / hospital / patient_id / slide_id
+    slide_patches_dir = slide_dir / "patches"
+    search_dir        = slide_patches_dir if slide_patches_dir.exists() else slide_dir
+
     if not slide_dir.exists():
         raise HTTPException(404, f"Slide directory not found: {slide_dir}")
 
-    # ── PNG path (new graphs with patch_idx field) ─────────────────────────────
+    # ── JPG by (j, i) coordinates (primary for PEARSON2 format) ───────────────
+    if j is not None and i is not None:
+        fname    = f"{hospital}_{patient_id}_{slide_id}_{j}_{i}.jpg"
+        img_path = search_dir / fname
+        if img_path.exists():
+            return FileResponse(str(img_path), media_type="image/jpeg")
+
+        index = _slide_dir_patch_index(search_dir, hospital, patient_id, slide_id)
+        best  = _nearest_patch(index, j, i)
+        if best:
+            log.info(f"patch_image nearest match: {best.name}  (asked j={j} i={i})")
+            return FileResponse(str(best), media_type="image/jpeg")
+
+    # ── PNG fallback (legacy sequential-index format) ──────────────────────────
     if section_id is not None and patch_idx is not None:
         fname    = f"{hospital}_{patient_id}_{slide_id}_{section_id}_{patch_idx}.png"
         img_path = slide_dir / fname
         if img_path.exists():
             return FileResponse(str(img_path), media_type="image/png")
-        raise HTTPException(404, f"Patch not found: {img_path}")
 
-    # ── JPG fallback (legacy graphs with patch_j / patch_i) ───────────────────
     if j is None or i is None:
-        raise HTTPException(422, "Provide either (section_id + patch_idx) or (j + i)")
+        raise HTTPException(422, "Provide either (j + i) or (section_id + patch_idx)")
 
-    fname    = f"{hospital}_{patient_id}_{slide_id}_{j}_{i}.jpg"
-    img_path = slide_dir / fname
-    if img_path.exists():
-        return FileResponse(str(img_path), media_type="image/jpeg")
-
-    index = _slide_dir_patch_index(slide_dir, hospital, patient_id, slide_id)
-    best  = _nearest_patch(index, j, i)
-    if best:
-        log.info(f"patch_image nearest match: {best.name}  (asked j={j} i={i})")
-        return FileResponse(str(best), media_type="image/jpeg")
-
-    raise HTTPException(404, f"No patch found near ({j},{i}) in {slide_dir}")
+    raise HTTPException(404, f"No patch found near ({j},{i}) in {search_dir}")
 
 
 @app.get("/api/slide_meta/{graph_id:path}")

@@ -7,10 +7,10 @@ Any parameter that is specified as a list triggers a grid search: one training
 run is executed per combination of listed values.
 
 A copy of the exact config used is saved alongside every checkpoint as
-  outputs/checkpoints/{run_name}_best.yaml
+  ~/outputs/checkpoints/{run_name}_best.yaml
 
 Prerequisites:
-    python scripts/build_dataset.py    # generate outputs/graphs/{train,val}/*.pt
+    python scripts/build_dataset.py    # generate ~/outputs/graphs/per-slide/*.pt
     wandb login                        # authenticate once
 
 Usage:
@@ -179,7 +179,7 @@ def _train_body(
 
     # ── Data ──────────────────────────────────────────────────────────────────
     if train_graphs is None or val_graphs is None:
-        graphs_dir = Path(d["graphs_dir"])
+        graphs_dir = Path(d["graphs_dir"]).expanduser()
         all_graphs = load_graphs(graphs_dir)
         # 80/20 stratified split at patient level
         _pat: dict = defaultdict(list)
@@ -249,7 +249,7 @@ def _train_body(
     best_score       = 0.0
     best_epoch       = 0
     best_val_metrics: dict = {}
-    ckpt_path      = Path(d["checkpoint_dir"]) / f"{run.name}_best.pt"
+    ckpt_path      = Path(d["checkpoint_dir"]).expanduser() / f"{run.name}_best.pt"
     cfg_copy_path  = ckpt_path.with_suffix(".yaml")
 
     print(f"\n[INFO] Device : {device}")

@@ -11,8 +11,8 @@
 
 # ── Data ───────────────────────────────────────────────────────────────────────
 data:
-  graphs_dir:     "outputs/graphs"
-  checkpoint_dir: "outputs/checkpoints"
+  graphs_dir:     "~/outputs/graphs/per-slide"
+  checkpoint_dir: "~/outputs/checkpoints"
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 model:

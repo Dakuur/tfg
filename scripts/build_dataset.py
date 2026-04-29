@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Build a PyTorch Geometric graph dataset from WSI CLS bags for GAT training.
+Build a PyTorch Geometric graph dataset from WSI CLS patches for GAT training.
 
 Data sources
 ------------
 - CLS embeddings : /mnt/iam/Experiments/MedImaging/ColonCancer/
-                   cls_info_plus_pipeline/cls_ALL/{Hospital}_CLS.npz
-- Labels          : .../xlsx_files/24_09_2025_..._fixed_N0s.xlsx
+                   CLS_datasets/NEW_DATASET_cls_2048/{Hospital}_CLS_2048.npz
+- Labels          : .../xlsx_files/18_03_2026_..._fixed_N0s.xlsx
 
 Graph structure (per section)
 ------------------------------
-  Nodes = bags; x = CLS embedding [N, 1536]; edge_index = Delaunay; y = patient label.
+  Nodes = 2048×2048 patches; x = CLS embedding [N, 1536]; edge_index = Delaunay; y = patient label.
 
 All graphs are written to a single flat directory (no train/val split).
 The split is handled by k-fold CV in train.py at training time.
@@ -20,17 +20,18 @@ Usage
     python scripts/build_dataset.py                   # one graph per section
     python scripts/build_dataset.py --dry_run
     python scripts/build_dataset.py --mega            # one mega-graph per patient
+    python scripts/build_dataset.py --check           # list N0/N1 patients without CLS
 
 Outputs
 -------
 Standard mode:
-    outputs/graphs/{patient_id}_{slide_id}_sec{section_id}.pt
+    ~/outputs/graphs/per-slide/{patient_id}_{slide_id}_sec{section_id}.pt
 
 Mega-graph mode (--mega):
-    outputs/graphs/{patient_id}.pt
+    ~/outputs/graphs/per-pacient/{patient_id}.pt
 
 Both modes write:
-    outputs/graphs/index.csv
+    ~/outputs/graphs/{per-slide|per-pacient}/index.csv
 """
 
 import argparse
@@ -76,8 +77,8 @@ def generate_coverage_report(
 
       in_excel        : apareix a l'Excel i el diagnòstic NO és NX
       excel_score     : N0, N1, NX o "-" (no trobat a l'Excel)
-      in_cls          : apareix en algun fitxer *_CLS.npz
-      in_patches      : existeix el directori Patches/{hospital}/{patient_id}
+      in_cls          : apareix en algun fitxer *_CLS_2048.npz
+      in_patches      : existeix el directori Patches2048/{hospital}/{patient_id}
 
     L'informe cobreix la unió de tots els pacients coneguts (Excel + CLS NPZ).
     """
@@ -223,23 +224,23 @@ def print_data_diagnostics(
     print("\n── Diagnòstic de cobertura de dades ────────────────────────────────")
 
     # ── fitxers NPZ trobats al disc ────────────────────────────────────────────
-    npz_files = sorted(cls_dir.glob("*_CLS.npz"))
+    npz_files = sorted(cls_dir.glob("*_CLS_2048.npz"))
     print(f"\n  Directori CLS : {cls_dir}")
-    print(f"  Fitxers *_CLS.npz trobats : {len(npz_files)}")
+    print(f"  Fitxers *_CLS_2048.npz trobats : {len(npz_files)}")
     if npz_files:
         for f in npz_files:
             size_mb = f.stat().st_size / 1e6
             print(f"    [OK] {f.name}  ({size_mb:.1f} MB)")
     else:
-        print("    [ERROR] Cap fitxer *_CLS.npz trobat. Comprova la ruta --iam_path.")
+        print("    [ERROR] Cap fitxer *_CLS_2048.npz trobat. Comprova la ruta --iam_path.")
 
     # ── resum per hospital (dels NPZ carregats) ────────────────────────────────
     print(f"\n  Pacients per hospital (dels NPZ carregats):")
     for hosp, grp in df_npz.groupby("Hospital"):
-        n_pats  = grp["Patient_ID"].nunique()
-        n_bags  = len(grp)
+        n_pats   = grp["Patient_ID"].nunique()
+        n_nodes  = len(grp)
         n_slides = grp.groupby(["Patient_ID", "Slide"]).ngroups
-        print(f"    {hosp}: {n_pats} pacients, {n_slides} slides, {n_bags:,} bags")
+        print(f"    {hosp}: {n_pats} pacients, {n_slides} slides, {n_nodes:,} patches")
 
     # ── resum global ───────────────────────────────────────────────────────────
     npz_patients   = set(df_npz["Patient_ID"].unique())
@@ -254,7 +255,7 @@ def print_data_diagnostics(
     print(f"    Pacients únics a l'Excel        : {len(excel_patients)}  "
           f"(N0={n0_excel}, N1={n1_excel})")
     print(f"    Pacients en comú (intersecció)  : {len(common)}")
-    print(f"    Bags totals carregats           : {len(df_npz):,}")
+    print(f"    Patches totals carregats        : {len(df_npz):,}")
 
     # ── als NPZ però NO a l'Excel ──────────────────────────────────────────────
     only_in_npz = sorted(npz_patients - excel_patients)
@@ -262,11 +263,11 @@ def print_data_diagnostics(
         print(f"\n  [WARN] {len(only_in_npz)} pacient(s) als NPZ però NO a l'Excel "
               f"(seran ignorats al join):")
         for pid in only_in_npz:
-            row_npz  = df_npz[df_npz["Patient_ID"] == pid]
+            row_npz   = df_npz[df_npz["Patient_ID"] == pid]
             hospitals = ", ".join(row_npz["Hospital"].unique())
-            n_bags    = len(row_npz)
+            n_nodes   = len(row_npz)
             n_slides  = row_npz["Slide"].nunique()
-            print(f"    - {pid:>10}  hospital={hospitals}, {n_slides} slides, {n_bags} bags")
+            print(f"    - {pid:>10}  hospital={hospitals}, {n_slides} slides, {n_nodes} patches")
     else:
         print("\n  [OK] Tots els pacients dels NPZ estan a l'Excel.")
 
@@ -289,87 +290,56 @@ def print_data_diagnostics(
 
 def verify_patch_coverage(df_npz: pd.DataFrame, patches_dir: Path, cls_dir: Path) -> None:
     """
-    Inspect NPZ keys and check naming convention in Patches/ for one representative bag.
+    Inspect NPZ keys and verify that patch files on disk match the new 2048-px format.
+    Each NPZ row corresponds to one 2048×2048 patch (one graph node).
     """
-    print("\n── Verificació cobertura Patches ───────────────────────────────────")
+    print("\n── Verificació cobertura Patches2048 ───────────────────────────────")
     print(f"  Directori patches : {patches_dir}")
-    print(f"  Bags totals als NPZ (= nodes del graf) : {len(df_npz):,}")
+    print(f"  Patches totals als NPZ (= nodes del graf) : {len(df_npz):,}")
 
-    # Inspect all keys in first NPZ file
-    npz_files = sorted(cls_dir.glob("*_CLS.npz"))
+    npz_files = sorted(cls_dir.glob("*_CLS_2048.npz"))
     if npz_files:
         npz = np.load(npz_files[0], allow_pickle=True)
-        print(f"\n  Camps del NPZ ({npz_files[0].name}): {list(npz.keys())}")
-        for key in npz.keys():
-            arr = npz[key]
-            shape = arr.shape if hasattr(arr, "shape") else f"len={len(arr)}"
-            dtype = arr.dtype if hasattr(arr, "dtype") else type(arr)
-            sample = str(arr[0])[:80] if len(arr) > 0 else ""
+        print(f"\n  Camps del NPZ ({npz_files[0].name}): {list(npz.files)}")
+        for key in npz.files:
+            arr    = npz[key]
+            shape  = arr.shape if hasattr(arr, "shape") else f"len={len(arr)}"
+            dtype  = arr.dtype if hasattr(arr, "dtype") else type(arr)
+            sample = str(arr.flat[0])[:80] if arr.size > 0 else ""
             print(f"    {key:20s} shape={shape}  dtype={dtype}  ex: {sample}")
 
-    # Pick first bag from NPZ
+    # Pick first patch from NPZ
     row        = df_npz.iloc[0]
     hospital   = str(row["Hospital"])
     patient_id = str(row["Patient_ID"])
     slide_id   = str(row["Slide"])
     section_id = str(row["Section"])
-    bag_coords = np.array(row["coords_bag"])   # (256, 2)
-    centroid   = bag_coords.mean(axis=0)
-    dists      = np.linalg.norm(bag_coords - centroid, axis=1)
-    central_in_bag = int(dists.argmin())
-    j_c, i_c   = bag_coords[central_in_bag]
+    j_c, i_c  = np.array(row["coords_bag"])  # single (x, y) coordinate
 
-    print(f"\n  Primer bag: hospital={hospital!r}  patient={patient_id!r}  "
+    print(f"\n  Primer patch: hospital={hospital!r}  patient={patient_id!r}  "
           f"slide={slide_id!r}  section={section_id!r}")
-    print(f"  Coord central (j,i) = ({j_c:.0f}, {i_c:.0f})  "
-          f"  (índex dins bag: {central_in_bag}/255)")
+    print(f"  Coord (j, i) = ({j_c}, {i_c})")
 
-    slide_dir = patches_dir / hospital / patient_id / slide_id
-    print(f"\n  Directori slide: {slide_dir}  exists={slide_dir.exists()}")
+    # Path is stored directly in NPZ; derive on-disk path via Linux convention
+    path_str = str(row["paths_bag"])
+    basename = path_str.replace("\\", "/").split("/")[-1]
 
-    if slide_dir.exists():
-        all_files = sorted(slide_dir.iterdir())
-        print(f"  Total fitxers al directori: {len(all_files)}")
-        print(f"  Primeres 8 mostres:")
-        for f in all_files[:8]:
-            print(f"    {f.name}")
-        extensions = {f.suffix.lower() for f in all_files if f.is_file()}
-        print(f"  Extensions trobades: {extensions}")
-
-        # Try to infer naming: {hospital}_{patient}_{slide}_{section}_{index}.ext
-        prefix = f"{hospital}_{patient_id}_{slide_id}_{section_id}_"
-        section_files = sorted(
-            [f for f in all_files if f.name.startswith(prefix)],
-            key=lambda f: int(f.stem.split("_")[-1]) if f.stem.split("_")[-1].isdigit() else 0
-        )
-        print(f"\n  Fitxers de la secció {section_id!r} (prefix={prefix!r}): {len(section_files)}")
-        if section_files:
-            print(f"  Rang d'índexs: 0 … {len(section_files)-1}")
-            # Estimate which bag index (0-based) this row is within the section
-            df_section = df_npz[
-                (df_npz["Patient_ID"] == patient_id) &
-                (df_npz["Slide"]      == slide_id)   &
-                (df_npz["Section"]    == section_id) &
-                (df_npz["Hospital"]   == hospital)
-            ]
-            bag_idx_in_section = int(df_section.index.get_loc(df_npz.index[0]))
-            patch_global_idx   = bag_idx_in_section * 256 + central_in_bag
-            print(f"  Bag index dins secció: {bag_idx_in_section}  "
-                  f"→ patch global estimat: {patch_global_idx}")
-            if patch_global_idx < len(section_files):
-                guessed = section_files[patch_global_idx]
-                print(f"  Fitxer estimat pel patch central: {guessed.name}  exists={guessed.exists()}")
-                # Verify via paths field
-                npz0    = np.load(list(cls_dir.glob("*_CLS.npz"))[0], allow_pickle=True)
-                paths0  = npz0["paths"]   # (N, 256)
-                path_str = str(paths0[0, int(dists.argmin())])
-                basename = path_str.replace("\\", "/").split("/")[-1]
-                direct   = slide_dir / basename
-                print(f"  Ruta directa des del camp 'paths': {basename}  exists={direct.exists()}")
-                if direct.exists():
-                    print("  [OK] Camp 'paths' del NPZ apunta correctament als fitxers PNG.")
-            else:
-                print(f"  [WARN] Índex estimat {patch_global_idx} fora de rang ({len(section_files)} fitxers)")
+    # Structure: patches_dir/{hospital}/{patient}/{slide}/patches/{basename}
+    patch_file = patches_dir / hospital / patient_id / slide_id / "patches" / basename
+    print(f"\n  Fitxer esperat : {patch_file}")
+    print(f"  Existeix       : {patch_file.exists()}")
+    if patch_file.exists():
+        print("  [OK] Camp 'paths' del NPZ apunta correctament als fitxers JPEG.")
+    else:
+        # Show what's actually in the slide/patches dir
+        patch_dir = patches_dir / hospital / patient_id / slide_id / "patches"
+        if patch_dir.exists():
+            samples = sorted(patch_dir.iterdir())[:5]
+            print(f"  [WARN] Fitxer no trobat. Mostres al directori patches/:")
+            for s in samples:
+                print(f"    {s.name}")
+        else:
+            print(f"  [WARN] Directori patches/ no existeix: {patch_dir}")
     print()
 
 
@@ -385,27 +355,27 @@ def build_slide_index(df_npz: pd.DataFrame, df_labels: pd.DataFrame) -> pd.DataF
     produce spurious Delaunay edges between unrelated tissue regions.
 
     Returns a DataFrame (one row per section) with columns:
-        Patient_ID, Slide, Section, Hospital, Metastasis_score, label, n_bags
-    Only sections with >= MIN_BAGS_PER_SECTION bags are kept.
+        Patient_ID, Slide, Section, Hospital, Metastasis_score, label, n_nodes
+    Only sections with >= MIN_BAGS_PER_SECTION nodes are kept.
     """
     print("\n── Phase 1: Building patient/slide/section index ──────────────────")
 
     merged = df_npz.merge(df_labels, on="Patient_ID", how="inner")
-    print(f"[INFO] After label join: {len(merged):,} bags, {merged['Patient_ID'].nunique()} patients")
+    print(f"[INFO] After label join: {len(merged):,} patches, {merged['Patient_ID'].nunique()} patients")
 
     section_counts = (
         merged.groupby(
             ["Patient_ID", "Slide", "Section", "Hospital", "Metastasis_score", "label"]
         )
         .size()
-        .reset_index(name="n_bags")
+        .reset_index(name="n_nodes")
     )
 
     before = len(section_counts)
-    section_counts = section_counts[section_counts["n_bags"] >= MIN_BAGS_PER_SECTION].copy()
+    section_counts = section_counts[section_counts["n_nodes"] >= MIN_BAGS_PER_SECTION].copy()
     print(
         f"[INFO] Dropped {before - len(section_counts)} sections with "
-        f"< {MIN_BAGS_PER_SECTION} bags"
+        f"< {MIN_BAGS_PER_SECTION} nodes"
     )
 
     n_pat      = section_counts["Patient_ID"].nunique()
@@ -421,10 +391,10 @@ def build_slide_index(df_npz: pd.DataFrame, df_labels: pd.DataFrame) -> pd.DataF
     print(f"  Total slides únicos    : {n_slides}")
     print(f"  Total sections válidas : {n_sections}  (= grafos a construir)")
     print(
-        f"  Bags por section       : "
-        f"min={section_counts['n_bags'].min()} / "
-        f"media={section_counts['n_bags'].mean():.1f} / "
-        f"max={section_counts['n_bags'].max()}"
+        f"  Nodes per section      : "
+        f"min={section_counts['n_nodes'].min()} / "
+        f"media={section_counts['n_nodes'].mean():.1f} / "
+        f"max={section_counts['n_nodes'].max()}"
     )
     print(f"  Hospitales             : {sorted(section_counts['Hospital'].unique())}")
 
@@ -448,13 +418,13 @@ def build_graph_for_section(
     Each section is an independent tissue piece — one graph per section
     prevents Delaunay from connecting spatially disjoint regions.
 
-    Nodes      = bags in this section
-    x          = CLS embedding per bag  [N, 1536]  — real UNI2 features
-    pos        = centroid of the bag's 256 patch coords  [N, 2]
-    edge_index = Delaunay on centroids (bidirectional, long edges pruned)
+    Nodes      = 2048×2048 patches in this section
+    x          = CLS embedding per patch  [N, 1536]  — real UNI2 features
+    pos        = (x, y) WSI-level coordinate of each patch  [N, 2]
+    edge_index = Delaunay on patch positions (bidirectional, long edges pruned)
     y          = patient-level label {0=N0, 1=N1}
 
-    Returns None if the section has fewer than MIN_BAGS_PER_SECTION bags
+    Returns None if the section has fewer than MIN_BAGS_PER_SECTION patches
     or if Delaunay cannot be computed (e.g. collinear points).
     """
     mask = (
@@ -472,9 +442,9 @@ def build_graph_for_section(
     cls_arrays = np.stack(df_section["CLS"].tolist(), axis=0)          # (N, 1536)
     x          = torch.tensor(cls_arrays, dtype=torch.float32)
 
-    # ── node positions: centroid of each bag's 256 patch coords ───────────────
-    coord_arrays = np.stack(df_section["coords_bag"].tolist(), axis=0)  # (N, 256, 2)
-    centroids    = coord_arrays.mean(axis=1)                             # (N, 2)
+    # ── node positions: direct (x, y) coord of each 2048×2048 patch ──────────
+    coord_arrays = np.stack(df_section["coords_bag"].tolist(), axis=0)  # (N, 2)
+    centroids    = coord_arrays.astype(np.float64)                       # (N, 2)
 
     if len(centroids) < 3 or np.linalg.matrix_rank(centroids - centroids[0]) < 2:
         return None
@@ -492,25 +462,17 @@ def build_graph_for_section(
     pos        = torch.tensor(centroids, dtype=torch.float32)
     y          = torch.tensor([label],   dtype=torch.long)
 
-    # For each bag (node), find the most central patch in its 256-patch bag.
-    # patch_idx: index in Patches/{hospital}/{patient}/{slide}/{h}_{p}_{s}_{section}_{idx}.png
-    # patch_j/patch_i: WSI level-0 pixel coords (kept for background alignment)
-    paths_arrays = np.stack(df_section["paths_bag"].tolist(), axis=0)  # (N, 256)
+    # patch_j/patch_i: WSI level-0 pixel coords of each patch (for visualisation)
+    # patch_idx: node index within this section (for downstream lookups)
+    paths_list  = df_section["paths_bag"].tolist()      # N strings
     patch_j_list:   list[int] = []
     patch_i_list:   list[int] = []
     patch_idx_list: list[int] = []
-    for n, bag_coords in enumerate(coord_arrays):      # (256, 2) each
-        centroid    = centroids[n]                      # (j_c, i_c)
-        dists       = np.linalg.norm(bag_coords - centroid, axis=1)
-        central_idx = int(dists.argmin())
-        j_c, i_c   = bag_coords[central_idx]
-        patch_j_list.append(int(round(j_c)))
-        patch_i_list.append(int(round(i_c)))
-        # Extract sequential index from Windows path basename: …_{section}_{idx}.png
-        path_str  = str(paths_arrays[n, central_idx])
-        basename  = path_str.replace("\\", "/").split("/")[-1]
-        stem      = basename.rsplit(".", 1)[0]
-        patch_idx_list.append(int(stem.split("_")[-1]))
+    for n in range(len(coord_arrays)):
+        j_c, i_c = coord_arrays[n]
+        patch_j_list.append(int(j_c))
+        patch_i_list.append(int(i_c))
+        patch_idx_list.append(n)     # node index within this section
 
     data = Data(x=x, edge_index=edge_index, pos=pos, y=y)
     data.patient_id       = patient_id
@@ -737,30 +699,80 @@ def print_verification(records: list[dict], out_dir: Path, dry_run: bool) -> Non
         print("\n  (dry_run: no .pt files written)")
 
 
+# ── Pacients N0/N1 sense CLS ──────────────────────────────────────────────────
+
+def print_missing_cls_patients(df_labels: pd.DataFrame, cls_dir: Path) -> None:
+    """
+    Llista els pacients amb diagnòstic N0 o N1 (NX ja exclosos de df_labels)
+    que no tenen cap fitxer CLS generat al directori indicat.
+    """
+    print("\n── Pacients N0/N1 sense CLS ────────────────────────────────────────")
+    print(f"  Directori CLS : {cls_dir}")
+
+    npz_patients: set[str] = set()
+    for npz_path in sorted(cls_dir.glob("*_CLS_2048.npz")):
+        try:
+            npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
+            npz_patients.update(str(p) for p in npz["patient_list"])
+        except Exception as exc:
+            print(f"  [WARN] No s'ha pogut llegir {npz_path.name}: {exc}")
+
+    excel_patients = set(df_labels["Patient_ID"].unique())
+    missing = sorted(excel_patients - npz_patients)
+
+    n0_miss = sum(
+        1 for pid in missing
+        if df_labels.loc[df_labels["Patient_ID"] == pid, "label"].values[0] == 0
+    )
+    n1_miss = len(missing) - n0_miss
+
+    print(f"  Total N0/N1 a l'Excel : {len(excel_patients)}")
+    print(f"  Amb CLS disponible    : {len(excel_patients & npz_patients)}")
+    print(f"  Sense CLS             : {len(missing)}  (N0={n0_miss}, N1={n1_miss})")
+
+    if missing:
+        print()
+        for pid in missing:
+            rows  = df_labels[df_labels["Patient_ID"] == pid]
+            score = rows["Metastasis_score"].values[0] if len(rows) else "?"
+            print(f"    {pid:>12s}  {score}")
+    else:
+        print("  [OK] Tots els pacients N0/N1 tenen CLS.")
+    print()
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Build PyTorch Geometric graphs from WSI CLS bags.",
+        description="Build PyTorch Geometric graphs from WSI CLS patches.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("--iam_path",   default="/mnt/iam", help="Dataset root")
-    p.add_argument("--output_dir", default="outputs/graphs",
-                   help="Output directory for .pt files and index CSVs")
+    p.add_argument("--output_dir", default=None,
+                   help="Output directory for .pt files and index CSVs "
+                        "(default: ~/outputs/graphs/per-slide or ~/outputs/graphs/per-pacient with --mega)")
     p.add_argument("--dry_run",    action="store_true",
                    help="Run all phases but skip writing .pt files")
     p.add_argument("--mega",       action="store_true",
                    help="Build one mega-graph per patient (block-diagonal adjacency "
                         "across all sections). Train with patient_level=false.")
+    p.add_argument("--check",      action="store_true",
+                   help="Only report which N0/N1 patients lack CLS embeddings, then exit.")
     return p.parse_args()
 
 
 def main() -> None:
     args     = parse_args()
     iam_path = Path(args.iam_path)
-    out_dir  = Path(args.output_dir)
     dry_run  = args.dry_run
     mega     = args.mega
+
+    if args.output_dir:
+        out_dir = Path(args.output_dir).expanduser()
+    else:
+        base = Path.home() / "outputs" / "graphs"
+        out_dir = base / ("per-pacient" if mega else "per-slide")
 
     if dry_run:
         print("[INFO] --dry_run: no .pt files will be written.")
@@ -770,7 +782,14 @@ def main() -> None:
     cls_dir = iam_path / CLS_DIR_SUBPATH
     if not cls_dir.is_dir():
         sys.exit(f"[ERROR] CLS directory not found: {cls_dir}")
-    print(f"[INFO] CLS dir : {cls_dir}")
+    print(f"[INFO] CLS dir    : {cls_dir}")
+    print(f"[INFO] Output dir : {out_dir}")
+
+    # ── Mode --check ──────────────────────────────────────────────────────────
+    if args.check:
+        df_labels = load_labels(iam_path)
+        print_missing_cls_patients(df_labels, cls_dir)
+        return
 
     # ── Phase 1 ───────────────────────────────────────────────────────────────
     df_npz    = load_all_npz(cls_dir)

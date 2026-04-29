@@ -15,13 +15,21 @@ load_slide_meta     – read per-slide WSI bounds from the global metadata CSV
 load_mask_image     – load a segmentation mask as a (H, W, 3) uint8 array
 load_rgb_image      – load a full slide RGB image as a (H, W, 3) uint8 array
 load_patches        – load patch images with their WSI-level coordinates
-load_all_npz        – load all *_CLS.npz files into a single DataFrame
+load_all_npz        – load all *_CLS_2048.npz files into a single DataFrame
 load_labels         – load patient metastasis labels from the Excel file
 
 Constants
 ---------
 PATCHES_SUBPATH, RGB_IMAGES_SUBPATH, MASKS_SUBPATH,
 SLIDE_META_SUBPATH, CLS_DIR_SUBPATH, LABELS_SUBPATH
+
+Changes vs. previous PEARSON dataset
+--------------------------------------
+- PATCHES_SUBPATH  : PEARSON/Images/Patches → PEARSON2/Patches2048
+- CLS_DIR_SUBPATH  : cls_info_plus_pipeline/cls_ALL → CLS_datasets/NEW_DATASET_cls_2048
+- LABELS_SUBPATH   : 24_09_2025 Excel → 18_03_2026 Excel (PEARSON2)
+- NPZ files        : *_CLS.npz → *_CLS_2048.npz
+- coords_bag field : (256, 2) bag-level centroids → (2,) single patch coordinate
 """
 
 import sys
@@ -36,7 +44,7 @@ Image.MAX_IMAGE_PIXELS = 400_000_000
 
 # ── dataset path constants ─────────────────────────────────────────────────────
 PATCHES_SUBPATH = (
-    "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON/Images/Patches"
+    "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON2/Patches2048"
 )
 RGB_IMAGES_SUBPATH = (
     "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON/Images/RGB_Images"
@@ -48,24 +56,24 @@ SLIDE_META_SUBPATH = (
     "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON/Images/Patient_Images_metadata.csv"
 )
 CLS_DIR_SUBPATH = (
-    "Experiments/MedImaging/ColonCancer/cls_info_plus_pipeline/cls_ALL"
+    "Experiments/MedImaging/ColonCancer/CLS_datasets/NEW_DATASET_cls_2048"
 )
 LABELS_SUBPATH = (
-    "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON"
-    "/xlsx_files/24_09_2025_pT1_CRC_CASOS_DEFINITIUS_AMB_ITEMS_HISTOLOGICS_fixed_N0s.xlsx"
+    "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD/PEARSON2"
+    "/xlsx_files/18_03_2026_pT1_CRC_CASOS_DEFINITIUS_AMB_ITEMS_HISTOLOGICS_fixed_N0s.xlsx"
 )
 
 
 # ── path resolution ────────────────────────────────────────────────────────────
 
 def find_patches_dir(iam_path: Path) -> Path:
-    """Return the Patches directory (individual patch JPEGs), searching common locations under iam_path."""
-    for candidate in [iam_path / "Patches", iam_path / PATCHES_SUBPATH]:
+    """Return the Patches2048 directory (2048×2048 patch JPEGs), searching common locations under iam_path."""
+    for candidate in [iam_path / "Patches2048", iam_path / PATCHES_SUBPATH, iam_path / "Patches"]:
         if candidate.is_dir():
             return candidate
     raise FileNotFoundError(
-        f"Cannot find a 'Patches' directory under '{iam_path}'.\n"
-        "Pass --iam_path pointing to the dataset root (/mnt/iam) or the Images/ folder."
+        f"Cannot find a 'Patches2048' directory under '{iam_path}'.\n"
+        "Pass --iam_path pointing to the dataset root (/mnt/iam)."
     )
 
 
@@ -295,29 +303,31 @@ def assemble_bag_image(
 
 def load_all_npz(cls_dir: Path) -> pd.DataFrame:
     """
-    Load all *_CLS.npz files and return a single DataFrame with columns:
-        Patient_ID, Slide, Section, Hospital, CLS, coords_bag
+    Load all *_CLS_2048.npz files and return a single DataFrame with columns:
+        Patient_ID, Slide, Section, Hospital, CLS, coords_bag, paths_bag, infiltration
 
-    CLS       : np.ndarray (1536,)    — real UNI2 CLS token embedding for the bag
-    coords_bag: np.ndarray (256, 2)   — patch-level (x, y) coordinates for the bag;
-                the centroid is used as the node position in the graph
+    CLS         : np.ndarray (1536,) — UNI2 CLS embedding for the 2048×2048 patch
+    coords_bag  : np.ndarray (2,)    — (x, y) WSI-level coordinate of the patch centre
+    paths_bag   : str                — Windows path to the patch JPEG on the server
+    infiltration: float              — fraction of the patch with tissue label
     """
-    npz_files = sorted(cls_dir.glob("*_CLS.npz"))
+    npz_files = sorted(cls_dir.glob("*_CLS_2048.npz"))
     if not npz_files:
-        sys.exit(f"[ERROR] No *_CLS.npz files found in {cls_dir}")
+        sys.exit(f"[ERROR] No *_CLS_2048.npz files found in {cls_dir}")
 
     frames = []
     for npz_path in npz_files:
         try:
             npz = np.load(npz_path, allow_pickle=True)
             df  = pd.DataFrame({
-                "Patient_ID": npz["patient_list"].astype(str),
-                "Slide":      npz["slides"].astype(str),
-                "Section":    npz["sections"].astype(str),
-                "Hospital":   npz["hospitals"].astype(str),
-                "CLS":        list(npz["embeddingCLS"]),   # list of (1536,) arrays
-                "coords_bag": list(npz["coords"]),         # list of (256, 2) arrays
-                "paths_bag":  list(npz["paths"]),          # list of (256,) Windows path strings
+                "Patient_ID":   npz["patient_list"].astype(str),
+                "Slide":        npz["slides"].astype(str),
+                "Section":      npz["sections"].astype(str),
+                "Hospital":     npz["hospitals"].astype(str),
+                "CLS":          list(npz["embeddingCLS"]),    # list of (1536,) arrays
+                "coords_bag":   list(npz["coords"]),          # list of (2,) int arrays
+                "paths_bag":    list(npz["paths"]),           # list of Windows path strings
+                "infiltration": npz["infiltrations"].tolist(),
             })
             frames.append(df)
         except Exception as exc:
@@ -327,7 +337,7 @@ def load_all_npz(cls_dir: Path) -> pd.DataFrame:
         sys.exit("[ERROR] No NPZ files could be loaded.")
 
     df = pd.concat(frames, ignore_index=True)
-    print(f"[INFO] NPZ total bags: {len(df):,}  |  unique patients: {df['Patient_ID'].nunique()}")
+    print(f"[INFO] NPZ total patches: {len(df):,}  |  unique patients: {df['Patient_ID'].nunique()}")
     return df
 
 
