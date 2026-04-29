@@ -702,6 +702,7 @@ async def select_model(req: SelectModelRequest):
         STATE.val_stats       = None
         log.info(f"Model switched to: {info['name']}  pooling={info['pooling']}  aggregation={STATE.aggregation}")
     except Exception as e:
+        raise e
         raise HTTPException(500, f"Failed to load model: {e}")
     if STATE.graphs["val"]:
         STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device, STATE.aggregation)
