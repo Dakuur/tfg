@@ -42,12 +42,13 @@ from torch_geometric.data import Data
 
 # ── bootstrap ──────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(ROOT))
-from scripts.model    import GATClassifier                          # noqa: E402
-from scripts.training import aggregate_patient_probs               # noqa: E402
-from scripts.wsi_io   import (find_patches_dir, find_rgb_images_dir,  # noqa: E402
-                               load_slide_meta, assemble_bag_image,
-                               CLS_DIR_SUBPATH)                    # noqa: E402
+sys.path.insert(0, str(ROOT / "pt1diagnosis" / "models"))
+sys.path.insert(0, str(ROOT / "pt1diagnosis" / "scripts_david"))
+from GATClassifier  import GATClassifier                           # noqa: E402
+from training_utils import aggregate_patient_probs                 # noqa: E402
+from wsi_io         import (find_patches_dir, find_rgb_images_dir,  # noqa: E402
+                             load_slide_meta, assemble_bag_image,
+                             CLS_DIR_SUBPATH)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
@@ -115,7 +116,11 @@ def _read_config_yaml(ckpt_path: Path) -> Optional[dict]:
 
 def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
     ckpt = torch.load(ckpt_path, weights_only=False, map_location="cpu")
-    sd   = ckpt["model"]
+    if isinstance(ckpt, dict) and "model" in ckpt:
+        sd = ckpt["model"]
+    else:
+        sd   = ckpt
+        ckpt = {}
 
     _in_ch_candidates = [
         ("conv1.lin_src.weight", 1),
@@ -158,9 +163,13 @@ def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
     model.load_state_dict(sd)
     model.eval()
 
+    try:
+        rel_name = str(ckpt_path.relative_to(CKPT_DIR).with_suffix(""))
+    except ValueError:
+        rel_name = ckpt_path.stem
     info = {
         "path":         str(ckpt_path),
-        "name":         ckpt_path.stem,
+        "name":         rel_name,
         "epoch":        ckpt.get("epoch"),
         "val_auc":      ckpt.get("val_auc"),
         "val_f1_macro": ckpt.get("val_f1_macro"),
@@ -191,18 +200,22 @@ def _load_pt(path: Path) -> Optional[Data]:
 
 
 def _scan_graphs() -> Dict[str, List[Dict]]:
+    """Carga únicamente los grafos del test set para evitar data leakage.
+
+    Requiere split.json en per-slide/. Sin él, devuelve vacío y avisa.
+    """
     result: Dict[str, List[Dict]] = {"train": [], "val": []}
 
-    def _add(pt_path: Path, split: str, g=None) -> None:
+    def _add(pt_path: Path, g=None) -> None:
         if g is None:
             g = _load_pt(pt_path)
         if g is None:
             return
         num_nodes = int(g.num_nodes) if g.num_nodes is not None else int(g.x.shape[0])
-        result[split].append({
-            "id":               f"{split}/{pt_path.stem}",
+        result["val"].append({
+            "id":               f"test/{pt_path.stem}",
             "path":             str(pt_path.resolve()),
-            "split":            split,
+            "split":            "test",
             "stem":             pt_path.stem,
             "num_nodes":        num_nodes,
             "num_edges":        int(g.edge_index.shape[1]) if g.edge_index is not None else 0,
@@ -212,35 +225,32 @@ def _scan_graphs() -> Dict[str, List[Dict]]:
             "metastasis_score": str(getattr(g, "metastasis_score", "—")),
         })
 
-    # New flat format: per-slide/*.pt
     per_slide_dir = GRAPHS_DIR / "per-slide"
-    if per_slide_dir.exists():
-        # If split.json exists, only expose test-set patients to avoid data leakage
-        test_pids: Optional[set] = None
-        split_json = per_slide_dir / "split.json"
-        if split_json.exists():
-            with open(split_json) as f:
-                test_pids = set(json.load(f).get("test", []))
-            log.info(f"split.json found — showing {len(test_pids)} test patients only")
-
-        for pt_path in sorted(per_slide_dir.glob("*.pt")):
-            g = _load_pt(pt_path)
-            if g is None:
-                continue
-            if test_pids is not None:
-                pid = str(getattr(g, "patient_id", ""))
-                if pid not in test_pids:
-                    continue
-            _add(pt_path, "val", g)
+    if not per_slide_dir.exists():
+        log.warning(f"Directori de grafs no trobat: {per_slide_dir}")
         return result
 
-    # Legacy format: train/*.pt and val/*.pt
-    for split in ("train", "val"):
-        split_dir = GRAPHS_DIR / split
-        if not split_dir.exists():
+    split_json = per_slide_dir / "split.json"
+    if not split_json.exists():
+        log.error(
+            f"split.json no trobat a {per_slide_dir}. "
+            "Executa scripts_david/make_split.py per generar-lo. "
+            "Cap graf carregat per evitar data leakage."
+        )
+        return result
+
+    with open(split_json) as f:
+        test_pids = set(json.load(f).get("test", []))
+    log.info(f"split.json: {len(test_pids)} pacients de test carregats")
+
+    for pt_path in sorted(per_slide_dir.glob("*.pt")):
+        g = _load_pt(pt_path)
+        if g is None:
             continue
-        for pt_path in sorted(split_dir.glob("*.pt")):
-            _add(pt_path, split)
+        pid = str(getattr(g, "patient_id", ""))
+        if pid not in test_pids:
+            continue
+        _add(pt_path, g)
 
     return result
 
@@ -274,14 +284,15 @@ def _group_by_patient(graphs_dict: Dict[str, List[Dict]]) -> List[Dict]:
 def _list_checkpoints() -> List[Dict]:
     if not CKPT_DIR.exists():
         return []
-    ckpts = sorted(CKPT_DIR.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    ckpts = sorted(CKPT_DIR.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
     result = []
     for p in ckpts:
-        cfg   = _read_config_yaml(p)
+        cfg  = _read_config_yaml(p)
+        rel  = str(p.relative_to(CKPT_DIR).with_suffix(""))
         entry: dict = {
-            "name":       p.stem,
-            "file":       p.name,
-            "active":     STATE.checkpoint_info is not None and STATE.checkpoint_info.get("name") == p.stem,
+            "name":       rel,
+            "file":       str(p.relative_to(CKPT_DIR)),
+            "active":     STATE.checkpoint_info is not None and STATE.checkpoint_info.get("name") == rel,
             "has_config": cfg is not None,
             "mtime":      int(p.stat().st_mtime),
         }
@@ -303,7 +314,7 @@ def _list_checkpoints() -> List[Dict]:
 def _find_latest_checkpoint() -> Optional[Path]:
     if not CKPT_DIR.exists():
         return None
-    ckpts = sorted(CKPT_DIR.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    ckpts = sorted(CKPT_DIR.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
     return ckpts[0] if ckpts else None
 
 
@@ -557,8 +568,9 @@ async def _startup():
             STATE.model           = model.to(STATE.device)
             STATE.checkpoint_info = info
             STATE.aggregation     = info.get("aggregation", "noisy_or")
+            auc_str = f"{info['val_auc']:.4f}" if info.get("val_auc") is not None else "n/a"
             log.info(f"Model: {info['name']}  epoch={info['epoch']}  "
-                     f"val_auc={info.get('val_auc'):.4f}  pooling={info['pooling']}  "
+                     f"val_auc={auc_str}  pooling={info['pooling']}  "
                      f"aggregation={STATE.aggregation}")
         except Exception as e:
             log.warning(f"Model load failed: {e}")
@@ -566,11 +578,11 @@ async def _startup():
         log.info("No checkpoint found — running without model")
 
     STATE.graphs = _scan_graphs()
-    n_tr, n_va   = len(STATE.graphs["train"]), len(STATE.graphs["val"])
-    log.info(f"Graphs: {n_tr} train, {n_va} val")
+    n_te = len(STATE.graphs["val"])
+    log.info(f"Graphs: {n_te} test")
 
     if STATE.model and STATE.graphs["val"]:
-        log.info("Pre-computing patient-level validation statistics…")
+        log.info("Pre-computing patient-level test statistics…")
         STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device, STATE.aggregation)
         if STATE.val_stats:
             log.info(f"  acc={STATE.val_stats['accuracy']:.3f}  auc={STATE.val_stats.get('auc', 'n/a')}"
@@ -586,22 +598,21 @@ async def index():
 
 @app.get("/api/status")
 async def status():
-    all_ckpts = sorted(CKPT_DIR.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True) \
+    all_ckpts = sorted(CKPT_DIR.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True) \
         if CKPT_DIR.exists() else []
     return {
-        "model_loaded":     STATE.model is not None,
-        "checkpoint":       STATE.checkpoint_info,
-        "device":           STATE.device,
-        "aggregation":      STATE.aggregation,
-        "num_train_graphs": len(STATE.graphs["train"]),
-        "num_val_graphs":   len(STATE.graphs["val"]),
-        "val_stats_ready":  STATE.val_stats is not None,
+        "model_loaded":    STATE.model is not None,
+        "checkpoint":      STATE.checkpoint_info,
+        "device":          STATE.device,
+        "aggregation":     STATE.aggregation,
+        "num_test_graphs": len(STATE.graphs["val"]),
+        "val_stats_ready": STATE.val_stats is not None,
         "search_paths": {
             "checkpoints_dir":        str(CKPT_DIR),
             "graphs_dir":             str(GRAPHS_DIR),
             "checkpoints_dir_exists": CKPT_DIR.exists(),
             "graphs_dir_exists":      GRAPHS_DIR.exists(),
-            "all_checkpoints":        [p.name for p in all_ckpts],
+            "all_checkpoints":        [str(p.relative_to(CKPT_DIR)) for p in all_ckpts],
         },
     }
 
@@ -1039,10 +1050,10 @@ async def reload():
 
     reload_log.append(f"📁 Directori checkpoints: {CKPT_DIR}")
     if CKPT_DIR.exists():
-        all_ckpts = sorted(CKPT_DIR.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+        all_ckpts = sorted(CKPT_DIR.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
         reload_log.append(f"   Fitxers .pt trobats: {len(all_ckpts)}")
         for p in all_ckpts:
-            reload_log.append(f"     • {p.name}")
+            reload_log.append(f"     • {p.relative_to(CKPT_DIR)}")
     else:
         reload_log.append("   ⚠️  El directori no existeix")
 
@@ -1065,11 +1076,11 @@ async def reload():
         reload_log.append("❌ Cap checkpoint trobat")
 
     STATE.graphs = _scan_graphs()
-    n_tr, n_va   = len(STATE.graphs["train"]), len(STATE.graphs["val"])
-    reload_log.append(f"   Grafs train: {n_tr}  |  val: {n_va}")
+    n_te = len(STATE.graphs["val"])
+    reload_log.append(f"   Grafs test: {n_te}")
 
     if STATE.model and STATE.graphs["val"]:
-        reload_log.append("📊 Calculant estadístiques de validació (per pacient)…")
+        reload_log.append("📊 Calculant estadístiques del test set (per pacient)…")
         STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device, STATE.aggregation)
         if STATE.val_stats:
             acc, auc = STATE.val_stats.get("accuracy", 0), STATE.val_stats.get("auc")
@@ -1079,12 +1090,11 @@ async def reload():
                 else f"   {n_pat} pacients  acc={acc:.3f}"
             )
 
-    log.info(f"Reload: model={'OK' if STATE.model else 'NO'}  graphs={n_tr + n_va}")
+    log.info(f"Reload: model={'OK' if STATE.model else 'NO'}  graphs={n_te}")
     return {
         "success":      True,
         "model_loaded": STATE.model is not None,
-        "num_train":    n_tr,
-        "num_val":      n_va,
+        "num_test":     n_te,
         "checkpoint":   STATE.checkpoint_info,
         "log":          reload_log,
     }

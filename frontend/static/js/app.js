@@ -64,8 +64,8 @@ function renderStatusBar(s) {
   const devicePill = pill("info", s.device?.toUpperCase() || "CPU");
 
   const graphsPill = pill(
-    s.num_train_graphs + s.num_val_graphs > 0 ? "ok" : "warn",
-    `${s.num_train_graphs + s.num_val_graphs} grafs`
+    (s.num_test_graphs ?? 0) > 0 ? "ok" : "warn",
+    `${s.num_test_graphs ?? 0} grafs`
   );
 
   statusBar.innerHTML = `
@@ -94,7 +94,7 @@ function setDebug(on) {
     appendDebugLog({ level: "info", msg: "Mode depuració activat", t: Date.now() });
     appendDebugLog({ level: "info", msg: `Dispositiu: ${STATE.status?.device?.toUpperCase() || "?"}`, t: Date.now() });
     appendDebugLog({ level: "info", msg: `Model: ${STATE.status?.checkpoint?.name || "sense checkpoint"}`, t: Date.now() });
-    appendDebugLog({ level: "info", msg: `Grafs: ${(STATE.status?.num_train_graphs ?? 0) + (STATE.status?.num_val_graphs ?? 0)} totals`, t: Date.now() });
+    appendDebugLog({ level: "info", msg: `Grafs: ${STATE.status?.num_test_graphs ?? 0} totals`, t: Date.now() });
   }
 }
 
@@ -139,8 +139,8 @@ reloadBtn.addEventListener("click", async () => {
     appendDebugLog({
       level: res.success && res.model_loaded ? "success" : "warn",
       msg: res.model_loaded
-        ? `✅ Model carregat | ${res.num_train} train, ${res.num_val} val`
-        : `⚠️  Sense model | ${res.num_train} train, ${res.num_val} val`,
+        ? `✅ Model carregat | ${res.num_test} grafs de test`
+        : `⚠️  Sense model | ${res.num_test} grafs de test`,
       t: Date.now(),
     });
 

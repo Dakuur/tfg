@@ -79,11 +79,6 @@ function buildLayout() {
                 <i data-lucide="search"></i>
                 <input class="search-input" id="patient-search" placeholder="Cerca per pacient, hospital…" />
               </div>
-              <select id="split-filter" style="padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px">
-                <option value="">Tots</option>
-                <option value="train">Train</option>
-                <option value="val">Val</option>
-              </select>
               <select id="label-filter" style="padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px">
                 <option value="">Totes les classes</option>
                 <option value="0">N0</option>
@@ -157,17 +152,14 @@ function buildLayout() {
 
 function attachEvents(container) {
   container.querySelector("#patient-search").addEventListener("input",  () => applyFilters(container));
-  container.querySelector("#split-filter").addEventListener("change",   () => applyFilters(container));
   container.querySelector("#label-filter").addEventListener("change",   () => applyFilters(container));
   container.querySelector("#run-btn").addEventListener("click", () => runInference(container));
 }
 
 function applyFilters(container) {
   const q     = container.querySelector("#patient-search").value.toLowerCase();
-  const split = container.querySelector("#split-filter").value;
   const label = container.querySelector("#label-filter").value;
   _filtered = _patients.filter(p => {
-    if (split && !p.splits.includes(split)) return false;
     if (label !== "" && String(p.label) !== label) return false;
     if (q && !`${p.patient_id} ${p.hospital}`.toLowerCase().includes(q)) return false;
     return true;
@@ -191,13 +183,12 @@ function renderTable(container) {
       <td style="font-size:11.5px;color:var(--text2)">${p.hospital}</td>
       <td><span class="badge badge-${p.label === 0 ? "n0" : p.label === 1 ? "n1" : "unk"}">${p.label === 0 ? "N0" : p.label === 1 ? "N1" : "?"}</span></td>
       <td class="mono" style="font-size:11.5px;text-align:center">${p.num_slides}</td>
-      <td style="font-size:11px;color:var(--text3)">${p.splits.join(", ")}</td>
     </tr>
   `).join("");
 
   wrap.innerHTML = `
     <table>
-      <thead><tr><th>Pacient</th><th>Hospital</th><th>Classe</th><th>Slides</th><th>Split</th></tr></thead>
+      <thead><tr><th>Pacient</th><th>Hospital</th><th>Classe</th><th>Slides</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 

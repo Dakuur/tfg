@@ -71,15 +71,15 @@ export async function renderDashboard(container) {
       </div>
 
       <div class="card">
-        <div class="card-title">Grafs d'entrenament</div>
-        <div class="card-value">${status.num_train_graphs}</div>
-        <div class="card-sub">split train</div>
+        <div class="card-title">Grafs de test</div>
+        <div class="card-value">${status.num_test_graphs ?? 0}</div>
+        <div class="card-sub">${status.val_stats_ready ? "✓ Estadístiques llestes" : "estadístiques pendents"}</div>
       </div>
 
       <div class="card">
-        <div class="card-title">Grafs de validació</div>
-        <div class="card-value">${status.num_val_graphs}</div>
-        <div class="card-sub">${status.val_stats_ready ? "✓ Estadístiques llestes" : "estadístiques pendents"}</div>
+        <div class="card-title">Agregació MIL</div>
+        <div class="card-value accent" style="font-size:13px;font-family:var(--mono)">${status.aggregation ?? "—"}</div>
+        <div class="card-sub">mètode de combinació de slides</div>
       </div>
     </div>
 
@@ -132,13 +132,13 @@ export async function renderDashboard(container) {
     ${!modelLoaded ? `
       <div class="notice">
         <i data-lucide="alert-triangle"></i>
-        No s'ha trobat cap checkpoint. Entrena el model primer amb <code>python train.py</code>.
+        No s'ha trobat cap checkpoint. Entrena el model primer amb <code>python pt1diagnosis/PipelineGAT.py</code>.
       </div>
     ` : ""}
-    ${status.num_train_graphs === 0 && status.num_val_graphs === 0 ? `
+    ${!status.num_test_graphs ? `
       <div class="notice" style="margin-top:10px">
         <i data-lucide="database"></i>
-        No hi ha grafs a <code>outputs/graphs/</code>. Genera les dades amb <code>python scripts/build_dataset.py</code>.
+        No hi ha grafs a <code>outputs/graphs/</code>. Genera les dades amb <code>python pt1diagnosis/scripts_david/build_dataset.py</code>.
       </div>
     ` : ""}
   `;

@@ -34,7 +34,7 @@ export async function renderStatistics(container) {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:0.75rem">
         <div>
           <h1 class="page-title">Estadístiques del model</h1>
-          <p class="page-sub">Avaluat sobre el split de validació (${total} ${level})</p>
+          <p class="page-sub">Avaluat sobre el test set (${total} ${level})</p>
         </div>
         <div style="padding-top:0.3rem;font-size:0.82rem;color:#666">
           Agregació: <span style="color:#999;font-family:monospace">${curAgg}</span>
@@ -46,7 +46,7 @@ export async function renderStatistics(container) {
       <div class="card">
         <div class="card-title">Exactitud</div>
         <div class="card-value accent">${acc}</div>
-        <div class="card-sub">val set</div>
+        <div class="card-sub">test set</div>
       </div>
       <div class="card">
         <div class="card-title">AUC-ROC</div>
