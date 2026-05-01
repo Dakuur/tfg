@@ -22,19 +22,32 @@ export async function renderStatistics(container) {
     return;
   }
 
-  const acc   = data.accuracy != null ? (data.accuracy * 100).toFixed(1) + "%" : "—";
   const auc   = data.auc != null ? data.auc.toFixed(4) : "—";
   const total = data.total_samples ?? 0;
   const level = data.level === "patient" ? "pacients" : "mostres";
   const dist  = data.class_distribution || {};
   const curAgg = data.aggregation ?? "noisy_or";
 
+  // Mètriques clíniques derivades (des del servidor o des de la CM)
+  const _cm = data.confusion_matrix;
+  const _TN = _cm ? _cm[0][0] : 0, _FP = _cm ? _cm[0][1] : 0,
+        _FN = _cm ? _cm[1][0] : 0, _TP = _cm ? _cm[1][1] : 0;
+  const _sens = data.sensitivity ?? (_cm ? _TP / Math.max(_TP + _FN, 1) : null);
+  const _spec = data.specificity ?? (_cm ? _TN / Math.max(_TN + _FP, 1) : null);
+  const _balAcc = data.balanced_acc ?? ((_sens != null && _spec != null) ? (_sens + _spec) / 2 : null);
+  const sensStr = _sens  != null ? (_sens  * 100).toFixed(1) + "%" : "—";
+  const specStr = _spec  != null ? (_spec  * 100).toFixed(1) + "%" : "—";
+  const balStr  = _balAcc != null ? (_balAcc * 100).toFixed(1) + "%" : "—";
+
   container.innerHTML = `
     <div class="page-header">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:0.75rem">
         <div>
           <h1 class="page-title">Estadístiques del model</h1>
-          <p class="page-sub">Avaluat sobre el test set (${total} ${level})</p>
+          <p class="page-sub">
+            Test set · ${total} ${level} · AUC test = ${auc}
+            <span style="color:var(--text3)"> (AUC val (training) al Dashboard)</span>
+          </p>
         </div>
         <div style="padding-top:0.3rem;font-size:0.82rem;color:#666">
           Agregació: <span style="color:#999;font-family:monospace">${curAgg}</span>
@@ -44,24 +57,24 @@ export async function renderStatistics(container) {
 
     <div class="grid-4 section">
       <div class="card">
-        <div class="card-title">Exactitud</div>
-        <div class="card-value accent">${acc}</div>
-        <div class="card-sub">test set</div>
+        <div class="card-title">Sensibilitat</div>
+        <div class="card-value accent">${sensStr}</div>
+        <div class="card-sub">Recall N1 · TP / (TP + FN)</div>
       </div>
       <div class="card">
-        <div class="card-title">AUC-ROC</div>
+        <div class="card-title">Especificitat</div>
+        <div class="card-value accent">${specStr}</div>
+        <div class="card-sub">Recall N0 · TN / (TN + FP)</div>
+      </div>
+      <div class="card">
+        <div class="card-title">AUC-ROC (test)</div>
         <div class="card-value accent">${auc}</div>
         <div class="card-sub">àrea sota la corba ROC</div>
       </div>
       <div class="card">
-        <div class="card-title">N0 (sense metàstasi)</div>
-        <div class="card-value">${dist.N0 ?? "—"}</div>
-        <div class="card-sub">${total ? ((dist.N0 / total) * 100).toFixed(1) + "% del total" : ""}</div>
-      </div>
-      <div class="card">
-        <div class="card-title">N1 (amb metàstasi)</div>
-        <div class="card-value">${dist.N1 ?? "—"}</div>
-        <div class="card-sub">${total ? ((dist.N1 / total) * 100).toFixed(1) + "% del total" : ""}</div>
+        <div class="card-title">Acc. Balancejada</div>
+        <div class="card-value accent">${balStr}</div>
+        <div class="card-sub">(sensibilitat + especificitat) / 2</div>
       </div>
     </div>
 
@@ -175,37 +188,45 @@ export async function renderStatistics(container) {
   const cm = data.confusion_matrix;
   if (cm) {
     const TN = cm[0][0], FP = cm[0][1], FN = cm[1][0], TP = cm[1][1];
-    const precN0 = TN / Math.max(TN + FN, 1);
-    const recN0  = TN / Math.max(TN + FP, 1);
-    const f1N0   = f1(precN0, recN0);
-    const precN1 = TP / Math.max(TP + FP, 1);
-    const recN1  = TP / Math.max(TP + FN, 1);
-    const f1N1   = f1(precN1, recN1);
+    // Per classe N0: especificitat = TN/(TN+FP), VPN = TN/(TN+FN)
+    const specN0 = TN / Math.max(TN + FP, 1);   // especificitat (Recall N0)
+    const vpnN0  = TN / Math.max(TN + FN, 1);   // VPN / NPV
+    const f1N0   = f1(vpnN0, specN0);
+    // Per classe N1: sensibilitat = TP/(TP+FN), VPP = TP/(TP+FP)
+    const sensN1 = TP / Math.max(TP + FN, 1);   // sensibilitat (Recall N1)
+    const vppN1  = TP / Math.max(TP + FP, 1);   // VPP / PPV
+    const f1N1   = f1(vppN1, sensN1);
 
     container.querySelector("#metrics-table-wrap").innerHTML = `
       <table class="metrics-table">
         <thead>
-          <tr><th>Classe</th><th>Precisió</th><th>Recall</th><th>F1</th><th>Suport</th></tr>
+          <tr>
+            <th>Classe</th>
+            <th>Sensib./Espec.</th>
+            <th>VPP/VPN</th>
+            <th>F1</th>
+            <th>Suport</th>
+          </tr>
         </thead>
         <tbody>
           <tr>
             <td><span class="badge badge-n0">N0</span></td>
-            <td class="mono">${precN0.toFixed(3)}</td>
-            <td class="mono">${recN0.toFixed(3)}</td>
+            <td class="mono">${specN0.toFixed(3)}<br><small style="color:var(--text3)">Especificitat</small></td>
+            <td class="mono">${vpnN0.toFixed(3)}<br><small style="color:var(--text3)">VPN</small></td>
             <td class="mono">${f1N0.toFixed(3)}</td>
             <td class="mono">${TN + FP}</td>
           </tr>
           <tr>
             <td><span class="badge badge-n1">N1</span></td>
-            <td class="mono">${precN1.toFixed(3)}</td>
-            <td class="mono">${recN1.toFixed(3)}</td>
+            <td class="mono">${sensN1.toFixed(3)}<br><small style="color:var(--text3)">Sensibilitat</small></td>
+            <td class="mono">${vppN1.toFixed(3)}<br><small style="color:var(--text3)">VPP</small></td>
             <td class="mono">${f1N1.toFixed(3)}</td>
             <td class="mono">${FN + TP}</td>
           </tr>
           <tr style="border-top:1px solid var(--border2)">
             <td style="color:var(--text3)">Mitjana</td>
-            <td class="mono">${((precN0 + precN1) / 2).toFixed(3)}</td>
-            <td class="mono">${((recN0 + recN1) / 2).toFixed(3)}</td>
+            <td class="mono">${((specN0 + sensN1) / 2).toFixed(3)}</td>
+            <td class="mono">${((vpnN0 + vppN1) / 2).toFixed(3)}</td>
             <td class="mono">${((f1N0 + f1N1) / 2).toFixed(3)}</td>
             <td class="mono">${total}</td>
           </tr>

@@ -35,6 +35,8 @@ from sklearn.metrics import (
     accuracy_score,
     confusion_matrix,
     precision_recall_curve,
+    precision_score,
+    recall_score,
     roc_auc_score,
     roc_curve,
 )
@@ -200,9 +202,11 @@ def _load_pt(path: Path) -> Optional[Data]:
 
 
 def _scan_graphs() -> Dict[str, List[Dict]]:
-    """Carga únicamente los grafos del test set para evitar data leakage.
+    """Carrega únicament els grafs del test set per evitar data leakage.
 
-    Requiere split.json en per-slide/. Sin él, devuelve vacío y avisa.
+    Prioritat:
+    1. Directori físic per-slide/test/   (generat per build_dataset.py)
+    2. Filtratge via split.json des de per-slide/  (make_split.py / llegat)
     """
     result: Dict[str, List[Dict]] = {"train": [], "val": []}
 
@@ -230,18 +234,28 @@ def _scan_graphs() -> Dict[str, List[Dict]]:
         log.warning(f"Directori de grafs no trobat: {per_slide_dir}")
         return result
 
+    # ── Opció 1: directori físic test/ ────────────────────────────────────────
+    test_subdir = per_slide_dir / "test"
+    if test_subdir.exists() and any(test_subdir.glob("*.pt")):
+        log.info(f"Carregant grafs des de directori físic: {test_subdir}")
+        for pt_path in sorted(test_subdir.glob("*.pt")):
+            _add(pt_path)
+        log.info(f"  {len(result['val'])} grafs de test carregats des de test/")
+        return result
+
+    # ── Opció 2: split.json (llegat / make_split.py) ──────────────────────────
     split_json = per_slide_dir / "split.json"
     if not split_json.exists():
         log.error(
-            f"split.json no trobat a {per_slide_dir}. "
-            "Executa scripts_david/make_split.py per generar-lo. "
-            "Cap graf carregat per evitar data leakage."
+            f"Cap directori test/ ni split.json a {per_slide_dir}. "
+            "Executa build_dataset.py (genera split físic) o "
+            "scripts_david/make_split.py (genera split.json)."
         )
         return result
 
     with open(split_json) as f:
         test_pids = set(json.load(f).get("test", []))
-    log.info(f"split.json: {len(test_pids)} pacients de test carregats")
+    log.info(f"split.json: {len(test_pids)} pacients de test (filtratge runtime)")
 
     for pt_path in sorted(per_slide_dir.glob("*.pt")):
         g = _load_pt(pt_path)
@@ -538,9 +552,20 @@ def _compute_val_stats(
     except Exception:
         auc_val = None
 
+    sensitivity  = float(recall_score(all_true, all_pred, pos_label=1, zero_division=0))
+    specificity  = float(recall_score(all_true, all_pred, pos_label=0, zero_division=0))
+    ppv          = float(precision_score(all_true, all_pred, pos_label=1, zero_division=0))
+    npv          = float(precision_score(all_true, all_pred, pos_label=0, zero_division=0))
+    balanced_acc = (sensitivity + specificity) / 2
+
     return {
         "accuracy":         float(accuracy_score(all_true, all_pred)),
         "auc":              auc_val,
+        "sensitivity":      sensitivity,
+        "specificity":      specificity,
+        "ppv":              ppv,
+        "npv":              npv,
+        "balanced_acc":     balanced_acc,
         "confusion_matrix": cm,
         "precision_recall": {"precision": precision.tolist(), "recall": recall.tolist()},
         "roc":              {"fpr": fpr.tolist(), "tpr": tpr.tolist()},
