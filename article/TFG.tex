@@ -784,7 +784,7 @@ de cada hiperparàmetre: per a cada nivell d'un factor s'obté la mitjana de l'A
 experiments que inclouen aquell nivell, independentment dels altres factors. El \textbf{rang d'influència}
 (diferència entre el millor i el pitjor nivell) mesura la rellevància relativa de cada factor.
 
-\begin{table}[h]
+\begin{table*}[t]
 \centering
 \caption{Efectes principals de cada hiperparàmetre sobre l'AUC de test (48 experiments, 56 pacients).
 Rangs d'influència en negreta per ordre decreixent.}
@@ -819,7 +819,7 @@ Rangs d'influència en negreta per ordre decreixent.}
   & \textit{attention}  & 12 & $0{,}562 \pm 0{,}129$ & \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 El factor amb més influència és el \textbf{pooling} (rang 0,200): l'\textit{attention pooling} supera
 clarament \textit{mean\_max} i tots dos superen \textit{diff} (l'únic disponible per a DiffPool).
@@ -835,7 +835,7 @@ La Taula~\ref{tab:pool-mil} mostra la interacció entre \textit{pooling} i agreg
 subconjunt de GAT Baseline amb grafs per secció (les 24 configuracions no condicionades per
 l'arquitectura DiffPool).
 
-\begin{table}[h]
+\begin{table*}[t]
 \centering
 \caption{AUC de test mitjana: interacció \textit{pooling} $\times$ agregació MIL
 (GAT Baseline, grafs per secció, $n=4$ per cel·la).}
@@ -849,7 +849,7 @@ l'arquitectura DiffPool).
 \textit{mean\_max}  & $0{,}836$          & $0{,}587$ & $0{,}638$ \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 La combinació \textit{attention pooling} + agregació \textit{mean} és la millor en totes les
 configuracions i apunta clarament la direcció de treball futur: l'\textit{attention pooling} aprèn
