@@ -38,19 +38,53 @@ export async function renderDashboard(container) {
     <!-- Model selector -->
     ${checkpoints.length > 0 ? `
     <div class="section">
-      <div class="section-title"><i data-lucide="layers"></i> Seleccionar model</div>
-      <div class="card" style="padding:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <select id="model-select" class="model-select" style="flex:1;min-width:200px">
-          ${checkpoints.map(c => `
-            <option value="${c.name}" ${c.active ? "selected" : ""}>
-              ${c.name}${c.val_auc != null ? ` — AUC ${c.val_auc.toFixed(3)}` : ""}${c.pooling ? ` [${c.pooling}]` : ""}
-            </option>
-          `).join("")}
-        </select>
-        <button class="btn btn-primary" id="load-model-btn" style="white-space:nowrap">
-          <i data-lucide="upload"></i> Carregar model
-        </button>
-        <span id="model-select-status" style="font-size:12px;color:var(--text3)"></span>
+      <div class="section-title"><i data-lucide="layers"></i> Seleccionar model
+        <span style="margin-left:8px;font-size:11px;color:var(--text3);font-weight:400">${checkpoints.length} models · ordenats per AUC test ↓</span>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="max-height:340px;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="background:var(--bg2);position:sticky;top:0;z-index:1">
+                <th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:500;white-space:nowrap"></th>
+                <th style="padding:7px 10px;text-align:right;color:var(--text3);font-weight:500;white-space:nowrap">AUC test</th>
+                <th style="padding:7px 10px;text-align:right;color:var(--text3);font-weight:500;white-space:nowrap">AUC val</th>
+                <th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:500">Pooling · MIL</th>
+                <th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:500">Nom</th>
+                <th style="padding:7px 4px"></th>
+              </tr>
+            </thead>
+            <tbody id="ckpt-table-body">
+              ${checkpoints.map((c, i) => {
+                const testAuc = c.test_auc != null ? c.test_auc.toFixed(3) : "—";
+                const valAuc  = c.val_auc  != null ? c.val_auc.toFixed(3)  : "—";
+                const poolMil = [c.pooling, c.aggregation].filter(Boolean).join(" · ") || "—";
+                const shortName = c.name.replace(/_best$/, "").replace(/^gs2\//, "");
+                const isActive = c.active;
+                const rowBg = isActive ? "background:rgba(204,0,168,0.08)" : (i % 2 === 0 ? "" : "background:var(--bg2)");
+                const aucColor = c.test_auc != null
+                  ? (c.test_auc >= 0.85 ? "var(--green)" : c.test_auc >= 0.70 ? "var(--accent-light)" : "var(--text3)")
+                  : "var(--text3)";
+                return `<tr class="ckpt-row" data-name="${c.name}" style="cursor:pointer;border-bottom:1px solid var(--border1);${rowBg}">
+                  <td style="padding:6px 10px;color:var(--accent-light);font-size:13px">${isActive ? "▶" : ""}</td>
+                  <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-weight:600;color:${aucColor}">${testAuc}</td>
+                  <td style="padding:6px 10px;text-align:right;font-family:var(--mono);color:var(--text2)">${valAuc}</td>
+                  <td style="padding:6px 10px;color:var(--text2);white-space:nowrap">${poolMil}</td>
+                  <td style="padding:6px 10px;color:var(--text3);font-family:var(--mono);font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.name}">${shortName}</td>
+                  <td style="padding:6px 4px">
+                    <button class="btn-load-ckpt btn btn-ghost" data-name="${c.name}" style="padding:2px 8px;font-size:11px;white-space:nowrap">
+                      ${isActive ? "actiu" : "carregar"}
+                    </button>
+                  </td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+        <div style="padding:8px 12px;background:var(--bg2);border-top:1px solid var(--border1);font-size:11px;color:var(--text3);display:flex;gap:16px">
+          <span id="model-select-status"></span>
+          <span style="margin-left:auto">Clic a una fila o al botó per carregar el model</span>
+        </div>
       </div>
     </div>
     ` : ""}
@@ -65,9 +99,9 @@ export async function renderDashboard(container) {
       </div>
 
       <div class="card">
-        <div class="card-title">Millor val AUC</div>
-        <div class="card-value accent">${ck?.val_auc != null ? ck.val_auc.toFixed(4) : "—"}</div>
-        <div class="card-sub">epoch ${ck?.epoch ?? "—"}</div>
+        <div class="card-title">AUC test</div>
+        <div class="card-value accent">${ck?.test_auc != null ? ck.test_auc.toFixed(4) : (ck?.val_auc != null ? ck.val_auc.toFixed(4) : "—")}</div>
+        <div class="card-sub">${ck?.test_auc != null ? `val: ${ck.val_auc?.toFixed(4) ?? "—"} · ep. ${ck?.epoch ?? "—"}` : `val AUC · epoch ${ck?.epoch ?? "—"}`}</div>
       </div>
 
       <div class="card">
@@ -146,26 +180,28 @@ export async function renderDashboard(container) {
   lucide.createIcons();
 
   // ── model selector ──────────────────────────────────────────────────────────
-  const loadBtn     = container.querySelector("#load-model-btn");
-  const modelSelect = container.querySelector("#model-select");
-  const selStatus   = container.querySelector("#model-select-status");
+  const selStatus = container.querySelector("#model-select-status");
 
-  loadBtn?.addEventListener("click", async () => {
-    const name = modelSelect?.value;
+  async function loadModel(name) {
     if (!name) return;
-    loadBtn.disabled = true;
+    selStatus.style.color = "var(--text3)";
     selStatus.textContent = "Carregant…";
     try {
       await API.selectModel(name);
       selStatus.style.color = "var(--green)";
       selStatus.textContent = "✓ Model carregat";
-      // Refresh the whole dashboard
       setTimeout(() => renderDashboard(container), 400);
     } catch (e) {
       selStatus.style.color = "var(--red)";
       selStatus.textContent = `✗ Error: ${e.message}`;
-      loadBtn.disabled = false;
     }
+  }
+
+  container.querySelectorAll(".ckpt-row").forEach(row => {
+    row.addEventListener("click", () => loadModel(row.dataset.name));
+  });
+  container.querySelectorAll(".btn-load-ckpt").forEach(btn => {
+    btn.addEventListener("click", e => { e.stopPropagation(); loadModel(btn.dataset.name); });
   });
 
   // ── navigation shortcuts ────────────────────────────────────────────────────

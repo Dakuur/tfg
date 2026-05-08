@@ -77,8 +77,9 @@ class _State:
 
 STATE = _State()
 
-CKPT_DIR   = Path.home() / "outputs" / "checkpoints"
-GRAPHS_DIR = Path.home() / "outputs" / "graphs"
+CKPT_DIR        = Path.home() / "outputs" / "checkpoints"
+TEST_AUC_CACHE  = CKPT_DIR / "test_auc_cache.json"
+GRAPHS_DIR      = Path.home() / "outputs" / "graphs"
 
 # Image serving — requires access to /mnt/iam (or IAM_PATH env var)
 _IAM_PATH = Path(os.environ.get("IAM_PATH", "/mnt/iam"))
@@ -295,10 +296,20 @@ def _group_by_patient(graphs_dict: Dict[str, List[Dict]]) -> List[Dict]:
     return result
 
 
+def _load_test_auc_cache() -> dict:
+    try:
+        if TEST_AUC_CACHE.exists():
+            return json.loads(TEST_AUC_CACHE.read_text())
+    except Exception:
+        pass
+    return {}
+
+
 def _list_checkpoints() -> List[Dict]:
     if not CKPT_DIR.exists():
         return []
-    ckpts = sorted(CKPT_DIR.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    test_auc_cache = _load_test_auc_cache()
+    ckpts = sorted(CKPT_DIR.rglob("*.pt"))
     result = []
     for p in ckpts:
         cfg  = _read_config_yaml(p)
@@ -309,11 +320,14 @@ def _list_checkpoints() -> List[Dict]:
             "active":     STATE.checkpoint_info is not None and STATE.checkpoint_info.get("name") == rel,
             "has_config": cfg is not None,
             "mtime":      int(p.stat().st_mtime),
+            "test_auc":   test_auc_cache.get(rel),
         }
         if cfg and "model" in cfg:
-            entry["pooling"] = cfg["model"].get("pooling")
-            entry["hidden"]  = cfg["model"].get("hidden")
-            entry["heads"]   = cfg["model"].get("heads")
+            entry["pooling"]     = cfg["model"].get("pooling")
+            entry["hidden"]      = cfg["model"].get("hidden")
+            entry["heads"]       = cfg["model"].get("heads")
+        if cfg and "training" in cfg:
+            entry["aggregation"] = cfg["training"].get("aggregation")
         try:
             ckpt = torch.load(p, weights_only=True, map_location="cpu")
             entry["epoch"]        = ckpt.get("epoch")
@@ -322,6 +336,11 @@ def _list_checkpoints() -> List[Dict]:
         except Exception:
             pass
         result.append(entry)
+    # Sort by test_auc desc (fallback to val_auc, then name)
+    result.sort(key=lambda e: (
+        -(e["test_auc"] if e.get("test_auc") is not None else -1),
+        -(e["val_auc"]  if e.get("val_auc")  is not None else -1),
+    ))
     return result
 
 
@@ -625,9 +644,15 @@ async def index():
 async def status():
     all_ckpts = sorted(CKPT_DIR.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True) \
         if CKPT_DIR.exists() else []
+    ck_info = STATE.checkpoint_info
+    if ck_info and ck_info.get("test_auc") is None:
+        cache = _load_test_auc_cache()
+        test_auc = cache.get(ck_info.get("name"))
+        if test_auc is not None:
+            ck_info = {**ck_info, "test_auc": test_auc}
     return {
         "model_loaded":    STATE.model is not None,
-        "checkpoint":      STATE.checkpoint_info,
+        "checkpoint":      ck_info,
         "device":          STATE.device,
         "aggregation":     STATE.aggregation,
         "num_test_graphs": len(STATE.graphs["val"]),

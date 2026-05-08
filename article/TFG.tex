@@ -736,46 +736,46 @@ s'empra per a l'avaluació final de les mètriques clíniques (sensibilitat, esp
 
 \section{Resultats Preliminars}
 
-Durant el procés de selecció d'hiperparàmetres, el \textit{grid search} amb validació creuada de 5 \textit{folds} estratificada per pacient va avaluar 4 configuracions:
-els dos tipus de \textit{pooling} (GAT Baseline \textit{mean\_max} i GAT+DiffPool \textit{diff}) creuats amb els
-dos mètodes d'agregació MIL (\textit{noisy-OR} i \textit{attention}). Per a cada combinació es va seleccionar
-el millor \textit{learning rate} entre $\{10^{-4}, 10^{-5}\}$. Les mètriques a nivell de pacient
-(mitjana $\pm$ desviació estàndard dels 5 \textit{folds}) es presenten a la Taula~\ref{tab:grid}.
+S'han avaluat \textbf{48 configuracions} que creuen: arquitectura (GAT Baseline / GAT+DiffPool),
+tipus de graf (per secció / mega-graf), \textit{pooling} (attention / mean\_max / diff),
+agregació MIL (mean / attention / noisy-OR) i \textit{learning rate}
+$\{10^{-3}, 10^{-4}, 10^{-5}, 10^{-6}\}$.
+La taula completa es troba a l'Apèndix~\ref{sec:appendix-gs}.
+La Taula~\ref{tab:grid} resumeix les millors configuracions de cada família sobre el conjunt de test.
 
 \begin{table*}[t]
 \centering
-\caption{Resultats del \textit{grid search} (5-\textit{fold} CV, nivell de pacient).
-\textbf{Negreta}: millor valor per columna.
-Mètriques reportades com a mitjana $\pm$ desviació estàndard.}
+\caption{Millors configuracions del \textit{grid search} sobre el conjunt de \textbf{test} (nivell de pacient, 56 pacients).
+\textbf{Negreta}: millor valor per columna.}
 \label{tab:grid}
 \small
-\begin{tabular}{llllll}
+\begin{tabular}{lllllrr}
 \toprule
-\textbf{Model} & \textbf{Pooling} & \textbf{Agregació MIL} & \textbf{AUC} & \textbf{F1-macro} & \textbf{F1-N1} \\
+\textbf{Model} & \textbf{Graf} & \textbf{Pooling} & \textbf{MIL} & \textbf{LR} & \textbf{AUC val} & \textbf{AUC test} \\
 \midrule
-GAT Baseline & \textit{mean\_max} & \textit{noisy-OR}  & $0{,}581 \pm 0{,}142$ & $0{,}498 \pm 0{,}123$ & $0{,}499 \pm 0{,}070$ \\
-GAT Baseline & \textit{mean\_max} & \textit{attention} & $\mathbf{0{,}817 \pm 0{,}073}$ & $\mathbf{0{,}751 \pm 0{,}083}$ & $0{,}641 \pm 0{,}126$ \\
-GAT+DiffPool & \textit{diff}      & \textit{noisy-OR}  & $0{,}754 \pm 0{,}059$ & $0{,}653 \pm 0{,}046$ & $0{,}568 \pm 0{,}052$ \\
-GAT+DiffPool & \textit{diff}      & \textit{attention} & $0{,}801 \pm 0{,}042$ & $0{,}749 \pm 0{,}061$ & $\mathbf{0{,}679 \pm 0{,}058}$ \\
+GAT Baseline & per secció & \textit{attention} & \textit{mean}      & $10^{-5}$ & $0{,}878$ & $\mathbf{0{,}917}$ \\
+GAT Baseline & per secció & \textit{mean\_max} & \textit{mean}      & $10^{-5}$ & $0{,}902$ & $0{,}895$ \\
+GAT Baseline & per secció & \textit{attention} & \textit{mean}      & $10^{-4}$ & $0{,}882$ & $0{,}878$ \\
+GAT Baseline & mega-graf  & \textit{attention} & \textit{mean}      & $10^{-4}$ & $0{,}788$ & $0{,}811$ \\
+\midrule
+GAT+DiffPool & per secció & \textit{diff}      & \textit{mean}      & $10^{-5}$ & $\mathbf{0{,}868}$ & $0{,}795$ \\
+GAT+DiffPool & per secció & \textit{diff}      & \textit{mean}      & $10^{-4}$ & $0{,}745$ & $0{,}784$ \\
+GAT+DiffPool & per secció & \textit{diff}      & \textit{attention} & $10^{-5}$ & $0{,}870$ & $0{,}616$ \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-El GAT Baseline amb agregació \textit{attention} obté el millor AUC ($0{,}817 \pm 0{,}073$).
-El GAT+DiffPool amb \textit{attention} té un AUC semblant ($0{,}801 \pm 0{,}042$) però
-menys variabilitat entre \textit{folds} i el millor F1-N1 ($0{,}679 \pm 0{,}058$), cosa que
-indica que detecta els casos positius de manera més consistent. En canvi, les configuracions
-amb \textit{noisy-OR} donen resultats notablement pitjors, sobretot el GAT Baseline
-($0{,}581 \pm 0{,}142$), cosa que suggereix que el mètode d'agregació és molt rellevant
-per a aquest problema.
+El millor model és el \textbf{GAT Baseline amb \textit{attention pooling} i agregació \textit{mean}},
+que assoleix un AUC de test de \textbf{0,917} (lr $= 10^{-5}$, grafs per secció, 56 pacients).
+El GAT Baseline supera consistentment el GAT+DiffPool a totes les comparatives, cosa que suggereix
+que el \textit{pooling} jeràrquic no aporta avantatge amb el conjunt de dades actual.
 
-Cal remarcar que aquests resultats són \textbf{preliminars}: corresponen a la segona entrega
-del TFG, en un moment en què l'arquitectura del model i les estratègies d'entrenament encara
-s'estan definint. No és possible extreure conclusions definitives sobre la superioritat d'un
-model respecte de l'altre; les diferències observades entre configuracions podrien variar
-significativament amb un espai de cerca d'hiperparàmetres més ampli, més dades o ajustaments
-al preprocés. En fases posteriors del projecte es duran a terme experiments més exhaustius
-i una avaluació final consolidada.
+Destaquen dues observacions rellevants. Primera, l'\textit{attention pooling} amb agregació
+\textit{mean} és la millor combinació, mentre que l'agregació \textit{attention} (PatientAggregator)
+no generalitza bé malgrat tenir un AUC de validació elevat (val $= 0{,}918$, test $= 0{,}700$),
+cosa que indica un cert sobreajustament al conjunt de validació. Segona, el mega-graf aconsegueix
+un AUC de test raonable ($0{,}811$) però inferior al millor model per-secció, i DiffPool sobre el
+mega-graf fracassa per a totes les configuracions (AUC test $\leq 0{,}56$).
 
 \section{Implementació i Frontend}
 
@@ -924,5 +924,76 @@ permetrà valorar si la topologia espacial aporta avantatge real respecte d'una
 connectivitat basada en similitud de \textit{features}.
 
 \printbibliography
+
+% ─────────────────────────────────────────────────────────────────────────────
+\appendix
+\section{Resultats complets del \textit{grid search}}
+\label{sec:appendix-gs}
+
+La Taula~\ref{tab:appendix-gs} mostra les 48 configuracions avaluades, ordenades per AUC de test
+descendent. Les mètriques s'han calculat sobre el conjunt de test (56 pacients, 255 seccions)
+usant l'agregació MIL indicada a cada fila.
+
+\begin{table*}[h]
+\centering
+\caption{Resultats complets del \textit{grid search} (48 experiments). Ordenats per AUC test $\downarrow$.
+\textbf{Negreta}: top-3 per AUC test.}
+\label{tab:appendix-gs}
+\scriptsize
+\begin{tabular}{llllrrrr}
+\toprule
+\textbf{Model} & \textbf{Graf} & \textbf{Pooling} & \textbf{MIL} & \textbf{LR} & \textbf{Epoch} & \textbf{AUC val} & \textbf{AUC test} \\
+\midrule
+GAT Baseline & per secció & att.      & mean      & $10^{-5}$ & 23  & 0{,}878 & \textbf{0{,}917} \\
+GAT Baseline & per secció & mean\_max & mean      & $10^{-5}$ & 60  & 0{,}902 & \textbf{0{,}895} \\
+GAT Baseline & per secció & att.      & mean      & $10^{-4}$ &  7  & 0{,}882 & \textbf{0{,}878} \\
+GAT Baseline & per secció & mean\_max & mean      & $10^{-3}$ &  8  & 0{,}840 & 0{,}870 \\
+GAT Baseline & per secció & att.      & mean      & $10^{-6}$ & 97  & 0{,}780 & 0{,}869 \\
+GAT Baseline & per secció & att.      & mean      & $10^{-3}$ & 36  & 0{,}902 & 0{,}866 \\
+GAT Baseline & mega-graf  & att.      & mean      & $10^{-4}$ &  9  & 0{,}788 & 0{,}811 \\
+GAT Baseline & per secció & mean\_max & mean      & $10^{-6}$ & 88  & 0{,}745 & 0{,}798 \\
+GAT+DiffPool & per secció & diff      & mean      & $10^{-5}$ & 26  & 0{,}868 & 0{,}795 \\
+GAT+DiffPool & per secció & diff      & mean      & $10^{-4}$ &  7  & 0{,}745 & 0{,}784 \\
+GAT Baseline & per secció & mean\_max & mean      & $10^{-4}$ & 30  & 0{,}878 & 0{,}778 \\
+GAT Baseline & mega-graf  & att.      & mean      & $10^{-5}$ & 10  & 0{,}832 & 0{,}772 \\
+GAT Baseline & per secció & att.      & noisy-OR  & $10^{-3}$ & 11  & 0{,}755 & 0{,}769 \\
+GAT Baseline & mega-graf  & att.      & mean      & $10^{-6}$ & 91  & 0{,}827 & 0{,}764 \\
+GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-3}$ & 25  & 0{,}772 & 0{,}763 \\
+GAT Baseline & mega-graf  & mean\_max & mean      & $10^{-3}$ & 42  & 0{,}798 & 0{,}727 \\
+GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-5}$ & 88  & 0{,}763 & 0{,}717 \\
+GAT+DiffPool & per secció & diff      & mean      & $10^{-6}$ & 29  & 0{,}703 & 0{,}716 \\
+GAT Baseline & per secció & att.      & attention & $10^{-5}$ & 34  & 0{,}918 & 0{,}700 \\
+GAT Baseline & per secció & att.      & attention & $10^{-4}$ &  9  & 0{,}873 & 0{,}694 \\
+GAT Baseline & per secció & att.      & attention & $10^{-3}$ & 15  & 0{,}850 & 0{,}677 \\
+GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-4}$ & 13  & 0{,}753 & 0{,}672 \\
+GAT Baseline & per secció & mean\_max & attention & $10^{-5}$ & 61  & 0{,}848 & 0{,}661 \\
+GAT Baseline & per secció & mean\_max & attention & $10^{-4}$ & 25  & 0{,}890 & 0{,}656 \\
+GAT Baseline & per secció & mean\_max & attention & $10^{-3}$ & 16  & 0{,}887 & 0{,}617 \\
+GAT+DiffPool & per secció & diff      & attention & $10^{-5}$ & 28  & 0{,}870 & 0{,}616 \\
+GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-5}$ & 13  & 0{,}698 & 0{,}614 \\
+GAT Baseline & per secció & att.      & noisy-OR  & $10^{-5}$ & 10  & 0{,}543 & 0{,}598 \\
+GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-3}$ & 40  & 0{,}727 & 0{,}594 \\
+GAT Baseline & per secció & att.      & attention & $10^{-6}$ & 98  & 0{,}768 & 0{,}581 \\
+GAT Baseline & per secció & att.      & noisy-OR  & $10^{-4}$ & 10  & 0{,}617 & 0{,}566 \\
+GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-6}$ &100  & 0{,}600 & 0{,}561 \\
+GAT+DiffPool & mega-graf  & diff      & mean      & $10^{-5}$ & 36  & 0{,}506 & 0{,}556 \\
+GAT Baseline & per secció & att.      & noisy-OR  & $10^{-6}$ & 84  & 0{,}487 & 0{,}533 \\
+GAT Baseline & mega-graf  & att.      & mean      & $10^{-3}$ & 12  & 0{,}677 & 0{,}508 \\
+GAT+DiffPool & mega-graf  & diff      & mean      & $10^{-4}$ & 14  & 0{,}500 & 0{,}423 \\
+GAT Baseline & per secció & mean\_max & attention & $10^{-6}$ & 88  & 0{,}730 & 0{,}413 \\
+GAT+DiffPool & per secció & diff      & attention & $10^{-6}$ & 31  & 0{,}803 & 0{,}408 \\
+GAT+DiffPool & per secció & diff      & mean      & $10^{-3}$ &  6  & 0{,}421 & 0{,}406 \\
+GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-6}$ & 52  & 0{,}330 & 0{,}400 \\
+GAT+DiffPool & mega-graf  & diff      & mean      & $10^{-6}$ & 45  & 0{,}412 & 0{,}394 \\
+GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-4}$ & 14  & 0{,}492 & 0{,}372 \\
+GAT+DiffPool & per secció & diff      & attention & $10^{-4}$ &  2  & 0{,}813 & 0{,}368 \\
+GAT+DiffPool & per secció & diff      & attention & $10^{-3}$ &  9  & 0{,}753 & 0{,}359 \\
+GAT Baseline & mega-graf  & mean\_max & mean      & $10^{-6}$ & 13  & 0{,}572 & 0{,}358 \\
+GAT+DiffPool & mega-graf  & diff      & mean      & $10^{-3}$ & 19  & 0{,}522 & 0{,}338 \\
+GAT Baseline & mega-graf  & mean\_max & mean      & $10^{-4}$ &  7  & 0{,}365 & 0{,}333 \\
+GAT Baseline & mega-graf  & mean\_max & mean      & $10^{-5}$ &  3  & 0{,}515 & 0{,}330 \\
+\bottomrule
+\end{tabular}
+\end{table*}
 
 \end{document}
