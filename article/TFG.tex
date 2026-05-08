@@ -982,19 +982,6 @@ GAT: les regions anotades haurien de rebre més atenció que les zones sanes. To
 al.~\cite{TOURNIAIRE2023102763} mostren que fins i tot amb un nombre limitat d'anotacions
 parcials es pot millorar la localització i la classificació del model.
 
-\textbf{Ampliar el dataset.} De moment, 140 dels 370 pacients amb diagnòstic vàlid no
-tenen embeddings UNI2 generats perquè el \textit{pipeline} d'extracció no s'ha executat
-sobre les seves làmines (per exemple, tot l'H.\ 12 de Octubre, amb 48 pacients). Generar
-aquests embeddings pràcticament doblaria el dataset i hauria de millorar els resultats.
-
-\textbf{Avaluació del mode mega-graf.} S'ha implementat i provat de forma funcional el
-mode mega-graf, on totes les seccions d'un pacient es combinen en un únic graf amb
-adjacència per blocs (descrit a la Secció~\ref{sec:model-dades}). Fins ara no hi ha
-hagut temps de dur a terme experiments sistemàtics amb aquest mode. En fases posteriors
-es compararà directament amb el mode MIL per seccions per determinar si agregar les
-seccions al nivell del graf aporta alguna millora respecte d'agregar les probabilitats
-a posteriori.
-
 \textbf{Comparació de connectivitats.} En el marc del mateix projecte, un altre estudiant
 treballa en paral·lel en un model on la matriu d'adjacència es construeix a partir de la
 \textbf{distància entre les característiques} dels \textit{patches}, sense triangulació de
