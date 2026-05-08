@@ -77,9 +77,9 @@ Graph Attention Networks}}
 \textbf{Resum--}
 Es presenta un sistema de classificació N0/N1 per a la detecció de metàstasi en ganglis limfàtics
 en càncer colorrectal pT1 a partir de \textit{Whole Slide Images}. El teixit es representa com un
-\textbf{graf espacial} construït per triangulació de Delaunay sobre les coordenades dels \textit{bags},
+\textbf{graf espacial} construït per triangulació de Delaunay sobre les coordenades dels \textit{patches},
 de manera que es preserva la topologia real del teixit —a diferència d'enfocaments basats en similitud de
-característiques. Cada node és un \textit{bag} de 256 \textit{patches} representat per l'embedding
+característiques. Cada node és un \textit{patch} de 2048$\times$2048 px representat per l'embedding
 CLS (1.536 dim.) del model UNI2. Es comparen dues arquitectures: un GAT de referència
 amb \textit{readout} pla i un GAT amb \textbf{DiffPool jeràrquic} intercalat ($N\!\to\!K_1\!\to\!K_2$
 super-nodes) per obtenir representacions a múltiples escales. El diagnòstic per pacient s'obté per
@@ -94,8 +94,8 @@ DiffPool jeràrquic, Graf espacial de Delaunay, MIL, Desbalanceig de classes.\\
 \textbf{Abstract--}
 We present an N0/N1 classification system for lymph node metastasis prediction in pT1 colorectal
 cancer from Whole Slide Images. Tissue is represented as a \textbf{spatial graph} built by Delaunay
-triangulation over bag coordinates, preserving the real spatial topology of the tissue —unlike
-feature-similarity graph approaches. Each node is a bag of 256 patches represented by a
+triangulation over patch coordinates, preserving the real spatial topology of the tissue —unlike
+feature-similarity graph approaches. Each node is a 2048$\times$2048 px patch represented by a
 1,536-dimensional CLS embedding from the UNI2 model. Two architectures are compared: a
 \textbf{GAT baseline} with flat readout (mean/max) and a \textbf{GAT+DiffPool} model
 with pooling layers interleaved between GAT layers ($N\!\to\!K_1\!\to\!K_2$ super-nodes) for
@@ -137,7 +137,7 @@ La histopatologia digital, a través de les \textit{Whole Slide Images} (WSI), o
 de visió per computador. En concret, les \textit{Graph Attention Networks} (GAT) \cite{veličković2018graphattentionnetworks}
 permeten modelar l'arquitectura espacial del teixit de forma relacional. Una decisió clau en la construcció
 del graf és la definició de les arestes: mentre que alguns treballs les basen en la \textit{similitud de
-característiques} entre \textit{bags}, aquest projecte opta per la \textbf{proximitat espacial} (triangulació
+característiques} entre \textit{patches}, aquest projecte opta per la \textbf{proximitat espacial} (triangulació
 de Delaunay sobre coordenades WSI), preservant la topologia real del teixit. Aquest projecte, desenvolupat al
 grup IAM del CVC (iam.cvc.uab.es) sota la supervisió de la Dra.\ Debora Gil, compara un GAT de referència
 amb \textit{readout} pla contra un model amb \textit{pooling} jeràrquic (DiffPool) intercalat, i proposa
@@ -160,7 +160,7 @@ de grafs i les xarxes neuronals profundes que vull explorar dins de l'Enginyeria
     progressiva del graf aporta millor representació multi-escala.
     \item Implementar i comparar estratègies d'agregació MIL a nivell de pacient per integrar
     les prediccions de múltiples seccions histològiques.
-    \item Avaluar la robustesa dels models mitjançant validació creuada estratificada ($k$-fold).
+    \item Avaluar els models amb una partició estratificada fixa (70\% entrenament / 15\% validació / 15\% test) a nivell de pacient.
     \item Proporcionar una eina interactiva de visualització i inferència en temps real.
 \end{itemize}
 
@@ -234,8 +234,8 @@ El conjunt de dades efectiu comprèn \textbf{963 grafs} (un per secció histolò
 \textbf{230 pacients} distribuits de forma desequilibrada entre les dues classes
 (Taula~\ref{tab:dataset}). D'un total de 606 pacients a la base de dades clínica, 236 es descarten
 per diagnòstic indeterminat (NX), i dels 370 restants amb diagnòstic vàlid, 140 no disposen encara
-d'embeddings UNI2 generats, deixant 230 pacients usables. L'avaluació es realitza amb validació
-creuada estratificada de 5 particions a nivell de pacient.
+d'embeddings UNI2 generats, deixant 230 pacients usables. Les mostres es divideixen en conjunts d'entrenament (70\%), validació (15\%) i test (15\%)
+estratificats a nivell de pacient, amb llavor fixa (\texttt{random\_state=42}).
 
 \begin{table}[h]
 \centering
@@ -249,9 +249,9 @@ creuada estratificada de 5 particions a nivell de pacient.
 Pacients         & 160 & 70 & 230      \\
 Slides úniques   & —   & —  & 448      \\
 Seccions (grafs) & —   & —  & 963      \\
-Bags (nodes)     & —   & —  & 89\,637  \\
+Patches (nodes)  & —   & —  & 89\,637  \\
 \bottomrule
-\multicolumn{4}{l}{\scriptsize Bags per secció: mín.\,3 / mitjana\,93 / màx.\,619} \\
+\multicolumn{4}{l}{\scriptsize Patches per secció: mín.\,3 / mitjana\,93 / màx.\,619} \\
 \end{tabular}
 \end{table}
 
@@ -279,23 +279,20 @@ A partir d'aquestes s'obtenen màscares de segmentació codificades per color: v
 \subsection{Extracció de Patches i Embeddings CLS}
 
 S'aplica una finestra lliscant (\textit{sliding window}) sense solapament per dividir cada làmina en
-\textit{patches} de $256 \times 256$ píxels. Aquests s'agrupen en \textbf{bags} de $16 \times 16$
-\textit{patches} (256 \textit{patches} per \textit{bag}), cadascun cobrint una regió de
-$\approx 4096 \times 4096$ píxels del WSI a resolució completa (nivell 0). El model de fundació
-\textbf{UNI2}~\cite{chen2024uni2} processa cada \textit{bag} i extreu el token \textit{CLS} de la
-seva sortida, obtenint un vector de \textbf{1.536 dimensions} que condensa la informació morfològica
-i textural de la regió. No s'aplica cap filtratge de qualitat previ (ni per borrositat ni per
-proporció de blanc): tots els \textit{bags} d'una secció generen un node del graf.
+\textit{patches} de $2048 \times 2048$ píxels a resolució completa (nivell 0). El model de fundació
+\textbf{UNI2}~\cite{chen2024uni2} processa cada \textit{patch} individualment i extreu el token
+\textit{CLS} de la seva sortida, obtenint un vector de \textbf{1.536 dimensions} que condensa la
+informació morfològica i textural del patch. No s'aplica cap filtratge de qualitat previ (ni per
+borrositat ni per proporció de blanc): tots els \textit{patches} d'una secció generen un node del graf.
 
 \section{Construcció del Graf}
 
 \subsection{Nodes i característiques}
 
-Cada \textit{bag} (conjunt de 256 \textit{patches} de $256{\times}256$\,px que cobreix
-$\approx4096{\times}4096$\,px al WSI) constitueix un \textbf{node} del graf. El vector de
-característiques de cada node és l'embedding CLS de \textbf{1.536 dimensions} obtingut per UNI2.
-La posició del node al pla WSI és el centroide de les coordenades dels seus 256 \textit{patches}.
-A la subfigura~\ref{fig:patches} es pot observar la distribució esparsa dels \textit{bags}
+Cada \textit{patch} de $2048{\times}2048$\,px del WSI constitueix un \textbf{node} del graf. El
+vector de característiques de cada node és l'embedding CLS de \textbf{1.536 dimensions} obtingut
+per UNI2. La posició del node al pla WSI és el centre del patch (coordenades en píxels a nivell 0).
+A la subfigura~\ref{fig:patches} es pot observar la distribució esparsa dels \textit{patches}
 extrets sobre una làmina real.
 
 \subsection{Model de dades: dimensions i estructures}
@@ -305,7 +302,7 @@ Formalment, cada secció histològica es representa com un graf
 $\mathcal{G} = (\mathbf{X},\,\mathbf{A})$ on:
 \begin{itemize}
   \item $\mathbf{X} \in \mathbb{R}^{N \times 1536}$ és la matriu de característiques dels $N$ nodes
-        (\textit{bags}).
+        (\textit{patches}).
   \item $\mathbf{A} \in \{0,1\}^{N \times N}$ és la matriu d'adjacència construïda per triangulació
         de Delaunay i posterior poda d'arestes llargues.
 \end{itemize}
@@ -469,7 +466,7 @@ $\mathbf{S} \in \mathbb{R}^{N \times K}$ que agrupa els $N$ nodes actuals en $K 
 \end{equation*}
 
 Amb aquesta arquitectura, la primera capa GAT opera sobre el graf original de nodes de teixit
-($N$ bags), la segona ho fa sobre un graf reduït de $K_1$ super-nodes que representen regions de teixit
+($N$ patches), la segona ho fa sobre un graf reduït de $K_1$ super-nodes que representen regions de teixit
 de nivell intermedi, i la tercera opera sobre un graf molt compacte de $K_2$ super-nodes que codifiquen
 l'organització arquitectònica global de la secció. Finalment, un \textit{readout} global (\textit{mean}
 o \textit{max}) sobre els $K_2$ nodes produeix l'embedding que entra al capçal MLP.
@@ -721,7 +718,7 @@ proporcional a la freqüència de la seva classe. Això garanteix que cada \text
 proporció equilibrada de casos N0 i N1, evitant que el model vegi gairebé exclusivament N0 durant molts
 \textit{batches} consecutius.
 
-\subsection{Grid Search, K-Fold i Configuració d'Entrenament}
+\subsection{Grid Search i Configuració d'Entrenament}
 
 S'ha dut a terme un \textit{grid search} amb múltiples hiperparàmetres variables: \textit{hidden units}, nombre
 de caps d'atenció, tipus de \textit{pooling}, mètode d'agregació MIL, nombre de clústers DiffPool,
@@ -730,20 +727,20 @@ amb mètriques registrades a \textit{Weights \& Biases}. El millor model per AUC
 \textit{checkpoint}. L'entrenament inclou \textit{early stopping} amb 15 epochs de \textit{warm-up} i
 \textit{patience} de 10, basant el criteri d'aturada en la pèrdua de validació.
 
-Per obtenir una avaluació més fiable, s'utilitza una validació creuada de $k$ particions ($k=5$)
-estratificada a nivell de pacient, activable amb l'argument \texttt{-{}-kfold~5} de \texttt{train.py}.
-Cada \textit{fold} entrena un model independent i al final es reporta la mitjana $\pm$ desviació estàndard
-de les mètriques principals (AUC, F1-macro, F1-N1). Això és especialment important amb un conjunt
-de dades petit com el d'aquest projecte, on un únic split podria donar resultats poc representatius.
-El mode \textit{k-fold} és compatible amb el \textit{grid search}: si es combinen, s'executen
-$n_{\text{combos}} \times k$ entrenaments en total.
+La partició del conjunt de dades es realitza \textbf{una sola vegada} en el moment de construir els grafs,
+amb estratificació a nivell de pacient (llavor fixa \texttt{random\_state=42}): 70\% entrenament,
+15\% validació i 15\% test. Els grafs s'emmagatzemen físicament en tres subdirectoris independents
+(\texttt{train/}, \texttt{val/}, \texttt{test/}), i la partició es registra en un fitxer
+\texttt{split.json} per garantir la reproductibilitat i evitar la filtració de dades entre conjunts.
+El conjunt de test no s'utilitza durant l'entrenament ni la selecció d'hiperparàmetres: únicament
+s'empra per a l'avaluació final de les mètriques clíniques (sensibilitat, especificitat, AUC-ROC).
 
 \section{Resultats Preliminars}
 
-El \textit{grid search} amb validació creuada de 5 \textit{folds} estratificada per pacient ha avaluat 4 configuracions:
+Durant el procés de selecció d'hiperparàmetres, el \textit{grid search} amb validació creuada de 5 \textit{folds} estratificada per pacient va avaluar 4 configuracions:
 els dos tipus de \textit{pooling} (GAT Baseline \textit{mean\_max} i GAT+DiffPool \textit{diff}) creuats amb els
 dos mètodes d'agregació MIL (\textit{noisy-OR} i \textit{attention}). Per a cada combinació es va seleccionar
-el millor \textit{learning rate} entre $\{10^{-4}, 10^{-5}\}$. Les mètriques de validació a nivell de pacient
+el millor \textit{learning rate} entre $\{10^{-4}, 10^{-5}\}$. Les mètriques a nivell de pacient
 (mitjana $\pm$ desviació estàndard dels 5 \textit{folds}) es presenten a la Taula~\ref{tab:grid}.
 
 \begin{table*}[t]
@@ -822,12 +819,11 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 %% ─── Columna 1: Preparació de dades ──────────────────────────────────────
 \node[ext] (wsi)  {WSI};
 \node[ext, below=of wsi] (sw)   {\textit{Sliding}\\window};
-\node[ext, below=of sw]  (pat)  {Patches $256{\times}256$};
-\node[ext, below=of pat] (bag)  {\textit{Bag} $16{\times}16$\\(4096\,px)};
-\node[ext, below=of bag] (uni)  {\textit{UNI2}};
+\node[ext, below=of sw]  (pat)  {Patches $2048{\times}2048$};
+\node[ext, below=of pat] (uni)  {\textit{UNI2}};
 \node[ext, below=of uni] (cls)  {\textit{CLS} 1536-dim};
 
-\foreach \a/\b in {wsi/sw, sw/pat, pat/bag, bag/uni, uni/cls}
+\foreach \a/\b in {wsi/sw, sw/pat, pat/uni, uni/cls}
   \draw[arr] (\a)--(\b);
 
 %% ─── Columna 2: Construcció del graf (alineada a dalt amb col. 1) ────────
@@ -838,7 +834,7 @@ La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
 
 \foreach \a/\b in {coo/del, del/pru, pru/gra}
   \draw[arr] (\a)--(\b);
-\draw[arr] (bag.east) to[out=0, in=180] (coo.west);
+\draw[arr] (pat.east) to[out=0, in=180] (coo.west);
 \draw[arr] (cls.east) to[out=0, in=180] (gra.west);
 
 %% ─── Columna 3: Model (alineada a dalt amb col. 1 i 2) ──────────────────
@@ -923,7 +919,7 @@ a posteriori.
 
 \textbf{Comparació de connectivitats.} En el marc del mateix projecte, un altre estudiant
 treballa en paral·lel en un model on la matriu d'adjacència es construeix a partir de la
-\textbf{distància entre les característiques} dels \textit{bags}, sense triangulació de
+\textbf{distància entre les característiques} dels \textit{patches}, sense triangulació de
 Delaunay ni relacions espacials. Comparar els dos models sobre el mateix conjunt de dades
 permetrà valorar si la topologia espacial aporta avantatge real respecte d'una
 connectivitat basada en similitud de \textit{features}.
