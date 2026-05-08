@@ -240,17 +240,19 @@ amb llavor fixa (\texttt{random\_state=42}).
 
 \begin{table}[h]
 \centering
-\caption{Composició del dataset efectiu (26 hospitals).}
+\caption{Composició del dataset efectiu per partició (26 hospitals, \texttt{random\_state=42}).}
 \label{tab:dataset}
 \small
-\begin{tabular}{lrrr}
+\begin{tabular}{lrrrr}
 \toprule
- & \textbf{N0} & \textbf{N1} & \textbf{Total} \\
+\textbf{Partició} & \textbf{Pacients} & \textbf{N0} & \textbf{N1} & \textbf{Grafs} \\
 \midrule
-Pacients         & 264 & 103 & 367      \\
-Seccions (grafs) & —   & —   & 1\,607   \\
+Train & 256 & 184 &  72 & 1\,082 \\
+Val   &  55 &  40 &  15 &   270  \\
+Test  &  56 &  40 &  16 &   255  \\
+\midrule
+Total & 367 & 264 & 103 & 1\,607 \\
 \bottomrule
-\multicolumn{4}{l}{\scriptsize Split: 256 train (N0=184, N1=72) / 55 val / 56 test · \texttt{random\_state=42}} \\
 \end{tabular}
 \end{table}
 
