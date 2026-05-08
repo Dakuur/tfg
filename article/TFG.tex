@@ -777,6 +777,85 @@ cosa que indica un cert sobreajustament al conjunt de validació. Segona, el meg
 un AUC de test raonable ($0{,}811$) però inferior al millor model per-secció, i DiffPool sobre el
 mega-graf fracassa per a totes les configuracions (AUC test $\leq 0{,}56$).
 
+\subsection{Anàlisi d'influència dels hiperparàmetres}
+
+Per identificar quins factors determinen els resultats, s'han calculat els \textbf{efectes principals}
+de cada hiperparàmetre: per a cada nivell d'un factor s'obté la mitjana de l'AUC de test en tots els
+experiments que inclouen aquell nivell, independentment dels altres factors. El \textbf{rang d'influència}
+(diferència entre el millor i el pitjor nivell) mesura la rellevància relativa de cada factor.
+
+\begin{table}[h]
+\centering
+\caption{Efectes principals de cada hiperparàmetre sobre l'AUC de test (48 experiments, 56 pacients).
+Rangs d'influència en negreta per ordre decreixent.}
+\label{tab:main-effects}
+\small
+\begin{tabular}{llrrl}
+\toprule
+\textbf{Factor} & \textbf{Nivell} & \textbf{$n$} & \textbf{AUC test (mitjana $\pm$ std)} & \textbf{Rang} \\
+\midrule
+\multirow{3}{*}{Pooling}
+  & \textit{attention}  & 16 & $0{,}719 \pm 0{,}128$ & \multirow{3}{*}{\textbf{0,200}} \\
+  & \textit{mean\_max}  & 16 & $0{,}624 \pm 0{,}189$ & \\
+  & \textit{diff}       & 16 & $0{,}519 \pm 0{,}151$ & \\
+\midrule
+\multirow{2}{*}{Arquitectura}
+  & GAT Baseline        & 32 & $0{,}672 \pm 0{,}168$ & \multirow{2}{*}{\textbf{0,153}} \\
+  & GAT+DiffPool        & 16 & $0{,}519 \pm 0{,}151$ & \\
+\midrule
+\multirow{2}{*}{Tipus de graf}
+  & Per secció          & 36 & $0{,}652 \pm 0{,}164$ & \multirow{2}{*}{\textbf{0,126}} \\
+  & Mega-graf           & 12 & $0{,}526 \pm 0{,}184$ & \\
+\midrule
+\multirow{4}{*}{\textit{Learning rate}}
+  & $10^{-5}$           & 12 & $0{,}681 \pm 0{,}153$ & \multirow{4}{*}{\textbf{0,115}} \\
+  & $10^{-3}$           & 12 & $0{,}624 \pm 0{,}180$ & \\
+  & $10^{-4}$           & 12 & $0{,}611 \pm 0{,}186$ & \\
+  & $10^{-6}$           & 12 & $0{,}566 \pm 0{,}173$ & \\
+\midrule
+\multirow{3}{*}{Agregació MIL}
+  & \textit{mean}       & 24 & $0{,}662 \pm 0{,}210$ & \multirow{3}{*}{\textbf{0,099}} \\
+  & \textit{noisy-OR}   & 12 & $0{,}597 \pm 0{,}120$ & \\
+  & \textit{attention}  & 12 & $0{,}562 \pm 0{,}129$ & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El factor amb més influència és el \textbf{pooling} (rang 0,200): l'\textit{attention pooling} supera
+clarament \textit{mean\_max} i tots dos superen \textit{diff} (l'únic disponible per a DiffPool).
+Atès que el pooling i l'arquitectura estan parcialmente correlacionats (\textit{diff} implica
+GAT+DiffPool), la caiguda del rang d'arquitectura (0,153) reflecteix en part la mateixa diferència.
+
+Respecte de la \textbf{agregació MIL}, l'agregació \textit{mean} és la millor opció, mentre que
+\textit{attention} (PatientAggregator) té un rendiment pitjor malgrat la seva complexitat, cosa que
+suggereix que amb 367 pacients el mòdul d'atenció tendeix al sobreajustament.
+El \textit{learning rate} òptim és $10^{-5}$ (rang 0,115), i $10^{-6}$ és perjudicial.
+
+La Taula~\ref{tab:pool-mil} mostra la interacció entre \textit{pooling} i agregació MIL per al
+subconjunt de GAT Baseline amb grafs per secció (les 24 configuracions no condicionades per
+l'arquitectura DiffPool).
+
+\begin{table}[h]
+\centering
+\caption{AUC de test mitjana: interacció \textit{pooling} $\times$ agregació MIL
+(GAT Baseline, grafs per secció, $n=4$ per cel·la).}
+\label{tab:pool-mil}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Pooling} \textbackslash\ \textbf{MIL} & \textbf{\textit{mean}} & \textbf{\textit{attention}} & \textbf{\textit{noisy-OR}} \\
+\midrule
+\textit{attention} & $\mathbf{0{,}882}$ & $0{,}663$ & $0{,}616$ \\
+\textit{mean\_max}  & $0{,}836$          & $0{,}587$ & $0{,}638$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La combinació \textit{attention pooling} + agregació \textit{mean} és la millor en totes les
+configuracions i apunta clarament la direcció de treball futur: l'\textit{attention pooling} aprèn
+a ponderar els nodes del graf, i l'agregació \textit{mean} de les slides evita el sobreajustament
+del PatientAggregator.
+
 \section{Implementació i Frontend}
 
 La implementació segueix un disseny modular: la construcció de grafs, el model, el codi d'entrenament i els
