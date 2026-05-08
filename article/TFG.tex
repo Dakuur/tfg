@@ -83,7 +83,7 @@ característiques. Cada node és un \textit{patch} de 2048$\times$2048 px repres
 CLS (1.536 dim.) del model UNI2. Es comparen dues arquitectures: un GAT de referència
 amb \textit{readout} pla i un GAT amb \textbf{DiffPool jeràrquic} intercalat ($N\!\to\!K_1\!\to\!K_2$
 super-nodes) per obtenir representacions a múltiples escales. El diagnòstic per pacient s'obté per
-agregació MIL sobre les seccions. El millor model obté un AUC de $0{,}817 \pm 0{,}073$ (5-\textit{fold} CV, 230 pacients).
+agregació MIL sobre les seccions. El millor model obté un AUC de $0{,}817 \pm 0{,}073$ (5-\textit{fold} CV, selecció d'hiperparàmetres, 367 pacients).
 \\
 \\
 \textbf{Paraules clau-- } Càncer colorrectal pT1, Histopatologia digital, Graph Attention Networks,
@@ -100,7 +100,7 @@ feature-similarity graph approaches. Each node is a 2048$\times$2048 px patch re
 \textbf{GAT baseline} with flat readout (mean/max) and a \textbf{GAT+DiffPool} model
 with pooling layers interleaved between GAT layers ($N\!\to\!K_1\!\to\!K_2$ super-nodes) for
 multi-scale representations. Patient-level diagnosis is obtained via MIL aggregation over
-histological sections. The best model achieves an AUC of $0.817 \pm 0.073$ (5-fold CV, 230 patients).
+histological sections. The best model achieves an AUC of $0.817 \pm 0.073$ (5-fold CV, hyperparameter selection, 367 patients).
 \\
 \\
 \textbf{Keywords-- } pT1 colorectal cancer, Digital histopathology, Graph Attention Networks,
@@ -230,12 +230,13 @@ tintades amb hematoxilina-eosina, emmagatzemades en format MIRAX (\textit{.mrxs}
 els 30.000 i els 150.000 píxels per costat, amb una quantitat significativa d'espai buit o artefactes que
 requereixen tractament previ.
 
-El conjunt de dades efectiu comprèn \textbf{963 grafs} (un per secció histològica), provinents de
-\textbf{230 pacients} distribuits de forma desequilibrada entre les dues classes
+El conjunt de dades efectiu comprèn \textbf{1.607 grafs} (un per secció histològica), provinents de
+\textbf{367 pacients} distribuits de forma desequilibrada entre les dues classes
 (Taula~\ref{tab:dataset}). D'un total de 606 pacients a la base de dades clínica, 236 es descarten
-per diagnòstic indeterminat (NX), i dels 370 restants amb diagnòstic vàlid, 140 no disposen encara
-d'embeddings UNI2 generats, deixant 230 pacients usables. Les mostres es divideixen en conjunts d'entrenament (70\%), validació (15\%) i test (15\%)
-estratificats a nivell de pacient, amb llavor fixa (\texttt{random\_state=42}).
+per diagnòstic indeterminat (NX), i dels 370 restants amb diagnòstic vàlid, 3 no disposen
+d'embeddings UNI2 generats, deixant 367 pacients usables. Les mostres es divideixen en conjunts
+d'entrenament (70\%), validació (15\%) i test (15\%) estratificats a nivell de pacient,
+amb llavor fixa (\texttt{random\_state=42}).
 
 \begin{table}[h]
 \centering
@@ -246,12 +247,10 @@ estratificats a nivell de pacient, amb llavor fixa (\texttt{random\_state=42}).
 \toprule
  & \textbf{N0} & \textbf{N1} & \textbf{Total} \\
 \midrule
-Pacients         & 160 & 70 & 230      \\
-Slides úniques   & —   & —  & 448      \\
-Seccions (grafs) & —   & —  & 963      \\
-Patches (nodes)  & —   & —  & 89\,637  \\
+Pacients         & 264 & 103 & 367      \\
+Seccions (grafs) & —   & —   & 1\,607   \\
 \bottomrule
-\multicolumn{4}{l}{\scriptsize Patches per secció: mín.\,3 / mitjana\,93 / màx.\,619} \\
+\multicolumn{4}{l}{\scriptsize Split: 256 train (N0=184, N1=72) / 55 val / 56 test · \texttt{random\_state=42}} \\
 \end{tabular}
 \end{table}
 
