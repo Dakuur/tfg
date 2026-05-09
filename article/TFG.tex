@@ -83,7 +83,7 @@ característiques. Cada node és un \textit{patch} de 2048$\times$2048 px repres
 CLS (1.536 dim.) del model UNI2. Es comparen dues arquitectures: un GAT de referència
 amb \textit{readout} pla i un GAT amb \textbf{DiffPool jeràrquic} intercalat ($N\!\to\!K_1\!\to\!K_2$
 super-nodes) per obtenir representacions a múltiples escales. El diagnòstic per pacient s'obté per
-agregació MIL sobre les seccions. El millor model obté un AUC de $0{,}817 \pm 0{,}073$ (5-\textit{fold} CV, selecció d'hiperparàmetres, 367 pacients).
+agregació MIL sobre les seccions. El millor model obté un AUC de $0{,}917$ (Selecció d'hiperparàmetres, 367 pacients).
 \\
 \\
 \textbf{Paraules clau-- } Càncer colorrectal pT1, Histopatologia digital, Graph Attention Networks,
@@ -100,7 +100,7 @@ feature-similarity graph approaches. Each node is a 2048$\times$2048 px patch re
 \textbf{GAT baseline} with flat readout (mean/max) and a \textbf{GAT+DiffPool} model
 with pooling layers interleaved between GAT layers ($N\!\to\!K_1\!\to\!K_2$ super-nodes) for
 multi-scale representations. Patient-level diagnosis is obtained via MIL aggregation over
-histological sections. The best model achieves an AUC of $0.817 \pm 0.073$ (5-fold CV, hyperparameter selection, 367 patients).
+histological sections. The best model achieves an AUC of $0.817$ (Hyperparameter selection, 367 patients).
 \\
 \\
 \textbf{Keywords-- } pT1 colorectal cancer, Digital histopathology, Graph Attention Networks,
@@ -156,12 +156,10 @@ de grafs i les xarxes neuronals profundes que vull explorar dins de l'Enginyeria
     d'embeddings CLS del model UNI2, basat en \textbf{grafs espacials} (triangulació de Delaunay
     sobre coordenades del teixit).
     \item \textbf{Comparar un GAT de referència} amb \textit{readout} pla contra un model amb
-    \textbf{DiffPool jeràrquic} intercalat entre les capes GAT, avaluant si la reducció
+    \textbf{DiffPool jeràrquic} intercalat entre capes GAT, avaluant si la reducció
     progressiva del graf aporta millor representació multi-escala.
     \item Implementar i comparar estratègies d'agregació MIL a nivell de pacient per integrar
     les prediccions de múltiples seccions histològiques.
-    \item Avaluar els models amb una partició estratificada fixa (70\% entrenament / 15\% validació / 15\% test) a nivell de pacient.
-    \item Proporcionar una eina interactiva de visualització i inferència en temps real.
 \end{itemize}
 
 \section{Estat de l'Art}
@@ -321,7 +319,7 @@ alimenta el capçal MLP per produir $P(\text{N1})$:
 Cada secció genera un graf independent; les $S$ seccions d'un pacient es processen per separat i les
 probabilitats $\{P(\text{N1}_i)\}_{i=1}^{S}$ s'agreguen a posteriori (Secció~\ref{sec:mil}).
 
-\textbf{Model 2 --- Mega-graf pacient (un sol graf).}
+\textbf{Model 2 --- Un sol graf per pacient.}
 Com a alternativa, es pot construir un únic graf per pacient concatenant verticalment les matrius de
 característiques i col·locant les matrius d'adjacència en la diagonal d'una mega-matriu per blocs:
 
@@ -737,7 +735,7 @@ s'empra per a l'avaluació final de les mètriques clíniques (sensibilitat, esp
 \section{Resultats Preliminars}
 
 S'han avaluat \textbf{48 configuracions} que creuen: arquitectura (GAT Baseline / GAT+DiffPool),
-tipus de graf (per secció / mega-graf), \textit{pooling} (attention / mean\_max / diff),
+tipus de graf (per secció / per pacient), \textit{pooling} (attention / mean\_max / diff),
 agregació MIL (mean / attention / noisy-OR) i \textit{learning rate}
 $\{10^{-3}, 10^{-4}, 10^{-5}, 10^{-6}\}$.
 La taula completa es troba a l'Apèndix~\ref{sec:appendix-gs}.
@@ -756,7 +754,7 @@ La Taula~\ref{tab:grid} resumeix les millors configuracions de cada família sob
 GAT Baseline & per secció & \textit{attention} & \textit{mean}      & $10^{-5}$ & $0{,}878$ & $\mathbf{0{,}917}$ \\
 GAT Baseline & per secció & \textit{mean\_max} & \textit{mean}      & $10^{-5}$ & $0{,}902$ & $0{,}895$ \\
 GAT Baseline & per secció & \textit{attention} & \textit{mean}      & $10^{-4}$ & $0{,}882$ & $0{,}878$ \\
-GAT Baseline & mega-graf  & \textit{attention} & \textit{mean}      & $10^{-4}$ & $0{,}788$ & $0{,}811$ \\
+GAT Baseline & per pacient  & \textit{attention} & \textit{mean}      & $10^{-4}$ & $0{,}788$ & $0{,}811$ \\
 \midrule
 GAT+DiffPool & per secció & \textit{diff}      & \textit{mean}      & $10^{-5}$ & $\mathbf{0{,}868}$ & $0{,}795$ \\
 GAT+DiffPool & per secció & \textit{diff}      & \textit{mean}      & $10^{-4}$ & $0{,}745$ & $0{,}784$ \\
@@ -773,9 +771,9 @@ que el \textit{pooling} jeràrquic no aporta avantatge amb el conjunt de dades a
 Destaquen dues observacions rellevants. Primera, l'\textit{attention pooling} amb agregació
 \textit{mean} és la millor combinació, mentre que l'agregació \textit{attention} (PatientAggregator)
 no generalitza bé malgrat tenir un AUC de validació elevat (val $= 0{,}918$, test $= 0{,}700$),
-cosa que indica un cert sobreajustament al conjunt de validació. Segona, el mega-graf aconsegueix
+cosa que indica un cert sobreajustament al conjunt de validació. Segona, el graf per pacient aconsegueix
 un AUC de test raonable ($0{,}811$) però inferior al millor model per-secció, i DiffPool sobre el
-mega-graf fracassa per a totes les configuracions (AUC test $\leq 0{,}56$).
+graf per pacient fracassa per a totes les configuracions (AUC test $\leq 0{,}56$).
 
 \subsection{Anàlisi d'influència dels hiperparàmetres}
 
@@ -805,7 +803,7 @@ Rangs d'influència en negreta per ordre decreixent.}
 \midrule
 \multirow{2}{*}{Tipus de graf}
   & Per secció          & 36 & $0{,}652 \pm 0{,}164$ & \multirow{2}{*}{\textbf{0,126}} \\
-  & Mega-graf           & 12 & $0{,}526 \pm 0{,}184$ & \\
+  & Per pacient           & 12 & $0{,}526 \pm 0{,}184$ & \\
 \midrule
 \multirow{4}{*}{\textit{Learning rate}}
   & $10^{-5}$           & 12 & $0{,}681 \pm 0{,}153$ & \multirow{4}{*}{\textbf{0,115}} \\
@@ -1016,16 +1014,16 @@ GAT Baseline & per secció & att.      & mean      & $10^{-4}$ &  7  & 0{,}882 &
 GAT Baseline & per secció & mean\_max & mean      & $10^{-3}$ &  8  & 0{,}840 & 0{,}870 \\
 GAT Baseline & per secció & att.      & mean      & $10^{-6}$ & 97  & 0{,}780 & 0{,}869 \\
 GAT Baseline & per secció & att.      & mean      & $10^{-3}$ & 36  & 0{,}902 & 0{,}866 \\
-GAT Baseline & mega-graf  & att.      & mean      & $10^{-4}$ &  9  & 0{,}788 & 0{,}811 \\
+GAT Baseline & per pacient  & att.      & mean      & $10^{-4}$ &  9  & 0{,}788 & 0{,}811 \\
 GAT Baseline & per secció & mean\_max & mean      & $10^{-6}$ & 88  & 0{,}745 & 0{,}798 \\
 GAT+DiffPool & per secció & diff      & mean      & $10^{-5}$ & 26  & 0{,}868 & 0{,}795 \\
 GAT+DiffPool & per secció & diff      & mean      & $10^{-4}$ &  7  & 0{,}745 & 0{,}784 \\
 GAT Baseline & per secció & mean\_max & mean      & $10^{-4}$ & 30  & 0{,}878 & 0{,}778 \\
-GAT Baseline & mega-graf  & att.      & mean      & $10^{-5}$ & 10  & 0{,}832 & 0{,}772 \\
+GAT Baseline & per pacient  & att.      & mean      & $10^{-5}$ & 10  & 0{,}832 & 0{,}772 \\
 GAT Baseline & per secció & att.      & noisy-OR  & $10^{-3}$ & 11  & 0{,}755 & 0{,}769 \\
-GAT Baseline & mega-graf  & att.      & mean      & $10^{-6}$ & 91  & 0{,}827 & 0{,}764 \\
+GAT Baseline & per pacient  & att.      & mean      & $10^{-6}$ & 91  & 0{,}827 & 0{,}764 \\
 GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-3}$ & 25  & 0{,}772 & 0{,}763 \\
-GAT Baseline & mega-graf  & mean\_max & mean      & $10^{-3}$ & 42  & 0{,}798 & 0{,}727 \\
+GAT Baseline & per pacient  & mean\_max & mean      & $10^{-3}$ & 42  & 0{,}798 & 0{,}727 \\
 GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-5}$ & 88  & 0{,}763 & 0{,}717 \\
 GAT+DiffPool & per secció & diff      & mean      & $10^{-6}$ & 29  & 0{,}703 & 0{,}716 \\
 GAT Baseline & per secció & att.      & attention & $10^{-5}$ & 34  & 0{,}918 & 0{,}700 \\
@@ -1042,22 +1040,22 @@ GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-3}$ & 40  & 0{,}727 &
 GAT Baseline & per secció & att.      & attention & $10^{-6}$ & 98  & 0{,}768 & 0{,}581 \\
 GAT Baseline & per secció & att.      & noisy-OR  & $10^{-4}$ & 10  & 0{,}617 & 0{,}566 \\
 GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-6}$ &100  & 0{,}600 & 0{,}561 \\
-GAT+DiffPool & mega-graf  & diff      & mean      & $10^{-5}$ & 36  & 0{,}506 & 0{,}556 \\
+GAT+DiffPool & per pacient  & diff      & mean      & $10^{-5}$ & 36  & 0{,}506 & 0{,}556 \\
 GAT Baseline & per secció & att.      & noisy-OR  & $10^{-6}$ & 84  & 0{,}487 & 0{,}533 \\
-GAT Baseline & mega-graf  & att.      & mean      & $10^{-3}$ & 12  & 0{,}677 & 0{,}508 \\
-GAT+DiffPool & mega-graf  & diff      & mean      & $10^{-4}$ & 14  & 0{,}500 & 0{,}423 \\
+GAT Baseline & per pacient  & att.      & mean      & $10^{-3}$ & 12  & 0{,}677 & 0{,}508 \\
+GAT+DiffPool & per pacient  & diff      & mean      & $10^{-4}$ & 14  & 0{,}500 & 0{,}423 \\
 GAT Baseline & per secció & mean\_max & attention & $10^{-6}$ & 88  & 0{,}730 & 0{,}413 \\
 GAT+DiffPool & per secció & diff      & attention & $10^{-6}$ & 31  & 0{,}803 & 0{,}408 \\
 GAT+DiffPool & per secció & diff      & mean      & $10^{-3}$ &  6  & 0{,}421 & 0{,}406 \\
 GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-6}$ & 52  & 0{,}330 & 0{,}400 \\
-GAT+DiffPool & mega-graf  & diff      & mean      & $10^{-6}$ & 45  & 0{,}412 & 0{,}394 \\
+GAT+DiffPool & per pacient  & diff      & mean      & $10^{-6}$ & 45  & 0{,}412 & 0{,}394 \\
 GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-4}$ & 14  & 0{,}492 & 0{,}372 \\
 GAT+DiffPool & per secció & diff      & attention & $10^{-4}$ &  2  & 0{,}813 & 0{,}368 \\
 GAT+DiffPool & per secció & diff      & attention & $10^{-3}$ &  9  & 0{,}753 & 0{,}359 \\
-GAT Baseline & mega-graf  & mean\_max & mean      & $10^{-6}$ & 13  & 0{,}572 & 0{,}358 \\
-GAT+DiffPool & mega-graf  & diff      & mean      & $10^{-3}$ & 19  & 0{,}522 & 0{,}338 \\
-GAT Baseline & mega-graf  & mean\_max & mean      & $10^{-4}$ &  7  & 0{,}365 & 0{,}333 \\
-GAT Baseline & mega-graf  & mean\_max & mean      & $10^{-5}$ &  3  & 0{,}515 & 0{,}330 \\
+GAT Baseline & per pacient  & mean\_max & mean      & $10^{-6}$ & 13  & 0{,}572 & 0{,}358 \\
+GAT+DiffPool & per pacient  & diff      & mean      & $10^{-3}$ & 19  & 0{,}522 & 0{,}338 \\
+GAT Baseline & per pacient  & mean\_max & mean      & $10^{-4}$ &  7  & 0{,}365 & 0{,}333 \\
+GAT Baseline & per pacient  & mean\_max & mean      & $10^{-5}$ &  3  & 0{,}515 & 0{,}330 \\
 \bottomrule
 \end{tabular}
 \end{table*}
