@@ -236,23 +236,25 @@ d'embeddings UNI2 generats, deixant 367 pacients usables. Les mostres es dividei
 d'entrenament (70\%), validació (15\%) i test (15\%) estratificats a nivell de pacient,
 amb llavor fixa (\texttt{random\_state=42}).
 
-\begin{table}[h]
+\begin{table*}[t]
 \centering
-\caption{Composició del dataset efectiu per partició (26 hospitals, \texttt{random\_state=42}).}
+\caption{Composició del dataset efectiu per partició (26 hospitals, \texttt{random\_state=42}).
+Els grafs corresponen a seccions histològiques individuals (un per secció).}
 \label{tab:dataset}
 \small
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr|rrr}
 \toprule
-\textbf{Partició} & \textbf{Pacients} & \textbf{N0} & \textbf{N1} & \textbf{Grafs} \\
+ & \multicolumn{3}{c|}{\textbf{Pacients}} & \multicolumn{3}{c}{\textbf{Grafs (seccions)}} \\
+\textbf{Partició} & \textbf{N0} & \textbf{N1} & \textbf{Total} & \textbf{N0} & \textbf{N1} & \textbf{Total} \\
 \midrule
-Train & 256 & 184 &  72 & 1\,082 \\
-Val   &  55 &  40 &  15 &   270  \\
-Test  &  56 &  40 &  16 &   255  \\
+Train & 184 &  72 & 256 &   897 & 185 & 1\,082 \\
+Val   &  40 &  15 &  55 &   236 &  34 &   270  \\
+Test  &  40 &  16 &  56 &   212 &  43 &   255  \\
 \midrule
-Total & 367 & 264 & 103 & 1\,607 \\
+Total & 264 & 103 & 367 & 1\,345 & 262 & 1\,607 \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 \subsection{Anotacions i Màscares de Segmentació}
 
@@ -355,6 +357,12 @@ arestes que travessen píxels de valor zero a la màscara, evitant connexions en
 espai buit. Finalment, s'aplica un criteri de distància màxima: s'eliminen les arestes que superen el
 doble de la longitud mitjana del conjunt (\texttt{DISTANCE\_FACTOR} $= 2{,}0$). La subfigura~\ref{fig:delaunay-real} mostra el resultat sobre
 la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en vermell.
+
+Cal notar que una secció histològica pot contenir múltiples regions de teixit físicament separades
+(per exemple, diverses illes de teixit sobre el porta). En aquest cas, la triangulació de Delaunay
+produeix un graf amb múltiples \textbf{components connexes}, sense arestes entre illes. El pipeline
+genera \textbf{un graf per secció} (no per component): tot el teixit de la secció s'inclou en un únic
+objecte \texttt{Data}, i el \textit{pooling} global opera sobre tots els nodes conjuntament.
 
 \begin{figure*}[h]
     \centering
@@ -699,10 +707,11 @@ predicció final N0/N1.
 El conjunt de dades presenta un fort desbalanceig: els casos N0 superen àmpliament els N1 (proporció aproximada
 80/20). Per combatre-ho s'apliquen tres mesures complementàries.
 
-\textbf{(1) Validació creuada estratificada.} S'utilitza una validació creuada de $k\!=\!5$ particions
-estratificades a nivell de pacient, assegurant que la proporció N0/N1 sigui representativa en cada
-partició. Sense estratificació, amb un conjunt petit i desequilibrat, algunes particions podrien
-contenir per atzar una proporció de N1 molt diferent a la real, invalidant les mètriques.
+\textbf{(1) Partició estratificada.} La divisió train/val/test es realitza amb estratificació a
+nivell de pacient, assegurant que la proporció N0/N1 sigui representativa en cada subconjunt
+(Taula~\ref{tab:dataset}). Sense estratificació, amb un conjunt petit i desequilibrat, alguns
+subconjunts podrien contenir per atzar una proporció de N1 molt diferent a la real, invalidant les
+mètriques.
 
 \textbf{(2) Pesos de classe.} S'apliquen pesos balancejats $w_c = N / (C \cdot n_c)$, on $n_c$ és el
 nombre de pacients de la classe $c$, incorporats directament a la funció de pèrdua BCE. Així, cada error
@@ -732,6 +741,14 @@ El conjunt de test no s'utilitza durant l'entrenament ni la selecció d'hiperpar
 s'empra per a l'avaluació final de les mètriques clíniques (sensibilitat, especificitat, AUC-ROC).
 
 \section{Resultats Preliminars}
+
+Les mètriques principals usades en aquest treball són l'\textbf{AUC-ROC} (àrea sota la corba
+receptor-operador, mesura d'ordenació global independent del llindar de decisió) i les
+\textbf{mètriques clíniques}: la \textbf{sensibilitat} ($\text{VP}/(\text{VP}+\text{FN})$,
+proporció de casos N1 detectats correctament) i l'\textbf{especificitat}
+($\text{VN}/(\text{VN}+\text{FP})$, proporció de casos N0 identificats correctament). En un
+context clínic com la detecció de metàstasi, la sensibilitat és especialment rellevant perquè
+un fals negatiu (deixar un pacient N1 sense tractar) és més greu que un fals positiu.
 
 S'han avaluat \textbf{48 configuracions} que creuen: arquitectura (GAT Baseline / GAT+DiffPool),
 tipus de graf (per secció / per pacient), \textit{pooling} (attention / mean\_max / diff),
@@ -853,6 +870,27 @@ configuracions i apunta clarament la direcció de treball futur: l'\textit{atten
 a ponderar els nodes del graf, i l'agregació \textit{mean} de les slides evita el sobreajustament
 del PatientAggregator.
 
+La Taula~\ref{tab:cm} mostra la matriu de confusió del millor model sobre el conjunt de test
+(56 pacients), que permet quantificar errors per classe.
+
+\begin{table}[h]
+\centering
+\caption{Matriu de confusió del millor model (GAT Baseline, \textit{attention pooling},
+agregació \textit{mean}, $\text{lr}=10^{-5}$, conjunt de test, 56 pacients).}
+\label{tab:cm}
+\small
+\begin{tabular}{llcc}
+\toprule
+ & & \multicolumn{2}{c}{\textbf{Diagnòstic real}} \\
+ & & \textbf{N0} & \textbf{N1} \\
+\midrule
+\multirow{2}{*}{\textbf{Predicció}}
+  & \textbf{N0} & \textbf{XX} & \textbf{XX} \\
+  & \textbf{N1} & \textbf{XX} & \textbf{XX} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \section{Implementació i Frontend}
 
 La implementació segueix un disseny modular: la construcció de grafs, el model, el codi d'entrenament i els
@@ -861,22 +899,9 @@ d'hiperparàmetres es gestiona via fitxer YAML, on qualsevol paràmetre pot ser 
 \textit{grid search} automàtic. El repositori és accessible a \cite{morillo2026codi} i el desplegament al
 servidor CVC es gestiona via GitHub Actions amb un \textit{runner self-hosted}.
 
-\subsection{Frontend Web Interactiu}
-
-S'ha desenvolupat un \textit{frontend} web (FastAPI + JavaScript pur, sense \textit{build step}) per facilitar
-l'exploració dels models entrenats. Les funcionalitats principals inclouen:
-
-\begin{itemize}
-    \item \textbf{Inferència en temps real}: selecció de pacient o làmina, \textit{forward pass} al model actiu
-    i visualització del resultat N0/N1 amb la descomposició per làmina.
-    \item \textbf{Visualització de l'atenció}: representació del graf de Delaunay sobre la làmina, amb nodes
-    colorejats per pes d'atenció (capes GATConv) i visualització dels \textit{patches} RGB originals.
-    \item \textbf{Estadístiques}: corbes ROC i PR, matriu de confusió i mètriques per classe sobre el conjunt
-    de validació.
-    \item \textbf{Selecció de checkpoint}: comparació entre múltiples models entrenats.
-\end{itemize}
-
-La figura~\ref{fig:pipeline} mostra el diagrama de flux complet del sistema.
+S'ha implementat un \textit{frontend} web (FastAPI + JavaScript) per explorar els models entrenats,
+visualitzar els grafs de Delaunay amb pesos d'atenció per node i consultar corbes ROC/PR i matrius de
+confusió sobre el conjunt de test. La figura~\ref{fig:pipeline} mostra el diagrama de flux del sistema.
 
 \begin{figure*}[h]
 \centering
@@ -948,30 +973,29 @@ de l'Excel.}
 \subsection{Conclusions Parcials}
 
 En aquest TFG s'ha construït un sistema complet de classificació N0/N1 per a càncer
-colorrectal pT1 a partir de WSI, que inclou la generació de grafs espacials, l'entrenament
-del model GAT amb diverses configuracions i l'avaluació amb validació creuada de 5
-particions. L'AUC obtinguda ($0{,}817 \pm 0{,}073$) és un bon punt de partida per a un
-sistema que encara no ha estat optimitzat en profunditat. Se'n destaquen tres
-observacions:
+colorrectal pT1 a partir de WSI, que inclou la generació de grafs espacials de Delaunay,
+l'entrenament del model GAT amb un \textit{grid search} de 48 configuracions i l'avaluació
+sobre un conjunt de test fix (56 pacients). El millor model assoleix un AUC de \textbf{0,917},
+cosa que indica que la representació espacial en graf és un enfocament viable. Se'n destaquen
+tres observacions:
 
 \begin{itemize}
-  \item El mètode d'agregació MIL té un impacte molt gran: el GAT Baseline passa d'AUC
-  $0{,}581$ amb \textit{noisy-OR} a $0{,}817$ amb \textit{attention}. Triar bé com
-  s'agreguen les seccions d'un pacient és tan important com l'arquitectura del model.
-  \item GAT+DiffPool amb \textit{attention} obté menys variabilitat entre
-  \textit{folds} ($\sigma\!=\!0{,}042$) i el millor F1-N1 ($0{,}679 \pm 0{,}058$),
-  però no supera clarament el model de referència en AUC. Caldrà fer experiments
-  més amplis per saber si el \textit{pooling} jeràrquic aporta avantatge real.
-  \item El nombre de pacients és petit (230) i l'espai de cerca d'hiperparàmetres és
-  molt limitat; no és possible treure conclusions definitives en aquesta fase.
+  \item El mètode d'agregació MIL i el tipus de \textit{pooling} del graf són els factors
+  amb major influència sobre el resultat (rangs 0,200 i 0,200 respectivament). Triar bé
+  com es combinen les seccions d'un pacient és tan important com l'arquitectura del model.
+  \item El GAT Baseline supera el GAT+DiffPool en totes les comparatives, cosa que suggereix
+  que el \textit{pooling} jeràrquic no aporta avantatge real amb el conjunt de dades actual.
+  \item Un 27\% de les configuracions obté AUC$\,{<}\,0{,}5$, concentrades en combinacions
+  específiques problemàtiques (DiffPool + atenció MIL, grafs mega + DiffPool). Això confirma
+  que alguns dissenys no convergeixen bé i il·lustra la importància de fer una cerca sistemàtica.
 \end{itemize}
 
 \subsection{Treball Futur}
 
-\textbf{Ampliar la cerca d'hiperparàmetres.} Fins ara s'han provat 4 combinacions sobre
-un \textit{grid} molt reduït. En les pròximes fases s'ampliarà la cerca incloent valors
-de $h_{\text{hidden}}$, $K_1$/$K_2$ per a DiffPool, \textit{dropout} i
-\textit{learning rate}, entre d'altres, per trobar una configuració millor.
+\textbf{Ampliar la cerca d'hiperparàmetres.} El \textit{grid search} actual ha cobert
+arquitectura, tipus de graf, \textit{pooling}, agregació MIL i \textit{learning rate}. En les
+pròximes fases s'ampliarà la cerca incloent valors de $h_{\text{hidden}}$, $K_1$/$K_2$ per
+a DiffPool i \textit{dropout}, entre d'altres.
 
 \textbf{Supervisió amb màscares d'anotació.} Les màscares de displàsia i infiltració
 anotades per la Dra.\ Musulén podrien fer-se servir per guiar els pesos d'atenció del

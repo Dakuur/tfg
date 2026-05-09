@@ -79,6 +79,7 @@ STATE = _State()
 
 CKPT_DIR        = Path.home() / "outputs" / "checkpoints"
 TEST_AUC_CACHE  = CKPT_DIR / "test_auc_cache.json"
+META_CACHE      = CKPT_DIR / "checkpoint_meta_cache.json"
 GRAPHS_DIR      = Path.home() / "outputs" / "graphs"
 
 # Image serving — requires access to /mnt/iam (or IAM_PATH env var)
@@ -305,21 +306,40 @@ def _load_test_auc_cache() -> dict:
     return {}
 
 
+def _load_meta_cache() -> dict:
+    try:
+        if META_CACHE.exists():
+            return json.loads(META_CACHE.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+def _save_meta_cache(cache: dict) -> None:
+    try:
+        META_CACHE.write_text(json.dumps(cache, indent=2))
+    except Exception:
+        pass
+
+
 def _list_checkpoints() -> List[Dict]:
     if not CKPT_DIR.exists():
         return []
     test_auc_cache = _load_test_auc_cache()
+    meta_cache     = _load_meta_cache()
     ckpts = sorted(CKPT_DIR.rglob("*.pt"))
     result = []
+    cache_updated = False
     for p in ckpts:
         cfg  = _read_config_yaml(p)
         rel  = str(p.relative_to(CKPT_DIR).with_suffix(""))
+        mtime = int(p.stat().st_mtime)
         entry: dict = {
             "name":       rel,
             "file":       str(p.relative_to(CKPT_DIR)),
             "active":     STATE.checkpoint_info is not None and STATE.checkpoint_info.get("name") == rel,
             "has_config": cfg is not None,
-            "mtime":      int(p.stat().st_mtime),
+            "mtime":      mtime,
             "test_auc":   test_auc_cache.get(rel),
         }
         if cfg and "model" in cfg:
@@ -328,14 +348,33 @@ def _list_checkpoints() -> List[Dict]:
             entry["heads"]       = cfg["model"].get("heads")
         if cfg and "training" in cfg:
             entry["aggregation"] = cfg["training"].get("aggregation")
-        try:
-            ckpt = torch.load(p, weights_only=True, map_location="cpu")
-            entry["epoch"]        = ckpt.get("epoch")
-            entry["val_auc"]      = ckpt.get("val_auc")
-            entry["val_f1_macro"] = ckpt.get("val_f1_macro")
-        except Exception:
-            pass
+
+        # Use metadata cache to avoid torch.load() on every request
+        cached = meta_cache.get(rel)
+        if cached and cached.get("mtime") == mtime:
+            entry["epoch"]        = cached.get("epoch")
+            entry["val_auc"]      = cached.get("val_auc")
+            entry["val_f1_macro"] = cached.get("val_f1_macro")
+        else:
+            try:
+                ckpt = torch.load(p, weights_only=True, map_location="cpu")
+                entry["epoch"]        = ckpt.get("epoch")
+                entry["val_auc"]      = ckpt.get("val_auc")
+                entry["val_f1_macro"] = ckpt.get("val_f1_macro")
+                meta_cache[rel] = {
+                    "mtime":        mtime,
+                    "epoch":        entry["epoch"],
+                    "val_auc":      entry["val_auc"],
+                    "val_f1_macro": entry["val_f1_macro"],
+                }
+                cache_updated = True
+            except Exception:
+                pass
         result.append(entry)
+
+    if cache_updated:
+        _save_meta_cache(meta_cache)
+
     # Sort by test_auc desc (fallback to val_auc, then name)
     result.sort(key=lambda e: (
         -(e["test_auc"] if e.get("test_auc") is not None else -1),
