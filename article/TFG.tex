@@ -344,10 +344,7 @@ característiques i col·locant les matrius d'adjacència en la diagonal d'una m
 Els triangles fora de la diagonal queden a zero, és a dir, no hi ha arestes entre seccions
 diferents. D'aquesta manera el mecanisme d'atenció del GAT opera sobre totes les seccions
 simultàniament, i un únic \textit{pooling} global produeix directament el diagnòstic del pacient
-sense necessitat d'una etapa d'agregació de probabilitats. Tots dos models estan implementats:
-el Model 1 és el mode per defecte del \textit{pipeline}, i el Model 2 s'activa amb l'argument
-\texttt{-{}-mega} de \texttt{scripts/build\_dataset.py}, que genera un fitxer \texttt{.pt} per
-pacient en lloc d'un per secció.
+sense necessitat d'una etapa d'agregació de probabilitats.
 
 \subsection{Connectivitat per triangulació de Delaunay}
 
@@ -727,7 +724,7 @@ amb mètriques registrades a \textit{Weights \& Biases}. El millor model per AUC
 \textit{patience} de 10, basant el criteri d'aturada en la pèrdua de validació.
 
 La partició del conjunt de dades es realitza \textbf{una sola vegada} en el moment de construir els grafs,
-amb estratificació a nivell de pacient (llavor fixa \texttt{random\_state=42}): 70\% entrenament,
+amb estratificació a nivell de pacient: 70\% entrenament,
 15\% validació i 15\% test. Els grafs s'emmagatzemen físicament en tres subdirectoris independents
 (\texttt{train/}, \texttt{val/}, \texttt{test/}), i la partició es registra en un fitxer
 \texttt{split.json} per garantir la reproductibilitat i evitar la filtració de dades entre conjunts.
