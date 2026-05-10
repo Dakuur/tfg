@@ -233,12 +233,11 @@ El conjunt de dades efectiu comprèn \textbf{1.607 grafs} (un per secció histol
 (Taula~\ref{tab:dataset}). D'un total de 606 pacients a la base de dades clínica, 236 es descarten
 per diagnòstic indeterminat (NX), i dels 370 restants amb diagnòstic vàlid, 3 no disposen
 d'embeddings UNI2 generats, deixant 367 pacients usables. Les mostres es divideixen en conjunts
-d'entrenament (70\%), validació (15\%) i test (15\%) estratificats a nivell de pacient,
-amb llavor fixa (\texttt{random\_state=42}).
+d'entrenament (70\%), validació (15\%) i test (15\%) estratificats a nivell de pacient.
 
 \begin{table*}[t]
 \centering
-\caption{Composició del dataset efectiu per partició (26 hospitals, \texttt{random\_state=42}).
+\caption{Composició del dataset efectiu per partició (26 hospitals).
 Els grafs corresponen a seccions histològiques individuals (un per secció).}
 \label{tab:dataset}
 \small
@@ -885,13 +884,13 @@ agregació \textit{mean}, $\text{lr}=10^{-5}$, conjunt de test, 56 pacients).}
  & & \textbf{N0} & \textbf{N1} \\
 \midrule
 \multirow{2}{*}{\textbf{Predicció}}
-  & \textbf{N0} & \textbf{XX} & \textbf{XX} \\
-  & \textbf{N1} & \textbf{XX} & \textbf{XX} \\
+  & \textbf{N0} & \textbf{36} & \textbf{7} \\
+  & \textbf{N1} & \textbf{4} & \textbf{9} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\section{Implementació i Frontend}
+\section{Implementació}
 
 La implementació segueix un disseny modular: la construcció de grafs, el model, el codi d'entrenament i els
 \textit{data loaders} estan desacoblats per facilitar l'experimentació independent. La configuració
@@ -899,9 +898,11 @@ d'hiperparàmetres es gestiona via fitxer YAML, on qualsevol paràmetre pot ser 
 \textit{grid search} automàtic. El repositori és accessible a \cite{morillo2026codi} i el desplegament al
 servidor CVC es gestiona via GitHub Actions amb un \textit{runner self-hosted}.
 
-S'ha implementat un \textit{frontend} web (FastAPI + JavaScript) per explorar els models entrenats,
+S'ha implementat un \textit{frontend} web per explorar els models entrenats,
 visualitzar els grafs de Delaunay amb pesos d'atenció per node i consultar corbes ROC/PR i matrius de
-confusió sobre el conjunt de test. La figura~\ref{fig:pipeline} mostra el diagrama de flux del sistema.
+confusió sobre el conjunt de test.
+
+La figura~\ref{fig:pipeline} mostra el diagrama de flux de la implementació completa, d'aquest treball.
 
 \begin{figure*}[h]
 \centering
