@@ -50,16 +50,91 @@ else:
     # Fallback: same directory as this script (old layout)
     sys.path.insert(0, str(Path(__file__).parent))
 
+import pandas as pd
+from PIL import Image as _PILImage
+
 from wsi_io import (  # noqa: E402
     CLS_DIR_SUBPATH,
     find_patches_dir,
     load_all_npz,
-    load_slide_meta,
-    load_mask_image,
-    load_rgb_image,
 )
 
+_PILImage.MAX_IMAGE_PIXELS = 400_000_000
+
 PATCH_PX = 2048
+
+# ── PEARSON2-aware path constants ─────────────────────────────────────────────
+_BASE = "Database/MedicalImaging/HistoPatologia/ColonCancer/PrivateBD"
+# Slide metadata: PEARSON2 (new columns: patient/slide); fallback PEARSON (patient_ID/slide_ID)
+_META_CANDIDATES = [
+    (_BASE + "/PEARSON2/Patient_Images_metadata.csv",       "patient",    "slide"),
+    (_BASE + "/PEARSON/Images/Patient_Images_metadata.csv", "patient_ID", "slide_ID"),
+]
+# RGB images remain in old PEARSON (not yet in PEARSON2)
+_RGB_CANDIDATES = [
+    _BASE + "/PEARSON/Images/RGB_Images",
+    _BASE + "/PEARSON2/RGB_Images",
+]
+# Masks: PEARSON2 first, then old PEARSON
+_MASK_CANDIDATES = [
+    _BASE + "/PEARSON2/Segmentation_Masks",
+    _BASE + "/PEARSON/Images/Segmentation_Masks",
+]
+
+
+# ── local I/O helpers (override wsi_io for PEARSON2 compatibility) ─────────────
+
+def load_slide_meta(iam_path: Path, hospital: str, patient: str, slide: str):
+    """Try PEARSON2 metadata CSV first (patient/slide cols), then old PEARSON."""
+    for rel_path, pat_col, slide_col in _META_CANDIDATES:
+        meta_path = iam_path / rel_path
+        if not meta_path.exists():
+            continue
+        try:
+            df = pd.read_csv(meta_path, encoding="utf-8")
+        except Exception:
+            continue
+        if pat_col not in df.columns or slide_col not in df.columns:
+            continue
+        row = df[
+            (df["hospital"].astype(str) == hospital) &
+            (df[pat_col].astype(str)    == patient)  &
+            (df[slide_col].astype(str)  == slide)
+        ]
+        if not row.empty:
+            r = row.iloc[-1]
+            return {"j_base": float(r["j"]), "i_base": float(r["i"]),
+                    "w": float(r["w"]), "h": float(r["h"])}
+    print(f"[WARN] {hospital}/{patient}/{slide} not found in any slide metadata CSV.")
+    return None
+
+
+def load_rgb_image(iam_path: Path, hospital: str, patient: str, slide: str):
+    """Load RGB slide image; searches PEARSON and PEARSON2 locations."""
+    for rel in _RGB_CANDIDATES:
+        rgb_dir = iam_path / rel
+        if not rgb_dir.is_dir():
+            continue
+        path = rgb_dir / hospital / patient / f"{hospital}_{slide}.png"
+        if path.exists():
+            print(f"[INFO] RGB image : {path}")
+            return np.array(_PILImage.open(path).convert("RGB"))
+    print(f"[WARN] RGB image not found for {hospital}/{patient}/{slide}")
+    return None
+
+
+def load_mask_image(iam_path: Path, hospital: str, patient: str, slide: str):
+    """Load segmentation mask; searches PEARSON2 then PEARSON."""
+    for rel in _MASK_CANDIDATES:
+        masks_dir = iam_path / rel
+        if not masks_dir.is_dir():
+            continue
+        path = masks_dir / hospital / patient / f"{hospital}_{slide}_mask.png"
+        if path.exists():
+            print(f"[INFO] Mask      : {path}")
+            return np.array(_PILImage.open(path).convert("RGB"))
+    print(f"[WARN] Mask not found for {hospital}/{patient}/{slide}")
+    return None
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -69,7 +144,6 @@ def _wsi_to_display(j, i, j_base, i_base, scale):
 
 
 def _load_patch(slide_patches_dir, basename):
-    from PIL import Image as _PILImage
     p = slide_patches_dir / basename
     if not p.exists():
         return None
@@ -83,18 +157,52 @@ def _load_patch(slide_patches_dir, basename):
 
 def render_simple_square(rgb_img, mask_img, coord_arrays, slide_meta,
                          title, out_path, show_mask=False, rect_kw=None):
-    rgb_h, rgb_w = rgb_img.shape[:2]
-    scale = rgb_w / slide_meta["w"]
-
+    """
+    Draws a 2048×2048 rectangle per patch.
+    If rgb_img is None (RGB not available for this slide), uses a dark blank canvas
+    scaled from the WSI metadata bounds. If slide_meta is also None, falls back to
+    plotting patches on a coordinate canvas derived from the patch positions.
+    """
     if rect_kw is None:
-        rect_kw = dict(linewidth=1, edgecolor="#00e5ff", facecolor="none", alpha=0.75)
+        rect_kw = dict(linewidth=1, edgecolor="#00e5ff", facecolor="none", alpha=0.85)
+
+    if rgb_img is not None and slide_meta is not None:
+        # Normal mode: RGB background
+        rgb_h, rgb_w = rgb_img.shape[:2]
+        scale  = rgb_w / slide_meta["w"]
+        j_base = slide_meta["j_base"]
+        i_base = slide_meta["i_base"]
+        canvas = rgb_img
+    elif slide_meta is not None:
+        # No RGB: blank canvas sized from WSI metadata
+        print("[INFO] No RGB image available — rendering patch positions on blank canvas.")
+        canvas_w = min(2000, max(800, int(slide_meta["w"] / 20)))
+        canvas_h = min(1500, max(600, int(slide_meta["h"] / 20)))
+        scale  = canvas_w / slide_meta["w"]
+        j_base = slide_meta["j_base"]
+        i_base = slide_meta["i_base"]
+        canvas = np.full((canvas_h, canvas_w, 3), 30, dtype=np.uint8)
+    else:
+        # No RGB and no metadata: build canvas from patch coordinates
+        print("[INFO] No RGB or metadata — rendering patch positions from coordinates.")
+        js = coord_arrays[:, 0].astype(float)
+        is_ = coord_arrays[:, 1].astype(float)
+        j_base = js.min()
+        i_base = is_.min()
+        wsi_w  = js.max() - js.min() + PATCH_PX
+        wsi_h  = is_.max() - is_.min() + PATCH_PX
+        target_w = 1800
+        scale  = target_w / max(wsi_w, 1)
+        canvas_w = int(wsi_w * scale)
+        canvas_h = int(wsi_h * scale)
+        canvas = np.full((canvas_h, canvas_w, 3), 30, dtype=np.uint8)
 
     fig, ax = plt.subplots(figsize=(14, 10))
     fig.patch.set_facecolor("#1a1a2e")
     ax.set_facecolor("#1a1a2e")
     ax.axis("off")
     fig.suptitle(title, color="white", fontsize=9, y=0.998)
-    ax.imshow(rgb_img, origin="upper")
+    ax.imshow(canvas, origin="upper")
 
     if show_mask and mask_img is not None:
         alpha_ch = (mask_img.sum(axis=-1) > 0).astype(np.uint8) * 180
@@ -104,7 +212,7 @@ def render_simple_square(rgb_img, mask_img, coord_arrays, slide_meta,
     rect_px = PATCH_PX * scale
     for coord in coord_arrays:
         j_c, i_c = float(coord[0]), float(coord[1])
-        cx, cy   = _wsi_to_display(j_c, i_c, slide_meta["j_base"], slide_meta["i_base"], scale)
+        cx, cy   = _wsi_to_display(j_c, i_c, j_base, i_base, scale)
         ax.add_patch(mpatches.Rectangle((cx, cy), rect_px, rect_px, **rect_kw))
 
     plt.tight_layout(rect=[0, 0, 1, 0.998])
@@ -330,8 +438,10 @@ def main():
     out_path = Path(args.output)
 
     if args.mode == "simple_square":
-        if rgb_img is None or slide_meta is None:
-            sys.exit("[ERROR] simple_square mode requires the RGB image and slide metadata.")
+        if rgb_img is None:
+            print("[INFO] RGB image not available for this slide — using blank canvas.")
+        if slide_meta is None:
+            print("[INFO] Slide metadata not found — patch positions derived from coordinates.")
         render_simple_square(
             rgb_img=rgb_img, mask_img=mask_img, coord_arrays=coord_arrays,
             slide_meta=slide_meta, title=title, out_path=out_path, show_mask=args.show_mask,
