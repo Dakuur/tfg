@@ -17,7 +17,13 @@ jobs:
       - name: 1b. Inicialitzar submoduls
         run: |
           git config submodule.pt1diagnosis.url git@github.com:IAM-CVC/PT1Diagnosis.git
-          git submodule update --init
+          # Si el submòdul ja existeix al runner, descarta qualsevol edició local
+          # (mai hauria d'haver-hi feina en curs allà — el runner ha d'estar prístí).
+          if [ -d pt1diagnosis/.git ] || [ -f pt1diagnosis/.git ]; then
+            git -C pt1diagnosis reset --hard HEAD || true
+            git -C pt1diagnosis clean -fd       || true
+          fi
+          git submodule update --init --force --recursive
 
       - name: 2. Configurar Entorn Virtual
         run: |
