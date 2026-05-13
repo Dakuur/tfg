@@ -722,22 +722,41 @@ proporcional a la freqüència de la seva classe. Això garanteix que cada \text
 proporció equilibrada de casos N0 i N1, evitant que el model vegi gairebé exclusivament N0 durant molts
 \textit{batches} consecutius.
 
-\subsection{Grid Search i Configuració d'Entrenament}
+\subsection{Grid Search i Validació Creuada}
+\label{sec:gridsearch}
 
-S'ha dut a terme un \textit{grid search} amb múltiples hiperparàmetres variables: \textit{hidden units}, nombre
-de caps d'atenció, tipus de \textit{pooling}, mètode d'agregació MIL, nombre de clústers DiffPool,
-\textit{dropout} i \textit{weight decay}. Cada combinació d'hiperparàmetres genera una \textit{run} independent
-amb mètriques registrades a \textit{Weights \& Biases}. El millor model per AUC de validació es desa com a
-\textit{checkpoint}. L'entrenament inclou \textit{early stopping} amb 15 epochs de \textit{warm-up} i
-\textit{patience} de 10, basant el criteri d'aturada en la pèrdua de validació.
+L'avaluació de cada configuració d'hiperparàmetres s'efectua mitjançant
+\textbf{Stratified K-Fold Cross-Validation} ($K = 5$) sobre el pool d'entrenament/validació,
+mantenint el conjunt de test completament aïllat des de la construcció dels grafs. Aquest esquema
+substitueix el \textit{hold-out} simple emprat inicialment per dues raons:
 
-La partició del conjunt de dades es realitza \textbf{una sola vegada} en el moment de construir els grafs,
-amb estratificació a nivell de pacient: 70\% entrenament,
-15\% validació i 15\% test. Els grafs s'emmagatzemen físicament en tres subdirectoris independents
-(\texttt{train/}, \texttt{val/}, \texttt{test/}), i la partició es registra en un fitxer
-\texttt{split.json} per garantir la reproductibilitat i evitar la filtració de dades entre conjunts.
-El conjunt de test no s'utilitza durant l'entrenament ni la selecció d'hiperparàmetres: únicament
-s'empra per a l'avaluació final de les mètriques clíniques (sensibilitat, especificitat, AUC-ROC).
+\begin{itemize}
+    \item \textbf{Estabilitat estadística.} Reportar mitjana i desviació típica
+    ($\mu \pm \sigma$) sobre $K = 5$ folds proporciona una mesura més robusta del rendiment
+    esperat. Amb un conjunt relativament petit (367 pacients), un únic \textit{hold-out} és
+    sensible a la composició concreta del split i pot sobreestimar o subestimar la capacitat
+    de generalització del model.
+    \item \textbf{Representativitat de classes.} L'estratificació per etiqueta N0/N1 manté la
+    proporció original de classes a cada fold. En histopatologia això és especialment crític:
+    amb una classe minoritària com N1 (28\% del dataset), un split aleatori podria
+    infrarepresentar-la i distorsionar les mètriques de sensibilitat, mètrica clínicament
+    més important que l'especificitat.
+\end{itemize}
+
+Per a cada combinació del \textit{grid} s'entrenen $K = 5$ models independents (un per fold).
+Cada model usa \textit{early stopping} (patience$= 20$) i \texttt{ReduceLROnPlateau} sobre la
+pèrdua de validació del fold corresponent. Les mètriques reportades són $\mu \pm \sigma$ d'AUC-ROC,
+sensibilitat, F1-macro i \textit{accuracy}. Un cop identificat el millor model per AUC mitjana
+de validació creuada, s'avalua sobre el conjunt de test (56 pacients) per obtenir l'estimació
+final de generalització. Aquest valor s'incorpora al report únicament del millor model, no de
+totes les configuracions, per preservar la independència del test set.
+
+Físicament, els grafs es desen en tres subdirectoris (\texttt{train/}, \texttt{val/},
+\texttt{test/}) amb un fitxer \texttt{split.json} que registra la partició a nivell de pacient.
+Les carpetes \texttt{train/} i \texttt{val/} es tracten com un únic pool durant la validació
+creuada, mentre que \texttt{test/} resta intacta i fora de qualsevol procés d'ajust: pesos de
+classe, paràmetres del model i tota selecció d'hiperparàmetres s'ajusten exclusivament sobre el
+fold d'entrenament per evitar filtracions de dades (\textit{data leakage}).
 
 \section{Resultats Preliminars}
 
