@@ -28,6 +28,14 @@ export async function renderStatistics(container) {
   const dist  = data.class_distribution || {};
   const curAgg = data.aggregation ?? "noisy_or";
 
+  // K-Fold CV summary (μ ± σ) si el checkpoint el porta al YAML.
+  const cv       = data.cv || {};
+  const cvMean   = cv.mean?.auc;
+  const cvStd    = cv.std?.auc;
+  const cvFolds  = cv.folds;
+  const hasCV    = cvMean != null && cvStd != null;
+  const cvAucStr = hasCV ? `${cvMean.toFixed(4)} ± ${cvStd.toFixed(4)}` : "—";
+
   // Mètriques clíniques derivades (des del servidor o des de la CM)
   const _cm = data.confusion_matrix;
   const _TN = _cm ? _cm[0][0] : 0, _FP = _cm ? _cm[0][1] : 0,
@@ -46,7 +54,7 @@ export async function renderStatistics(container) {
           <h1 class="page-title">Estadístiques del model</h1>
           <p class="page-sub">
             Test set · ${total} ${level} · AUC test = ${auc}
-            <span style="color:var(--text3)"> (AUC val (training) al Dashboard)</span>
+            ${hasCV ? `<span style="color:var(--text3)"> · CV AUC = ${cvAucStr} (${cvFolds}-fold)</span>` : `<span style="color:var(--text3)"> (AUC val (training) al Dashboard)</span>`}
           </p>
         </div>
         <div style="padding-top:0.3rem;font-size:0.82rem;color:#666">
@@ -69,7 +77,7 @@ export async function renderStatistics(container) {
       <div class="card">
         <div class="card-title">AUC-ROC (test)</div>
         <div class="card-value accent">${auc}</div>
-        <div class="card-sub">àrea sota la corba ROC</div>
+        <div class="card-sub">${hasCV ? `CV: ${cvAucStr} (${cvFolds}-fold)` : "àrea sota la corba ROC"}</div>
       </div>
       <div class="card">
         <div class="card-title">Acc. Balancejada</div>
@@ -144,7 +152,9 @@ export async function renderStatistics(container) {
         name: "Aleatori",
         hoverinfo: "skip",
       },
-    ], plotLayout("FPR", "TPR", `AUC = ${auc}`), { displayModeBar: false, responsive: true });
+    ], plotLayout("FPR", "TPR",
+        hasCV ? `AUC test = ${auc}  ·  CV = ${cvAucStr}` : `AUC = ${auc}`),
+      { displayModeBar: false, responsive: true });
   }
 
   // ── Matriu de confusió ─────────────────────────────────────────────────────

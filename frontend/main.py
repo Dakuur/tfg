@@ -159,6 +159,20 @@ def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
     if cfg and "training" in cfg:
         aggregation = cfg["training"].get("aggregation", "noisy_or")
 
+    # CV K-Fold: μ ± σ del YAML (escrit per PipelineGAT.py). Permet mostrar
+    # AUC ± std al Dashboard / Estadístiques del frontend.
+    cv_info: dict = {}
+    if cfg and isinstance(cfg.get("cv"), dict):
+        cv = cfg["cv"]
+        cv_info = {
+            "folds":     cv.get("folds"),
+            "best_fold": cv.get("best_fold"),
+        }
+        if isinstance(cv.get("mean"), dict):
+            cv_info["mean"] = cv["mean"]
+        if isinstance(cv.get("std"), dict):
+            cv_info["std"] = cv["std"]
+
     model = GATClassifier(
         in_channels=in_channels, hidden=hidden, heads=heads,
         dropout=dropout, pooling=pooling, diff_clusters=diff_clusters,
@@ -185,6 +199,7 @@ def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
         "aggregation":  aggregation,
         "num_params":   sum(p.numel() for p in model.parameters()),
         "has_config":   cfg is not None,
+        "cv":           cv_info,
     }
     return model, info
 
@@ -348,6 +363,15 @@ def _list_checkpoints() -> List[Dict]:
             entry["heads"]       = cfg["model"].get("heads")
         if cfg and "training" in cfg:
             entry["aggregation"] = cfg["training"].get("aggregation")
+        # K-Fold CV summary (μ ± σ) si el YAML el conté
+        if cfg and isinstance(cfg.get("cv"), dict):
+            cv = cfg["cv"]
+            cv_entry: dict = {"folds": cv.get("folds"), "best_fold": cv.get("best_fold")}
+            if isinstance(cv.get("mean"), dict):
+                cv_entry["auc_mean"] = cv["mean"].get("auc")
+            if isinstance(cv.get("std"), dict):
+                cv_entry["auc_std"]  = cv["std"].get("auc")
+            entry["cv"] = cv_entry
 
         # Use metadata cache to avoid torch.load() on every request
         cached = meta_cache.get(rel)
@@ -878,16 +902,30 @@ async def inference_patient(req: PatientInferenceRequest):
     }
 
 
+def _stats_with_cv(base: dict) -> dict:
+    """Afegeix les mètriques de K-Fold CV del checkpoint (si n'hi ha)."""
+    if not base:
+        return base
+    cv = (STATE.checkpoint_info or {}).get("cv") or {}
+    if cv:
+        out = dict(base)
+        out["cv"] = cv
+        return out
+    return base
+
+
 @app.get("/api/stats")
 async def stats():
     if STATE.val_stats is not None:
-        return STATE.val_stats
+        return _stats_with_cv(STATE.val_stats)
     if STATE.model is None:
         return JSONResponse({"error": "No model loaded"}, status_code=503)
     if not STATE.graphs["val"]:
         return JSONResponse({"error": "No validation graphs found"}, status_code=404)
     STATE.val_stats = _compute_val_stats(STATE.model, STATE.graphs["val"], STATE.device, STATE.aggregation)
-    return STATE.val_stats or JSONResponse({"error": "Could not compute statistics"}, status_code=500)
+    if STATE.val_stats is None:
+        return JSONResponse({"error": "Could not compute statistics"}, status_code=500)
+    return _stats_with_cv(STATE.val_stats)
 
 
 def _slide_dir_patch_index(search_dir: Path, hospital: str, patient_id: str, slide_id: str

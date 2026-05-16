@@ -101,7 +101,11 @@ export async function renderDashboard(container) {
       <div class="card">
         <div class="card-title">AUC test</div>
         <div class="card-value accent">${ck?.test_auc != null ? ck.test_auc.toFixed(4) : (ck?.val_auc != null ? ck.val_auc.toFixed(4) : "—")}</div>
-        <div class="card-sub">${ck?.test_auc != null ? `val: ${ck.val_auc?.toFixed(4) ?? "—"} · ep. ${ck?.epoch ?? "—"}` : `val AUC · epoch ${ck?.epoch ?? "—"}`}</div>
+        <div class="card-sub">${
+          ck?.cv?.auc_mean != null
+            ? `CV: ${ck.cv.auc_mean.toFixed(4)} ± ${ck.cv.auc_std?.toFixed(4) ?? "—"} (${ck.cv.folds}-fold)`
+            : (ck?.test_auc != null ? `val: ${ck.val_auc?.toFixed(4) ?? "—"} · ep. ${ck?.epoch ?? "—"}` : `val AUC · epoch ${ck?.epoch ?? "—"}`)
+        }</div>
       </div>
 
       <div class="card">
@@ -126,6 +130,7 @@ export async function renderDashboard(container) {
             <div class="stat-row"><span class="stat-key">Epoch</span><span class="stat-val">${ck.epoch ?? "—"}</span></div>
             <div class="stat-row"><span class="stat-key">Val AUC</span><span class="stat-val">${ck.val_auc?.toFixed(4) ?? "—"}</span></div>
             ${ck.val_f1_macro != null ? `<div class="stat-row"><span class="stat-key">Val F1 macro</span><span class="stat-val">${ck.val_f1_macro.toFixed(4)}</span></div>` : ""}
+            ${ck.cv?.auc_mean != null ? `<div class="stat-row"><span class="stat-key">CV AUC (${ck.cv.folds}-fold)</span><span class="stat-val accent">${ck.cv.auc_mean.toFixed(4)} ± ${ck.cv.auc_std?.toFixed(4) ?? "—"}</span></div>` : ""}
             <div class="stat-row"><span class="stat-key">Paràmetres</span><span class="stat-val">${ck.num_params?.toLocaleString() ?? "—"}</span></div>
             <div class="stat-row"><span class="stat-key">Dispositiu</span><span class="stat-val">${status.device.toUpperCase()}</span></div>
             <div class="stat-row"><span class="stat-key">in_channels</span><span class="stat-val">${ck.in_channels}</span></div>
