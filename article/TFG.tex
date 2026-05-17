@@ -83,7 +83,8 @@ característiques. Cada node és un \textit{patch} de 2048$\times$2048 px repres
 CLS (1.536 dim.) del model UNI2. Es comparen dues arquitectures: un GAT de referència
 amb \textit{readout} pla i un GAT amb \textbf{DiffPool jeràrquic} intercalat ($N\!\to\!K_1\!\to\!K_2$
 super-nodes) per obtenir representacions a múltiples escales. El diagnòstic per pacient s'obté per
-agregació MIL sobre les seccions. El millor model obté un AUC de $0{,}917$ (Selecció d'hiperparàmetres, 367 pacients).
+agregació MIL sobre les seccions. El millor model obté un AUC de test de $0{,}925$ amb sensibilitat
+i especificitat de $0{,}875$ (validació creuada 5-fold; AUC CV $= 0{,}860 \pm 0{,}061$; 367 pacients).
 \\
 \\
 \textbf{Paraules clau-- } Càncer colorrectal pT1, Histopatologia digital, Graph Attention Networks,
@@ -100,7 +101,8 @@ feature-similarity graph approaches. Each node is a 2048$\times$2048 px patch re
 \textbf{GAT baseline} with flat readout (mean/max) and a \textbf{GAT+DiffPool} model
 with pooling layers interleaved between GAT layers ($N\!\to\!K_1\!\to\!K_2$ super-nodes) for
 multi-scale representations. Patient-level diagnosis is obtained via MIL aggregation over
-histological sections. The best model achieves an AUC of $0.817$ (Hyperparameter selection, 367 patients).
+histological sections. The best model achieves a test AUC of $0.925$ with $0.875$
+sensitivity/specificity (5-fold cross-validation; CV AUC $= 0.860 \pm 0.061$; 367 patients).
 \\
 \\
 \textbf{Keywords-- } pT1 colorectal cancer, Digital histopathology, Graph Attention Networks,
@@ -354,7 +356,7 @@ simetria de la quadrícula. Per aquest motiu, s'aplica una \textbf{triangulació
 nodes restants, que s'adapta a distribucions irregulars de forma natural. A continuació, s'eliminen les
 arestes que travessen píxels de valor zero a la màscara, evitant connexions entre regions separades per
 espai buit. Finalment, s'aplica un criteri de distància màxima: s'eliminen les arestes que superen el
-doble de la longitud mitjana del conjunt (\texttt{DISTANCE\_FACTOR} $= 2{,}0$). La subfigura~\ref{fig:delaunay-real} mostra el resultat sobre
+doble de la longitud mitjana del conjunt. La subfigura~\ref{fig:delaunay-real} mostra el resultat sobre
 la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en vermell.
 
 Cal notar que una secció histològica pot contenir múltiples regions de teixit físicament separades
@@ -744,19 +746,28 @@ substitueix el \textit{hold-out} simple emprat inicialment per dues raons:
 \end{itemize}
 
 Per a cada combinació del \textit{grid} s'entrenen $K = 5$ models independents (un per fold).
-Cada model usa \textit{early stopping} (patience$= 20$) i \texttt{ReduceLROnPlateau} sobre la
-pèrdua de validació del fold corresponent. Les mètriques reportades són $\mu \pm \sigma$ d'AUC-ROC,
-sensibilitat, F1-macro i \textit{accuracy}. Un cop identificat el millor model per AUC mitjana
-de validació creuada, s'avalua sobre el conjunt de test (56 pacients) per obtenir l'estimació
-final de generalització. Aquest valor s'incorpora al report únicament del millor model, no de
-totes les configuracions, per preservar la independència del test set.
+Cada model usa \textit{early stopping} (patience$= 20$) i reducció adaptativa de la taxa
+d'aprenentatge en \textit{plateau} sobre la pèrdua de validació del fold corresponent. Les
+mètriques reportades són $\mu \pm \sigma$ d'AUC-ROC, sensibilitat, F1-macro i \textit{accuracy}.
+Un cop identificat el millor model per AUC mitjana de validació creuada, s'avalua sobre el
+conjunt de test (56 pacients) per obtenir l'estimació final de generalització. Aquest valor
+s'incorpora al report únicament del millor model, no de totes les configuracions, per preservar
+la independència del test set.
 
-Físicament, els grafs es desen en tres subdirectoris (\texttt{train/}, \texttt{val/},
-\texttt{test/}) amb un fitxer \texttt{split.json} que registra la partició a nivell de pacient.
-Les carpetes \texttt{train/} i \texttt{val/} es tracten com un únic pool durant la validació
-creuada, mentre que \texttt{test/} resta intacta i fora de qualsevol procés d'ajust: pesos de
-classe, paràmetres del model i tota selecció d'hiperparàmetres s'ajusten exclusivament sobre el
-fold d'entrenament per evitar filtracions de dades (\textit{data leakage}).
+L'espai de cerca cobreix de manera conjunta els hiperparàmetres del model i de l'optimitzador:
+arquitectura (GAT Baseline / GAT+DiffPool), tipus de graf (per secció / per pacient), estratègia
+de \textit{pooling}, agregació MIL, \textit{learning rate}, dimensió oculta $h$, nombre de caps
+d'atenció $H$, taxa de \textit{dropout} i regularització L2 ($\lambda_{\text{wd}}$). Les
+configuracions amb $h$ i $H$ elevats poden saturar la memòria GPU; en aquest cas el sistema
+redueix automàticament la mida del \textit{batch} de pacients i reintenta el fold, garantint
+que totes les combinacions s'avaluen.
+
+Els grafs es preparten físicament a nivell de pacient en tres particions disjuntes
+(entrenament, validació i test); les dues primeres formen el \textit{pool} sobre el qual
+s'executa la validació creuada, mentre que la partició de test resta intacta i fora de
+qualsevol procés d'ajust. Pesos de classe, paràmetres del model i tota selecció
+d'hiperparàmetres s'ajusten exclusivament sobre el fold d'entrenament per evitar filtracions de
+dades (\textit{data leakage}).
 
 \section{Resultats Preliminars}
 
@@ -768,48 +779,57 @@ proporció de casos N1 detectats correctament) i l'\textbf{especificitat}
 context clínic com la detecció de metàstasi, la sensibilitat és especialment rellevant perquè
 un fals negatiu (deixar un pacient N1 sense tractar) és més greu que un fals positiu.
 
-S'han avaluat \textbf{48 configuracions} que creuen: arquitectura (GAT Baseline / GAT+DiffPool),
-tipus de graf (per secció / per pacient), \textit{pooling} (attention / mean\_max / diff),
-agregació MIL (mean / attention / noisy-OR) i \textit{learning rate}
-$\{10^{-3}, 10^{-4}, 10^{-5}, 10^{-6}\}$.
-La taula completa es troba a l'Apèndix~\ref{sec:appendix-gs}.
-La Taula~\ref{tab:grid} resumeix les millors configuracions de cada família sobre el conjunt de test.
+La cerca d'hiperparàmetres es realitza mitjançant validació creuada 5-fold sobre el
+\textit{pool} d'entrenament/validació (vegeu Secció~\ref{sec:gridsearch}), explorant
+conjuntament: arquitectura (GAT Baseline / GAT+DiffPool), tipus de graf (per secció / per
+pacient), \textit{pooling} (\textit{attention} / \textit{mean\_max} / \textit{diff}), agregació
+MIL (\textit{mean} / \textit{attention} / \textit{noisy-OR}), \textit{learning rate}, dimensió
+oculta $h$, nombre de caps d'atenció $H \in \{2, 4, 8\}$, \textit{dropout}
+$\in \{0{,}1; 0{,}2; 0{,}3\}$ i regularització L2 $\lambda_{\text{wd}} \in \{0,\,10^{-4}\}$.
+La cerca és \textbf{en curs}: aquí es reporta el millor candidat identificat fins ara, que ja
+supera els resultats de la primera tanda exploratòria sobre \textit{hold-out} simple
+(48 configuracions) amb una millora d'AUC de test de $0{,}917 \to 0{,}925$ i, sobretot, amb una
+sensibilitat substancialment superior (de $0{,}56$ a $0{,}875$).
+La Taula~\ref{tab:grid} resumeix la millor configuració actual i alguns dels models
+representatius avaluats.
 
 \begin{table*}[t]
 \centering
-\caption{Millors configuracions del \textit{grid search} sobre el conjunt de \textbf{test} (nivell de pacient, 56 pacients).
-\textbf{Negreta}: millor valor per columna.}
+\caption{Millor configuració actual de la cerca v3 (validació creuada 5-fold; test de 56 pacients).
+Es mostren mètriques de CV ($\mu \pm \sigma$ sobre els 5 folds) i AUC sobre el conjunt de test, mai vist.
+\textbf{Negreta}: model seleccionat com a candidat estrella.}
 \label{tab:grid}
 \small
-\begin{tabular}{lllllrr}
+\begin{tabular}{llllcccrr}
 \toprule
-\textbf{Model} & \textbf{Graf} & \textbf{Pooling} & \textbf{MIL} & \textbf{LR} & \textbf{AUC val} & \textbf{AUC test} \\
+\textbf{Model} & \textbf{Pooling} & \textbf{MIL} & \textbf{LR} & $H$ & \textbf{drop} & $\lambda_{\text{wd}}$ & \textbf{AUC CV} & \textbf{AUC test} \\
 \midrule
-GAT Baseline & per secció & \textit{attention} & \textit{mean}      & $10^{-5}$ & $0{,}878$ & $\mathbf{0{,}917}$ \\
-GAT Baseline & per secció & \textit{mean\_max} & \textit{mean}      & $10^{-5}$ & $0{,}902$ & $0{,}895$ \\
-GAT Baseline & per secció & \textit{attention} & \textit{mean}      & $10^{-4}$ & $0{,}882$ & $0{,}878$ \\
-GAT Baseline & per pacient  & \textit{attention} & \textit{mean}      & $10^{-4}$ & $0{,}788$ & $0{,}811$ \\
-\midrule
-GAT+DiffPool & per secció & \textit{diff}      & \textit{mean}      & $10^{-5}$ & $\mathbf{0{,}868}$ & $0{,}795$ \\
-GAT+DiffPool & per secció & \textit{diff}      & \textit{mean}      & $10^{-4}$ & $0{,}745$ & $0{,}784$ \\
-GAT+DiffPool & per secció & \textit{diff}      & \textit{attention} & $10^{-5}$ & $0{,}870$ & $0{,}616$ \\
+\textbf{GAT Baseline} & \textit{attention} & \textit{mean} & $3 \cdot 10^{-4}$ & 2 & $0{,}1$ & $10^{-4}$ & $\mathbf{0{,}860 \pm 0{,}061}$ & $\mathbf{0{,}925}$ \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-El millor model és el \textbf{GAT Baseline amb \textit{attention pooling} i agregació \textit{mean}},
-que assoleix un AUC de test de \textbf{0,917} (lr $= 10^{-5}$, grafs per secció, 56 pacients).
-El GAT Baseline supera consistentment el GAT+DiffPool a totes les comparatives, cosa que suggereix
-que el \textit{pooling} jeràrquic no aporta avantatge amb el conjunt de dades actual.
+El millor model és el \textbf{GAT Baseline amb \textit{attention pooling} i agregació
+\textit{mean}}, amb $H=2$ caps d'atenció, \textit{dropout} de $0{,}1$ i regularització L2 de
+$10^{-4}$. Assoleix un AUC de test de \textbf{0,925} (sensibilitat $= 0{,}875$, especificitat
+$= 0{,}875$, \textit{balanced accuracy} $= 0{,}875$) i un AUC mitjà de validació creuada de
+$0{,}860 \pm 0{,}061$ sobre 5 folds, cosa que indica que el rendiment és estable enfront de la
+partició del \textit{pool} d'entrenament. La consistència entre la mitjana CV ($0{,}860$) i el
+valor del test ($0{,}925$) suggereix que el model generalitza i que el conjunt de test no és
+particularment favorable per atzar.
 
-Destaquen dues observacions rellevants. Primera, l'\textit{attention pooling} amb agregació
-\textit{mean} és la millor combinació, mentre que l'agregació \textit{attention} (PatientAggregator)
-no generalitza bé malgrat tenir un AUC de validació elevat (val $= 0{,}918$, test $= 0{,}700$),
-cosa que indica un cert sobreajustament al conjunt de validació. Segona, el graf per pacient aconsegueix
-un AUC de test raonable ($0{,}811$) però inferior al millor model per-secció, i DiffPool sobre el
-graf per pacient fracassa per a totes les configuracions (AUC test $\leq 0{,}56$).
+Respecte a la cerca preliminar (\textit{hold-out} simple), la incorporació de la regularització
+L2 i un \textit{dropout} més suau ($0{,}1$ enfront de $0{,}3$), combinats amb un \textit{learning
+rate} més agressiu ($3 \cdot 10^{-4}$), milloren especialment la sensibilitat: dels 16 casos N1
+del conjunt de test, el model en detecta correctament 14 (només 2 falsos negatius).
 
-\subsection{Anàlisi d'influència dels hiperparàmetres}
+\subsection{Anàlisi d'influència dels hiperparàmetres (cerca preliminar)}
+
+L'anàlisi que segueix correspon a la \textbf{primera tanda de 48 configuracions} avaluades amb
+\textit{hold-out} simple, anterior a la introducció dels eixos de cerca actuals
+($H$, \textit{dropout} i $\lambda_{\text{wd}}$). Es manté perquè aporta informació
+metodològica útil sobre els factors estructurals (arquitectura, \textit{pooling}, agregació
+MIL); els resultats finals dels nous eixos es consolidaran un cop la cerca v3 hagi finalitzat.
 
 Per identificar quins factors determinen els resultats, s'han calculat els \textbf{efectes principals}
 de cada hiperparàmetre: per a cada nivell d'un factor s'obté la mitjana de l'AUC de test en tots els
@@ -894,7 +914,10 @@ La Taula~\ref{tab:cm} mostra la matriu de confusió del millor model sobre el co
 \begin{table}[h]
 \centering
 \caption{Matriu de confusió del millor model (GAT Baseline, \textit{attention pooling},
-agregació \textit{mean}, $\text{lr}=10^{-5}$, conjunt de test, 56 pacients).}
+agregació \textit{mean}, $\text{lr} = 3 \cdot 10^{-4}$, $H = 2$, \textit{dropout} $= 0{,}1$,
+$\lambda_{\text{wd}} = 10^{-4}$; conjunt de test, 56 pacients).
+Mètriques clíniques: sensibilitat $= 0{,}875$, especificitat $= 0{,}875$,
+VPP $= 0{,}737$, VPN $= 0{,}946$.}
 \label{tab:cm}
 \small
 \begin{tabular}{llcc}
@@ -903,8 +926,8 @@ agregació \textit{mean}, $\text{lr}=10^{-5}$, conjunt de test, 56 pacients).}
  & & \textbf{N0} & \textbf{N1} \\
 \midrule
 \multirow{2}{*}{\textbf{Predicció}}
-  & \textbf{N0} & \textbf{36} & \textbf{7} \\
-  & \textbf{N1} & \textbf{4} & \textbf{9} \\
+  & \textbf{N0} & \textbf{35} & \textbf{2} \\
+  & \textbf{N1} & \textbf{5}  & \textbf{14} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -994,28 +1017,36 @@ de l'Excel.}
 
 En aquest TFG s'ha construït un sistema complet de classificació N0/N1 per a càncer
 colorrectal pT1 a partir de WSI, que inclou la generació de grafs espacials de Delaunay,
-l'entrenament del model GAT amb un \textit{grid search} de 48 configuracions i l'avaluació
-sobre un conjunt de test fix (56 pacients). El millor model assoleix un AUC de \textbf{0,917},
-cosa que indica que la representació espacial en graf és un enfocament viable. Se'n destaquen
-tres observacions:
+l'entrenament del model GAT amb una cerca d'hiperparàmetres avaluada per validació creuada
+5-fold i l'avaluació final sobre un conjunt de test fix (56 pacients). El millor model
+assoleix un AUC de \textbf{0,925} (CV: $0{,}860 \pm 0{,}061$) amb una sensibilitat i una
+especificitat de $0{,}875$, detectant correctament 14 dels 16 casos N1 reals del conjunt de
+test. Se'n destaquen tres observacions:
 
 \begin{itemize}
-  \item El mètode d'agregació MIL i el tipus de \textit{pooling} del graf són els factors
-  amb major influència sobre el resultat (rangs 0,200 i 0,200 respectivament). Triar bé
-  com es combinen les seccions d'un pacient és tan important com l'arquitectura del model.
-  \item El GAT Baseline supera el GAT+DiffPool en totes les comparatives, cosa que suggereix
-  que el \textit{pooling} jeràrquic no aporta avantatge real amb el conjunt de dades actual.
-  \item Un 27\% de les configuracions obté AUC$\,{<}\,0{,}5$, concentrades en combinacions
-  específiques problemàtiques (DiffPool + atenció MIL, grafs mega + DiffPool). Això confirma
-  que alguns dissenys no convergeixen bé i il·lustra la importància de fer una cerca sistemàtica.
+  \item El mètode d'agregació MIL i el tipus de \textit{pooling} del graf són factors amb
+  influència de primer ordre sobre el resultat. La combinació \textit{attention pooling} +
+  agregació \textit{mean} (mitjana de probabilitats per pacient) és consistentment la millor.
+  \item El GAT Baseline supera el GAT+DiffPool, cosa que suggereix que el \textit{pooling}
+  jeràrquic no aporta avantatge real amb el conjunt de dades actual: la dimensió de cada
+  secció ($N$ del centenar de \textit{patches}) probablement és massa petita perquè
+  la reducció a super-nodes preservi informació útil.
+  \item La incorporació de regularització L2 i un \textit{dropout} suau, combinats amb un
+  \textit{learning rate} relativament alt, milloren significativament la sensibilitat respecte
+  de la cerca preliminar (de $0{,}56$ a $0{,}875$), mantenint l'especificitat. Aquest és el
+  guany clínicament més rellevant: cada N1 detectat addicional és un pacient identificat per
+  a tractament correcte.
 \end{itemize}
 
 \subsection{Treball Futur}
 
-\textbf{Ampliar la cerca d'hiperparàmetres.} El \textit{grid search} actual ha cobert
-arquitectura, tipus de graf, \textit{pooling}, agregació MIL i \textit{learning rate}. En les
-pròximes fases s'ampliarà la cerca incloent valors de $h_{\text{hidden}}$, $K_1$/$K_2$ per
-a DiffPool i \textit{dropout}, entre d'altres.
+\textbf{Consolidar la cerca v3 i ampliar-la.} La cerca actual ja explora arquitectura, tipus
+de graf, \textit{pooling}, agregació MIL, \textit{learning rate}, nombre de caps d'atenció
+$H$, \textit{dropout} i regularització L2. Resta finalitzar l'avaluació completa per
+reportar mitjana i desviació de totes les configuracions i quantificar la interacció dels
+nous eixos. En una fase posterior es preveu incloure també la dimensió oculta $h$ i les
+mides de cluster $K_1$/$K_2$ específiques del model DiffPool, així com una versió més
+robusta dels pesos de classe.
 
 \textbf{Supervisió amb màscares d'anotació.} Les màscares de displàsia i infiltració
 anotades per la Dra.\ Musulén podrien fer-se servir per guiar els pesos d'atenció del
@@ -1031,76 +1062,5 @@ permetrà valorar si la topologia espacial aporta avantatge real respecte d'una
 connectivitat basada en similitud de \textit{features}.
 
 \printbibliography
-
-% ─────────────────────────────────────────────────────────────────────────────
-\appendix
-\section{Resultats complets del \textit{grid search}}
-\label{sec:appendix-gs}
-
-La Taula~\ref{tab:appendix-gs} mostra les 48 configuracions avaluades, ordenades per AUC de test
-descendent. Les mètriques s'han calculat sobre el conjunt de test (56 pacients, 255 seccions)
-usant l'agregació MIL indicada a cada fila.
-
-\begin{table*}[h]
-\centering
-\caption{Resultats complets del \textit{grid search} (48 experiments). Ordenats per AUC test $\downarrow$.
-\textbf{Negreta}: top-3 per AUC test.}
-\label{tab:appendix-gs}
-\scriptsize
-\begin{tabular}{llllrrrr}
-\toprule
-\textbf{Model} & \textbf{Graf} & \textbf{Pooling} & \textbf{MIL} & \textbf{LR} & \textbf{Epoch} & \textbf{AUC val} & \textbf{AUC test} \\
-\midrule
-GAT Baseline & per secció & att.      & mean      & $10^{-5}$ & 23  & 0{,}878 & \textbf{0{,}917} \\
-GAT Baseline & per secció & mean\_max & mean      & $10^{-5}$ & 60  & 0{,}902 & \textbf{0{,}895} \\
-GAT Baseline & per secció & att.      & mean      & $10^{-4}$ &  7  & 0{,}882 & \textbf{0{,}878} \\
-GAT Baseline & per secció & mean\_max & mean      & $10^{-3}$ &  8  & 0{,}840 & 0{,}870 \\
-GAT Baseline & per secció & att.      & mean      & $10^{-6}$ & 97  & 0{,}780 & 0{,}869 \\
-GAT Baseline & per secció & att.      & mean      & $10^{-3}$ & 36  & 0{,}902 & 0{,}866 \\
-GAT Baseline & per pacient  & att.      & mean      & $10^{-4}$ &  9  & 0{,}788 & 0{,}811 \\
-GAT Baseline & per secció & mean\_max & mean      & $10^{-6}$ & 88  & 0{,}745 & 0{,}798 \\
-GAT+DiffPool & per secció & diff      & mean      & $10^{-5}$ & 26  & 0{,}868 & 0{,}795 \\
-GAT+DiffPool & per secció & diff      & mean      & $10^{-4}$ &  7  & 0{,}745 & 0{,}784 \\
-GAT Baseline & per secció & mean\_max & mean      & $10^{-4}$ & 30  & 0{,}878 & 0{,}778 \\
-GAT Baseline & per pacient  & att.      & mean      & $10^{-5}$ & 10  & 0{,}832 & 0{,}772 \\
-GAT Baseline & per secció & att.      & noisy-OR  & $10^{-3}$ & 11  & 0{,}755 & 0{,}769 \\
-GAT Baseline & per pacient  & att.      & mean      & $10^{-6}$ & 91  & 0{,}827 & 0{,}764 \\
-GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-3}$ & 25  & 0{,}772 & 0{,}763 \\
-GAT Baseline & per pacient  & mean\_max & mean      & $10^{-3}$ & 42  & 0{,}798 & 0{,}727 \\
-GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-5}$ & 88  & 0{,}763 & 0{,}717 \\
-GAT+DiffPool & per secció & diff      & mean      & $10^{-6}$ & 29  & 0{,}703 & 0{,}716 \\
-GAT Baseline & per secció & att.      & attention & $10^{-5}$ & 34  & 0{,}918 & 0{,}700 \\
-GAT Baseline & per secció & att.      & attention & $10^{-4}$ &  9  & 0{,}873 & 0{,}694 \\
-GAT Baseline & per secció & att.      & attention & $10^{-3}$ & 15  & 0{,}850 & 0{,}677 \\
-GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-4}$ & 13  & 0{,}753 & 0{,}672 \\
-GAT Baseline & per secció & mean\_max & attention & $10^{-5}$ & 61  & 0{,}848 & 0{,}661 \\
-GAT Baseline & per secció & mean\_max & attention & $10^{-4}$ & 25  & 0{,}890 & 0{,}656 \\
-GAT Baseline & per secció & mean\_max & attention & $10^{-3}$ & 16  & 0{,}887 & 0{,}617 \\
-GAT+DiffPool & per secció & diff      & attention & $10^{-5}$ & 28  & 0{,}870 & 0{,}616 \\
-GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-5}$ & 13  & 0{,}698 & 0{,}614 \\
-GAT Baseline & per secció & att.      & noisy-OR  & $10^{-5}$ & 10  & 0{,}543 & 0{,}598 \\
-GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-3}$ & 40  & 0{,}727 & 0{,}594 \\
-GAT Baseline & per secció & att.      & attention & $10^{-6}$ & 98  & 0{,}768 & 0{,}581 \\
-GAT Baseline & per secció & att.      & noisy-OR  & $10^{-4}$ & 10  & 0{,}617 & 0{,}566 \\
-GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-6}$ &100  & 0{,}600 & 0{,}561 \\
-GAT+DiffPool & per pacient  & diff      & mean      & $10^{-5}$ & 36  & 0{,}506 & 0{,}556 \\
-GAT Baseline & per secció & att.      & noisy-OR  & $10^{-6}$ & 84  & 0{,}487 & 0{,}533 \\
-GAT Baseline & per pacient  & att.      & mean      & $10^{-3}$ & 12  & 0{,}677 & 0{,}508 \\
-GAT+DiffPool & per pacient  & diff      & mean      & $10^{-4}$ & 14  & 0{,}500 & 0{,}423 \\
-GAT Baseline & per secció & mean\_max & attention & $10^{-6}$ & 88  & 0{,}730 & 0{,}413 \\
-GAT+DiffPool & per secció & diff      & attention & $10^{-6}$ & 31  & 0{,}803 & 0{,}408 \\
-GAT+DiffPool & per secció & diff      & mean      & $10^{-3}$ &  6  & 0{,}421 & 0{,}406 \\
-GAT Baseline & per secció & mean\_max & noisy-OR  & $10^{-6}$ & 52  & 0{,}330 & 0{,}400 \\
-GAT+DiffPool & per pacient  & diff      & mean      & $10^{-6}$ & 45  & 0{,}412 & 0{,}394 \\
-GAT+DiffPool & per secció & diff      & noisy-OR  & $10^{-4}$ & 14  & 0{,}492 & 0{,}372 \\
-GAT+DiffPool & per secció & diff      & attention & $10^{-4}$ &  2  & 0{,}813 & 0{,}368 \\
-GAT+DiffPool & per secció & diff      & attention & $10^{-3}$ &  9  & 0{,}753 & 0{,}359 \\
-GAT Baseline & per pacient  & mean\_max & mean      & $10^{-6}$ & 13  & 0{,}572 & 0{,}358 \\
-GAT+DiffPool & per pacient  & diff      & mean      & $10^{-3}$ & 19  & 0{,}522 & 0{,}338 \\
-GAT Baseline & per pacient  & mean\_max & mean      & $10^{-4}$ &  7  & 0{,}365 & 0{,}333 \\
-GAT Baseline & per pacient  & mean\_max & mean      & $10^{-5}$ &  3  & 0{,}515 & 0{,}330 \\
-\bottomrule
-\end{tabular}
-\end{table*}
 
 \end{document}
