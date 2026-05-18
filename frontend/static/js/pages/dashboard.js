@@ -13,7 +13,11 @@ export async function renderDashboard(container) {
 
   const ck          = status.checkpoint;
   const modelLoaded = status.model_loaded;
-  const checkpoints = ckptsData.checkpoints || [];
+  const checkpoints = (ckptsData.checkpoints || []).slice().sort((a, b) => {
+    const ka = a.cv?.auc_mean ?? a.val_auc ?? -Infinity;
+    const kb = b.cv?.auc_mean ?? b.val_auc ?? -Infinity;
+    return kb - ka;
+  });
 
   const archHTML = ck ? `
     <div class="arch-diagram">
@@ -42,7 +46,7 @@ export async function renderDashboard(container) {
       return `
     <div class="section">
       <div class="section-title"><i data-lucide="layers"></i> Seleccionar model
-        <span style="margin-left:8px;font-size:11px;color:var(--text3);font-weight:400">${checkpoints.length} models · ordenats per AUC test ↓</span>
+        <span style="margin-left:8px;font-size:11px;color:var(--text3);font-weight:400">${checkpoints.length} models · ordenats per AUC val (CV) ↓</span>
       </div>
       <div class="card" style="padding:0;overflow:hidden">
         <div style="max-height:340px;overflow-y:auto">
@@ -92,8 +96,8 @@ export async function renderDashboard(container) {
             CV val ± σ
           </span>
           <span style="display:inline-flex;align-items:center;gap:6px">
-            <span style="display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:50%"></span>
-            AUC test
+            <span style="display:inline-block;width:10px;height:10px;background:#3ee089;border:1.5px solid #0a0a0a;border-radius:50%"></span>
+            AUC test (si calculat)
           </span>
           <span style="margin-left:auto">Clic a una fila o al botó per carregar el model</span>
         </div>
@@ -368,15 +372,18 @@ function renderAucTrack(c, scale, ticks) {
   let dot = "";
   if (test != null) {
     dot = `<span style="position:absolute;left:${pctOf(test, scale)}%;top:50%;
-                 width:9px;height:9px;background:var(--accent);border:1.5px solid var(--bg1);
+                 width:11px;height:11px;background:#3ee089;border:2px solid #0a0a0a;
                  border-radius:50%;transform:translate(-50%,-50%);
-                 box-shadow:0 0 0 1px rgba(204,0,168,0.4)"></span>`;
+                 box-shadow:0 0 0 1px rgba(62,224,137,0.55), 0 0 6px rgba(62,224,137,0.7);
+                 z-index:3"></span>`;
     tooltip += ` · test: ${test.toFixed(4)}`;
+  } else {
+    tooltip += " · test: no calculat";
   }
 
   return `
     <div title="${tooltip}" style="position:relative;height:18px;background:var(--bg2);
-                                   border-radius:3px;overflow:hidden">
+                                   border-radius:3px">
       ${tickLines}
       ${box}
       ${dot}
