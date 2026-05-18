@@ -62,7 +62,22 @@ app.add_middleware(
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+class _NoCacheStaticFiles(StaticFiles):
+    """StaticFiles que força la revalidació del navegador a cada càrrega.
+    Així els canvis a JS/CSS apareixen sense necessitat de hard-refresh."""
+    def is_not_modified(self, response_headers, request_headers) -> bool:  # type: ignore[override]
+        return False
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if path.endswith((".js", ".css", ".html")):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
+app.mount("/static", _NoCacheStaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ── global state ───────────────────────────────────────────────────────────────
