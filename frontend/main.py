@@ -77,9 +77,10 @@ class _State:
 
 STATE = _State()
 
-CKPT_DIR        = Path.home() / "outputs" / "checkpoints"
-TEST_AUC_CACHE  = CKPT_DIR / "test_auc_cache.json"
-META_CACHE      = CKPT_DIR / "checkpoint_meta_cache.json"
+_CKPT_ROOT      = Path.home() / "outputs" / "checkpoints"
+CKPT_DIR        = _CKPT_ROOT / "final"
+TEST_AUC_CACHE  = _CKPT_ROOT / "test_auc_cache.json"
+META_CACHE      = _CKPT_ROOT / "checkpoint_meta_cache.json"
 GRAPHS_DIR      = Path.home() / "outputs" / "graphs"
 
 # Image serving — requires access to /mnt/iam (or IAM_PATH env var)
