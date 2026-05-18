@@ -36,7 +36,10 @@ export async function renderDashboard(container) {
     </div>
 
     <!-- Model selector -->
-    ${checkpoints.length > 0 ? `
+    ${checkpoints.length > 0 ? (() => {
+      const scale = computeAucScale(checkpoints);
+      const ticks = scaleTicks(scale);
+      return `
     <div class="section">
       <div class="section-title"><i data-lucide="layers"></i> Seleccionar model
         <span style="margin-left:8px;font-size:11px;color:var(--text3);font-weight:400">${checkpoints.length} models · ordenats per AUC test ↓</span>
@@ -48,7 +51,9 @@ export async function renderDashboard(container) {
               <tr style="background:var(--bg2);position:sticky;top:0;z-index:1">
                 <th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:500;white-space:nowrap"></th>
                 <th style="padding:7px 10px;text-align:right;color:var(--text3);font-weight:500;white-space:nowrap">AUC test</th>
-                <th style="padding:7px 10px;text-align:right;color:var(--text3);font-weight:500;white-space:nowrap">AUC val</th>
+                <th style="padding:7px 10px;color:var(--text3);font-weight:500;white-space:nowrap;width:260px">
+                  ${renderAxisHeader(ticks)}
+                </th>
                 <th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:500">Pooling · MIL</th>
                 <th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:500">Nom</th>
                 <th style="padding:7px 4px"></th>
@@ -57,9 +62,8 @@ export async function renderDashboard(container) {
             <tbody id="ckpt-table-body">
               ${checkpoints.map((c, i) => {
                 const testAuc = c.test_auc != null ? c.test_auc.toFixed(3) : "—";
-                const valAuc  = c.val_auc  != null ? c.val_auc.toFixed(3)  : "—";
                 const poolMil = [c.pooling, c.aggregation].filter(Boolean).join(" · ") || "—";
-                const shortName = c.name.replace(/_best$/, "").replace(/^gs2\//, "");
+                const shortName = c.name.replace(/_best$/, "").replace(/^gs\d+\//, "");
                 const isActive = c.active;
                 const rowBg = isActive ? "background:rgba(204,0,168,0.08)" : (i % 2 === 0 ? "" : "background:var(--bg2)");
                 const aucColor = c.test_auc != null
@@ -68,7 +72,7 @@ export async function renderDashboard(container) {
                 return `<tr class="ckpt-row" data-name="${c.name}" style="cursor:pointer;border-bottom:1px solid var(--border1);${rowBg}">
                   <td style="padding:6px 10px;color:var(--accent-light);font-size:13px">${isActive ? "▶" : ""}</td>
                   <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-weight:600;color:${aucColor}">${testAuc}</td>
-                  <td style="padding:6px 10px;text-align:right;font-family:var(--mono);color:var(--text2)">${valAuc}</td>
+                  <td style="padding:6px 10px">${renderAucTrack(c, scale, ticks)}</td>
                   <td style="padding:6px 10px;color:var(--text2);white-space:nowrap">${poolMil}</td>
                   <td style="padding:6px 10px;color:var(--text3);font-family:var(--mono);font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.name}">${shortName}</td>
                   <td style="padding:6px 4px">
@@ -81,13 +85,22 @@ export async function renderDashboard(container) {
             </tbody>
           </table>
         </div>
-        <div style="padding:8px 12px;background:var(--bg2);border-top:1px solid var(--border1);font-size:11px;color:var(--text3);display:flex;gap:16px">
+        <div style="padding:8px 12px;background:var(--bg2);border-top:1px solid var(--border1);font-size:11px;color:var(--text3);display:flex;gap:16px;align-items:center">
           <span id="model-select-status"></span>
+          <span style="display:inline-flex;align-items:center;gap:6px">
+            <span style="display:inline-block;width:18px;height:8px;background:rgba(204,0,168,0.22);border:1px solid rgba(204,0,168,0.45);border-radius:2px"></span>
+            CV val ± σ
+          </span>
+          <span style="display:inline-flex;align-items:center;gap:6px">
+            <span style="display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:50%"></span>
+            AUC test
+          </span>
           <span style="margin-left:auto">Clic a una fila o al botó per carregar el model</span>
         </div>
       </div>
     </div>
-    ` : ""}
+    `;
+    })() : ""}
 
     <div class="grid-4 section">
       <div class="card ${modelLoaded ? "" : "card-warn"}">
@@ -269,5 +282,103 @@ function archLayer(name, desc, meta) {
       <span class="arch-name">${name}</span>
       <span class="arch-desc">${desc}</span>
       <span class="arch-meta">${meta}</span>
+    </div>`;
+}
+
+// ── boxplot horitzontal: escala global per a tots els models ─────────────────
+
+function computeAucScale(checkpoints) {
+  const vals = [];
+  checkpoints.forEach(c => {
+    const m = c.cv?.auc_mean, s = c.cv?.auc_std;
+    if (m != null) {
+      vals.push(m);
+      if (s != null) { vals.push(m - s); vals.push(m + s); }
+    } else if (c.val_auc != null) {
+      vals.push(c.val_auc);
+    }
+    if (c.test_auc != null) vals.push(c.test_auc);
+  });
+  if (vals.length === 0) return { min: 0, max: 1 };
+  const lo = Math.max(0, Math.min(...vals) - 0.03);
+  const hi = Math.min(1, Math.max(...vals) + 0.03);
+  return { min: lo, max: hi };
+}
+
+// Genera ticks "rodons" (cada 0.05 o 0.1 segons rang) dins de [min, max].
+function scaleTicks({ min, max }) {
+  const range = max - min;
+  const step = range > 0.4 ? 0.1 : 0.05;
+  const start = Math.ceil(min / step) * step;
+  const ticks = [];
+  for (let v = start; v <= max + 1e-9; v += step) ticks.push(+v.toFixed(2));
+  return { min, max, step, values: ticks };
+}
+
+function pctOf(v, scale) {
+  return ((v - scale.min) / (scale.max - scale.min)) * 100;
+}
+
+function renderAxisHeader(ticks) {
+  const labels = ticks.values.map(t => `
+    <span style="position:absolute;left:${pctOf(t, ticks)}%;transform:translateX(-50%);
+                 font-family:var(--mono);font-size:9.5px;color:var(--text3)">${t.toFixed(2)}</span>
+  `).join("");
+  return `<div style="position:relative;height:14px">${labels}</div>`;
+}
+
+function renderAucTrack(c, scale, ticks) {
+  const m = c.cv?.auc_mean, s = c.cv?.auc_std;
+  const test = c.test_auc;
+  const val  = c.val_auc;
+
+  // Ticks faints alineats amb la capçalera.
+  const tickLines = ticks.values.map(t => `
+    <span style="position:absolute;left:${pctOf(t, scale)}%;top:0;bottom:0;width:1px;
+                 background:var(--border1);opacity:0.55"></span>
+  `).join("");
+
+  // Box: CV mean ± σ  (o petit marcador si només hi ha val_auc).
+  let box = "";
+  let tooltip = "";
+  if (m != null && s != null && s > 0) {
+    const lo = pctOf(m - s, scale);
+    const hi = pctOf(m + s, scale);
+    box = `
+      <span style="position:absolute;left:${lo}%;width:${hi - lo}%;top:3px;bottom:3px;
+                   background:rgba(204,0,168,0.22);border:1px solid rgba(204,0,168,0.45);
+                   border-radius:2px"></span>
+      <span style="position:absolute;left:${pctOf(m, scale)}%;top:1px;bottom:1px;width:1.5px;
+                   background:rgba(204,0,168,0.85);transform:translateX(-50%)"></span>
+    `;
+    tooltip = `CV val: ${m.toFixed(4)} ± ${s.toFixed(4)}`;
+  } else if (m != null) {
+    box = `<span style="position:absolute;left:${pctOf(m, scale)}%;top:1px;bottom:1px;width:2px;
+                 background:rgba(204,0,168,0.7);transform:translateX(-50%)"></span>`;
+    tooltip = `CV val: ${m.toFixed(4)}`;
+  } else if (val != null) {
+    box = `<span style="position:absolute;left:${pctOf(val, scale)}%;top:1px;bottom:1px;width:2px;
+                 background:rgba(204,0,168,0.7);transform:translateX(-50%)"></span>`;
+    tooltip = `val: ${val.toFixed(4)}`;
+  } else {
+    tooltip = "sense AUC val";
+  }
+
+  // Punt del test AUC.
+  let dot = "";
+  if (test != null) {
+    dot = `<span style="position:absolute;left:${pctOf(test, scale)}%;top:50%;
+                 width:9px;height:9px;background:var(--accent);border:1.5px solid var(--bg1);
+                 border-radius:50%;transform:translate(-50%,-50%);
+                 box-shadow:0 0 0 1px rgba(204,0,168,0.4)"></span>`;
+    tooltip += ` · test: ${test.toFixed(4)}`;
+  }
+
+  return `
+    <div title="${tooltip}" style="position:relative;height:18px;background:var(--bg2);
+                                   border-radius:3px;overflow:hidden">
+      ${tickLines}
+      ${box}
+      ${dot}
     </div>`;
 }
