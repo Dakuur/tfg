@@ -6,6 +6,7 @@ import { API } from "./api.js";
 import { renderDashboard }  from "./pages/dashboard.js";
 import { renderInference, appendDebugLog } from "./pages/inference.js";
 import { renderStatistics } from "./pages/statistics.js";
+import { renderDataset }    from "./pages/dataset.js";
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const STATE = {
@@ -37,6 +38,7 @@ async function navigate(page) {
     case "dashboard":  await renderDashboard(content); break;
     case "inference":  await renderInference(content, STATE.debug); break;
     case "statistics": await renderStatistics(content); break;
+    case "dataset":    await renderDataset(content); break;
   }
 
   lucide.createIcons();

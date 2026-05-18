@@ -697,6 +697,75 @@ async def _startup():
                      f"  patients={STATE.val_stats['total_samples']}")
 
 
+# ── dataset gallery (low-res slide thumbnails) ─────────────────────────────────
+
+DATASET_INDEX_CACHE = Path.home() / "outputs" / "dataset_slides_index.json"
+
+
+def _scan_dataset_slides() -> list[dict]:
+    """Recursively scan _RGB_DIR for *_low.png files and return metadata."""
+    if not _RGB_DIR or not _RGB_DIR.exists():
+        return []
+    slides: list[dict] = []
+    for png in _RGB_DIR.rglob("*_low.png"):
+        try:
+            rel = png.relative_to(_RGB_DIR)
+            parts = rel.parts
+            if len(parts) < 3:
+                continue
+            hospital, patient_id = parts[0], parts[1]
+            slides.append({
+                "id":       str(rel),
+                "hospital": hospital,
+                "patient":  patient_id,
+                "name":     png.name.replace("_low.png", ""),
+            })
+        except Exception:
+            continue
+    slides.sort(key=lambda s: (s["hospital"], s["patient"], s["name"]))
+    return slides
+
+
+@app.get("/api/dataset/slides")
+async def list_dataset_slides(refresh: bool = False):
+    """Return the cached list of all *_low.png thumbnails under RGB_Images.
+    The first call (or `refresh=true`) scans disk; subsequent calls read cache."""
+    if not refresh and DATASET_INDEX_CACHE.exists():
+        try:
+            return JSONResponse(json.loads(DATASET_INDEX_CACHE.read_text()))
+        except Exception:
+            pass
+    slides = _scan_dataset_slides()
+    payload = {"count": len(slides), "slides": slides}
+    try:
+        DATASET_INDEX_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        DATASET_INDEX_CACHE.write_text(json.dumps(payload))
+    except Exception:
+        pass
+    return payload
+
+
+@app.get("/api/dataset/image")
+async def dataset_image(p: str):
+    """Serve a *_low.png from RGB_Images. The `p` param is the relative path
+    (hospital/patient/file) under _RGB_DIR. Only files ending in `_low.png`
+    are served, and path traversal outside _RGB_DIR is rejected."""
+    if not _RGB_DIR:
+        raise HTTPException(404, "RGB_Images dir not configured")
+    base = _RGB_DIR.resolve()
+    full = (_RGB_DIR / p).resolve()
+    try:
+        full.relative_to(base)
+    except ValueError:
+        raise HTTPException(403, "Invalid path")
+    if not full.name.endswith("_low.png"):
+        raise HTTPException(404, "Only *_low.png are served")
+    if not full.exists():
+        raise HTTPException(404, f"Not found: {p}")
+    return FileResponse(str(full), media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
 # ── routes ─────────────────────────────────────────────────────────────────────
 
 @app.get("/")

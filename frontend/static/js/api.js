@@ -24,4 +24,6 @@ export const API = {
   reload:      ()       => _req("POST", "/api/reload"),
   checkpoints: ()       => _req("GET",  "/api/checkpoints"),
   selectModel: (name)   => _req("POST", "/api/select_model", { name }),
+  datasetSlides:   (refresh=false) => _req("GET", `/api/dataset/slides${refresh ? "?refresh=true" : ""}`),
+  datasetImageUrl: (relPath)       => `/api/dataset/image?p=${encodeURIComponent(relPath)}`,
 };
