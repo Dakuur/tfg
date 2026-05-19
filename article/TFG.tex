@@ -131,9 +131,15 @@ més freqüentment diagnosticat i en la segona causa de mort per càncer amb 14.
 
 El carcinoma pT1 és especialment complex: el tumor ha envaït la submucosa però no la muscular pròpia, i el risc de
 metàstasi als ganglis limfàtics oscil·la entre el \textbf{2\%} i el \textbf{23\%} depenent de la profunditat
-d'invasió \cite{ParcSalutMar2013}. Quan hi ha criteris de mal pronòstic, el risc s'estima al voltant del 10\%, la
-qual cosa obliga a considerar una cirurgia radical. Tanmateix, s'estima que \textbf{entre el 80\% i el 90\%}
-d'aquestes cirurgies resulten innecessàries \cite{MartinezDeJuan2024}.
+d'invasió \cite{ParcSalutMar2013}. % [NEW: comparison]
+Quan hi ha criteris de mal pronòstic —\textbf{invasió submucosa $\geq\!1000\,\mu$m,
+invasió vascular o limfàtica, histologia indiferenciada, \textit{tumor budding} de
+grau~$\geq\!2$ o marge vertical positiu} \cite{jsccr2019,dawson2024budding}— el risc
+s'estima al voltant del $10\%$, la qual cosa obliga les guies clíniques (JSCCR
+\cite{jsccr2019}, NCCN i ESMO \cite{esge2022}) a recomanar cirurgia radical addicional.
+Tanmateix, com que la majoria de tumors pT1 no desenvolupa LNM real, s'estima que
+\textbf{més del 80\%} d'aquestes cirurgies resulten innecessàries
+\cite{zaffalon2023,MartinezDeJuan2024}.
 
 La histopatologia digital, a través de les \textit{Whole Slide Images} (WSI), obre la porta a tècniques avançades
 de visió per computador. En concret, les \textit{Graph Attention Networks} (GAT) \cite{veličković2018graphattentionnetworks}
@@ -206,6 +212,34 @@ nombroses tasques de classificació histopatològica. CONCH~\cite{lu2024conch} �
 similar que incorpora a més alineament entre imatge i text. En aquest projecte s'utilitzen
 els embeddings de UNI2 com a vector de característiques de cada node, ja que estan
 preentrenats en el mateix domini i capturen informació morfològica rellevant.
+
+% [NEW: comparison]
+\subsection{Guies Clíniques i Models Predictius per a pT1 CRC}
+\label{sec:guidelines-sota}
+
+Les guies clíniques de referència —JSCCR \cite{jsccr2019}, NCCN i
+ESMO \cite{esge2022}— recomanen cirurgia addicional quan el pacient
+presenta un o més dels criteris de risc histopatològics esmentats a la
+Introducció. Malgrat la seva sensibilitat elevada, la seva especificitat
+és baixa: en un estudi comparatiu sobre $560$ pacients
+\cite{tanino2024comparative}, les AUC reportades són $0{,}596$ (JSCCR),
+$0{,}749$ (NCCN) i $0{,}743$ (ESMO), amb especificitats del $19\%$, $52\%$
+i $50\%$ respectivament, la qual cosa implica que més del $80\%$ dels
+pacients operats no tenien LNM real \cite{tanino2024comparative,zaffalon2023}.
+
+Paral·lelament, Piao et al.~\cite{piao2023ai} van proposar un model
+d'IA sobre variables clinicopatológiques ($n\!=\!783$ entrenament,
+$n\!=\!105$ test) basat en regressió logística regularitzada (LASSO),
+obtenint sensibilitat del $100\%$, especificitat del $85{,}8\%$, AUC de
+$0{,}960$ i \textit{balanced accuracy} del $92{,}9\%$; la taxa de
+pacients classificats com a alt risc es va reduir del $83{,}8\%$ (JSCCR)
+al $20{,}9\%$. Dawson et al.~\cite{dawson2024budding} van proposar
+l'IBC Score —una puntuació ponderada sobre invasió limfovascular, grau de
+\textit{tumor budding}, profunditat d'invasió i grau tumoral—
+que obté AUC de $0{,}68$ sobre $565$ pacients. A diferència d'aquests
+treballs, el present TFG aborda la predicció exclusivament a partir de la
+\textbf{imatge histopatológica} (WSI), sense variables clíniques
+estructurades ni puntuació manual d'un patòleg.
 
 \subsection{Treball Previ al CVC sobre pT1 CRC}
 
@@ -294,7 +328,7 @@ borrositat ni per proporció de blanc): tots els \textit{patches} d'una secció 
 Cada \textit{patch} de $2048{\times}2048$\,px del WSI constitueix un \textbf{node} del graf. El
 vector de característiques de cada node és l'embedding CLS de \textbf{1.536 dimensions} obtingut
 per UNI2. La posició del node al pla WSI és el centre del patch (coordenades en píxels a nivell 0).
-A la subfigura~\ref{fig:patches} es pot observar la distribució esparsa dels \textit{patches}
+A la figura~\ref{fig:preprocess} es pot observar la distribució esparsa dels \textit{patches}
 extrets sobre una làmina real.
 
 \subsection{Model de dades: dimensions i estructures}
@@ -356,8 +390,7 @@ simetria de la quadrícula. Per aquest motiu, s'aplica una \textbf{triangulació
 nodes restants, que s'adapta a distribucions irregulars de forma natural. A continuació, s'eliminen les
 arestes que travessen píxels de valor zero a la màscara, evitant connexions entre regions separades per
 espai buit. Finalment, s'aplica un criteri de distància màxima: s'eliminen les arestes que superen el
-doble de la longitud mitjana del conjunt. La subfigura~\ref{fig:delaunay-real} mostra el resultat sobre
-la mateixa làmina: les arestes eliminades pel filtre de màscara apareixen en vermell.
+doble de la longitud mitjana del conjunt. La figura~\ref{fig:preprocess} mostra el resultat del procés: les arestes eliminades pel filtre de màscara apareixen en vermell.
 
 Cal notar que una secció histològica pot contenir múltiples regions de teixit físicament separades
 (per exemple, diverses illes de teixit sobre el porta). En aquest cas, la triangulació de Delaunay
@@ -367,25 +400,13 @@ objecte \texttt{Data}, i el \textit{pooling} global opera sobre tots els nodes c
 
 \begin{figure*}[h]
     \centering
-    \begin{subfigure}[t]{0.48\textwidth}
-        \centering
-        \includegraphics[height=7.5cm, keepaspectratio]{img/patch_vis.png}
-        \caption{Posicions dels \textit{patches} dels quals se n'extreuen les característiques,
-            superposades sobre la imatge original.}
-        \label{fig:patches}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[t]{0.48\textwidth}
-        \centering
-        \includegraphics[height=7.5cm, keepaspectratio]{img/delaunay_graph.png}
-        \caption{Graf de Delaunay sobre la imatge anotada. Les zones verdes indiquen àrees afectades anotades
-        per la patòloga; les arestes en vermell han estat eliminades pel filtratge de màscara.}
-        \label{fig:delaunay-real}
-    \end{subfigure}
-    \caption{Visualització del procés de construcció del graf sobre una làmina real. Les dues imatges corresponen
-    a la mateixa secció histològica i il·lustren com la topologia del graf s'adapta a la distribució irregular
-    del teixit.}
-    \label{fig:patches-delaunay}
+    \includegraphics[width=\textwidth]{img/preprocess.png}
+    \caption{Etapes del preprocessament per a la construcció del graf. D'esquerra a dreta:
+    WSI original $\to$ extracció de \textit{patches} de $2048{\times}2048$ px per finestra lliscant
+    $\to$ extracció de l'embedding CLS de 1.536 dimensions per UNI2 (un vector per \textit{patch})
+    $\to$ construcció del graf de Delaunay sobre la màscara anotada, on les arestes en vermell han
+    estat eliminades pel filtre de màscara i la zona verda correspon a l'àrea anotada per la patòloga.}
+    \label{fig:preprocess}
 \end{figure*}
 
 \section{Arquitectura del Model}
@@ -481,19 +502,36 @@ regularitzar l'assignació i evitar degeneracions trivials.
 
 \begin{figure*}[h]
     \centering
-    \includegraphics[width=0.8\textwidth]{img/hierarchical_pool.png}
-    \caption{Agrupació jeràrquica de nodes per \textit{DiffPool}: l'assignació suau colapsa progressivament el
-    graf en super-nodes de major abstracció. En el model proposat, dos nivells DiffPool s'intercalen entre les
-    capes GAT. Font: \cite{ying2019hierarchicalgraphrepresentationlearning}.}
+    \includegraphics[width=\textwidth]{img/baseline_vs_diffpool.png}
+    \caption{Comparació visual de les dues arquitectures.
+    \textbf{Dalt}: GAT Baseline, on les capes d'atenció operen sobre els $N$ nodes originals al llarg de
+    tota la xarxa i un \textit{readout} global (mean, max) produeix l'embedding final de dimensió $1 \times F_2$.
+    \textbf{Baix}: GAT+DiffPool, on cada capa d'atenció va seguida d'un DiffPool que col·lapsa
+    progressivament el graf de $N$ nodes a $K_1$ macro-nodes i finalment a un únic macro-node,
+    capturant representacions multi-escala del teixit.}
     \label{fig-diffpool}
 \end{figure*}
 
-Com a alternativa, \textbf{SAGPool} \cite{lee2019selfattentiongraphpooling} proposa un enfocament esparç que
-selecciona els $K$ nodes més rellevants via puntuacions d'auto-atenció, descartant la resta i preservant
-l'estructura topològica original. A diferència de DiffPool, SAGPool no aprèn assignacions suaus sinó
-seleccions discretes, amb un cost computacional menor però sense la capacitat de capturar representacions
-jeràrquiques continues. En aquest projecte s'utilitza DiffPool per la seva major expressivitat i la
-possibilitat d'integrar la pèrdua auxiliar de regularització.
+Els algorismes clàssics de particionat de grafs —com el \textit{min-cut} o la clusterització
+espectral— podrien en principi reduir la mida del graf entre capes de propagació i proporcionar
+representacions jeràrquiques. El problema fonamental és que aquestes operacions \textbf{no són
+diferenciables}: el mínim tall és un problema combinatori que no admet gradients respecte dels
+paràmetres de la xarxa, de manera que la partició no pot ajustar-se en funció de la pèrdua de
+classificació final i no és possible integrar-la en un \textit{pipeline} entrenable per
+retropropagació. DiffPool resol exactament aquest problema: la matriu d'assignació $\mathbf{S}$
+s'obté com la sortida d'una GNN auxiliar amb \textit{softmax}, de manera que cada entrada $S_{ij}$
+expressa de forma \textbf{suau} la probabilitat que el node $i$ pertanyi al super-node $j$. Com
+que tots els passos —GNN auxiliar, multiplicació matricial i pèrdua de classificació— són
+operacions diferenciables, el gradient flueix de cap a cap i el \textit{pooling} s'ajusta
+conjuntament amb la resta del model.
+
+Com a alternativa diferenciable, \textbf{SAGPool} \cite{lee2019selfattentiongraphpooling} proposa
+un enfocament esparç que selecciona els $K$ nodes més rellevants via puntuacions d'auto-atenció,
+descartant la resta i preservant l'estructura topològica original. A diferència de DiffPool, SAGPool
+no aprèn assignacions suaus sinó seleccions discretes, amb un cost computacional menor però sense
+la capacitat de capturar representacions jeràrquiques continues. En aquest projecte s'utilitza
+DiffPool per la seva major expressivitat i la possibilitat d'integrar la pèrdua auxiliar de
+regularització.
 
 % ── Shared TikZ styles for both architecture diagrams ──────────
 \tikzset{
@@ -932,6 +970,50 @@ VPP $= 0{,}737$, VPN $= 0{,}946$.}
 \end{tabular}
 \end{table}
 
+% [NEW: comparison]
+\subsection{Comparació amb guies clíniques i SOTA}
+\label{sec:resultats-comparacio}
+
+La Taula~\ref{tab:comparison} situa el model en context amb les guies
+clíniques de referència (Secció~\ref{sec:guidelines-sota}) i el model de IA de
+referència. Les mètriques de les guies provenen de~\cite{tanino2024comparative}
+($n\!=\!560$); les del model GAT s'han obtingut sobre el conjunt de test d'aquest
+treball ($n\!=\!56$ pacients, prevalença N1 $28{,}6\%$, superior a la prevalença
+clínica real estimada $\sim\!8$–$15\%$ \cite{zaffalon2023}). Sensibilitat i especificitat
+són independents de la prevalença i constitueixen les mètriques comparatives
+més robustes; el VPP s'ha d'interpretar amb cautela (vegeu
+Secció~\ref{sec:limitacions}).
+
+\begin{table*}[h]
+\centering
+\caption{Comparació de rendiment entre el model proposat, les guies clíniques i l'estat
+de l'art. \textbf{Guies:} Tanino et al.~\cite{tanino2024comparative} ($n\!=\!560$, Hiroshima).
+\textbf{IBC Score:} Dawson et al.~\cite{dawson2024budding} ($n\!=\!565$, multicèntric).
+\textbf{LASSO:} Piao et al.~\cite{piao2023ai} ($n\!=\!105$ test, variables clinicopat.).
+\textbf{GAT:} aquest treball ($n\!=\!56$ test, llindar $0{,}5$).
+Estudis i poblacions independents; el PPV no és directament comparable
+(prevalença N1 diferent entre estudis).
+Bal.Acc. $= (S\!+\!E)/2$; calculada per a les guies i l'IBC Score a partir de Sens./Espec.
+reportades.} % [NEW: comparison]
+\label{tab:comparison}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+\textbf{Sistema} & \textbf{Tipus d'entrada} & \textbf{Sens.} & \textbf{Espec.} & \textbf{AUC} & \textbf{Bal.Acc.} \\
+\midrule
+\multicolumn{6}{l}{\textit{Guies i puntuació clínica}} \\[2pt]
+JSCCR \cite{jsccr2019}        & Guia clínica  & $100\%$ & $19\%$  & $0{,}596$ & $59{,}5\%$ \\
+NCCN                           & Guia clínica  & $98\%$  & $52\%$  & $0{,}749$ & $75{,}0\%$ \\
+ESMO \cite{esge2022}           & Guia clínica  & $98\%$  & $50\%$  & $0{,}743$ & $74{,}0\%$ \\
+IBC Score \cite{dawson2024budding} & Puntuació histopat. & $90\%$ & $26\%$ & $0{,}68$ & $58{,}0\%$ \\
+\midrule
+\multicolumn{6}{l}{\textit{Models d'IA}} \\[2pt]
+LASSO \cite{piao2023ai}            & Var.\ clinicopatol. & $100\%$ & $85{,}8\%$ & $0{,}960$ & $92{,}9\%$ \\
+\textbf{GAT (aquest TFG)}          & \textbf{Imatge WSI} & $\mathbf{87{,}5\%}$ & $\mathbf{87{,}5\%}$ & $\mathbf{0{,}925}$ & $\mathbf{87{,}5\%}$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
 \section{Implementació}
 
 La implementació segueix un disseny modular: la construcció de grafs, el model, el codi d'entrenament i els
@@ -1037,6 +1119,87 @@ test. Se'n destaquen tres observacions:
   guany clínicament més rellevant: cada N1 detectat addicional és un pacient identificat per
   a tractament correcte.
 \end{itemize}
+
+% [NEW: comparison]
+\subsection{Discussió Comparativa}
+
+Respecte de les guies clíniques (Taula~\ref{tab:comparison}), el model obté
+una AUC de test de $0{,}925$, per damunt de JSCCR ($0{,}596$), NCCN ($0{,}749$)
+i ESMO ($0{,}743$) \cite{tanino2024comparative}. L'especificitat de $87{,}5\%$
+és substancialment superior a la de les tres guies, cosa que reduiria el
+sobretr\-actament si el model s'apliqués com a filtre previ a la decisió
+quirúrgica.
+
+\textbf{VPP i ajust per prevalença.}
+El VPP de $73{,}7\%$ s'ha calculat sobre el conjunt de test amb prevalença N1 de
+$28{,}6\%$, molt superior a la prevalença clínica real estimada ($\sim\!8$–$15\%$)
+\cite{zaffalon2023}. Per la fórmula de Bayes, a una prevalença del $10\%$ el VPP
+baixa fins al $\mathbf{43{,}8\%}$:
+\[
+  \text{VPP}_{10\%} = \frac{0{,}875 \times 0{,}10}{0{,}875 \times 0{,}10 + 0{,}125 \times 0{,}90} \approx 0{,}438
+\]
+El VPN a la mateixa prevalença s'eleva fins al $98{,}4\%$, cosa que suggereix
+que el model és especialment útil com a \textbf{filtre de descartament}: un
+resultat negatiu (N0) té una probabilitat molt alta de ser correcte i podria
+evitar la cirurgia amb seguretat. Sensibilitat i especificitat, independents
+de la prevalença, continuen sent les mètriques comparatives més robustes.
+
+\textbf{Sensibilitat respecte de les guies.}
+La sensibilitat de $87{,}5\%$ és inferior a la de JSCCR/NCCN/ESMO ($98$–$100\%$).
+Cal tenir en compte que les guies assoleixen la sensibilitat màxima a costa
+d'una especificitat del $19\%$ (JSCCR), classificant com a alt risc fins a quatre
+pacients N0 per cada N1 detectat. El llindar de decisió del model GAT és ajustable
+a la corba ROC, de manera que es pot incrementar la sensibilitat a costa
+de l'especificitat. \textit{TODO[reportar la sensibilitat i l'especificitat del
+model al punt de la corba ROC que assoleixi sensibilitat~$=\!100\%$; aquest és el
+valor clau per tancar el \textit{trade-off} respecte de JSCCR]}.
+
+\textbf{Comparació amb IA SOTA.}
+El model LASSO de Piao et al.~\cite{piao2023ai}, entrenat sobre un conjunt
+$\sim\!14\!\times$ més gran i amb accés a variables clinicopatológiques
+estructurades, assoleix sensibilitat del $100\%$, especificitat del $85{,}8\%$,
+AUC de $0{,}960$ i \textit{balanced accuracy} del $92{,}9\%$, per sobre del
+GAT ($87{,}5\%$, $87{,}5\%$, $0{,}925$ i $87{,}5\%$ respectivament). Atesa
+la diferència de grandària del conjunt d'entrenament ($\sim\!14\!\times$) i
+l'accés a variables clíniques explícites, aquesta diferència és esperable.
+Cal notar que el LASSO sí que assoleix la sensibilitat del $100\%$ amb una
+especificitat del $85{,}8\%$, millorant el balanç respecte de JSCCR. El GAT,
+en canvi, opera exclusivament sobre la imatge i és metodológicament
+complementari als models basats en variables clíniques: en escenaris on
+les variables clíniques no siguin disponibles o es vulgui una segona opinió
+basada en morfologia pura, el GAT aporta AUC de $0{,}925$ sense dependre
+de l'anotació manual d'un patòleg.
+
+% [NEW: comparison]
+\subsection{Limitacions}
+\label{sec:limitacions}
+
+\textbf{(1) Mida del test.}
+El conjunt de test de $56$ pacients implica intervals de confiança al $95\%$
+amplis per a l'AUC; el valor CV AUC $0{,}860 \pm 0{,}061$ sobre cinc \textit{folds}
+és la xifra estadísticament més honesta del rendiment esperat.
+
+\textbf{(2) Absència de validació externa.}
+El \textit{dataset} prové d'un consorci de $26$ hospitals catalans, però no
+s'ha realitzat cap validació sobre dades d'un centre independent.
+Campanella et al.~\cite{campanella2019} observen, en models MIL de patologia
+computacional entrenats sobre grans consorcis, caigudes de 3--6 punts d'AUC
+en avaluar sobre escàners externs i de fins a 7 punts en canvis de domini
+institucional; models amb supervisió completa presenten caigudes superiors al
+20\%. L'aplicabilitat clínica del model proposat requereix, per tant, validació
+sobre dades d'hospitals externs al consorci PEARSON.
+
+\textbf{(3) Desbalanceig de prevalença.}
+La prevalença N1 al test ($28{,}6\%$) supera la prevalença clínica real
+($\sim\!8$–$15\%$) \cite{zaffalon2023}; el VPP s'ha d'interpretar amb cautela
+en context clínic (vegeu Discussió Comparativa).
+
+\textbf{(4) Sensibilitat subòptima.}
+Dos casos N1 queden sense detectar al test. En context clínic, un fals negatiu
+suposa privar un pacient de cirurgia necessària. Futures versions del model
+haurien d'explorar l'ajust del llindar de decisió i tècniques de
+\textit{cost-sensitive learning}: \textit{TODO[reportar el punt de la corba
+ROC que assoleixi sensibilitat~$=\!100\%$ amb l'especificitat corresponent]}.
 
 \subsection{Treball Futur}
 
