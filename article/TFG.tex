@@ -376,10 +376,10 @@ objecte \texttt{Data}, i el \textit{pooling} global opera sobre tots els nodes c
     \centering
     \includegraphics[width=\textwidth]{img/preprocess.png}
     \caption{Etapes del preprocessament per a la construcció del graf. D'esquerra a dreta:
-    WSI original $\to$ extracció de \textit{patches} de $2048{\times}2048$ px per finestra lliscant
+    WSI original $\to$ extracció de \textit{patches} de $2048{\times}2048$ px per finestra lliscant + filtratge
     $\to$ extracció de l'embedding CLS de 1.536 dimensions per UNI2 (un vector per \textit{patch})
     $\to$ construcció del graf de Delaunay sobre la màscara anotada, on les arestes en vermell han
-    estat eliminades pel filtre de màscara i la zona verda correspon a l'àrea anotada per la patòloga.}
+    estat eliminades pel filtre de màscara}
     \label{fig:preprocess}
 \end{figure*}
 
