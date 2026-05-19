@@ -1009,7 +1009,8 @@ IBC Score \cite{dawson2024budding} & Puntuació histopat. & $90\%$ & $26\%$ & $0
 \midrule
 \multicolumn{6}{l}{\textit{Models d'IA}} \\[2pt]
 LASSO \cite{piao2023ai}            & Var.\ clinicopatol. & $100\%$ & $85{,}8\%$ & $0{,}960$ & $92{,}9\%$ \\
-\textbf{GAT (aquest TFG)}          & \textbf{Imatge WSI} & $\mathbf{87{,}5\%}$ & $\mathbf{87{,}5\%}$ & $\mathbf{0{,}925}$ & $\mathbf{87{,}5\%}$ \\
+\textbf{GAT (aquest TFG, llindar $0{,}5$)}    & \textbf{Imatge WSI} & $\mathbf{87{,}5\%}$ & $\mathbf{87{,}5\%}$ & $\mathbf{0{,}925}$ & $\mathbf{87{,}5\%}$ \\
+\textbf{GAT (aquest TFG, llindar $0{,}388$)}  & \textbf{Imatge WSI} & $\mathbf{100\%}$    & $\mathbf{85{,}0\%}$ & $\mathbf{0{,}925}$ & $\mathbf{92{,}5\%}$ \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -1150,25 +1151,29 @@ Cal tenir en compte que les guies assoleixen la sensibilitat màxima a costa
 d'una especificitat del $19\%$ (JSCCR), classificant com a alt risc fins a quatre
 pacients N0 per cada N1 detectat. El llindar de decisió del model GAT és ajustable
 a la corba ROC, de manera que es pot incrementar la sensibilitat a costa
-de l'especificitat. \textit{TODO[reportar la sensibilitat i l'especificitat del
-model al punt de la corba ROC que assoleixi sensibilitat~$=\!100\%$; aquest és el
-valor clau per tancar el \textit{trade-off} respecte de JSCCR]}.
+de l'especificitat. Si es desplaça el llindar de decisió de $0{,}5$ a $0{,}388$,
+el model assoleix \textbf{sensibilitat del $100\%$ amb especificitat del $85{,}0\%$}
+sobre el conjunt de test (els $16$ casos N1 es detecten correctament i només $6$ dels
+$40$ casos N0 es classifiquen erròniament com a alt risc). Aquest punt operatiu
+suposa una millora de \textbf{$66$ punts d'especificitat respecte de JSCCR}
+($19\%$) per al mateix nivell de sensibilitat, i és pràcticament equivalent al
+millor model d'IA basat en variables clinicopatológiques estructurades
+(LASSO~\cite{piao2023ai}, $85{,}8\%$).
 
 \textbf{Comparació amb IA SOTA.}
 El model LASSO de Piao et al.~\cite{piao2023ai}, entrenat sobre un conjunt
 $\sim\!14\!\times$ més gran i amb accés a variables clinicopatológiques
-estructurades, assoleix sensibilitat del $100\%$, especificitat del $85{,}8\%$,
-AUC de $0{,}960$ i \textit{balanced accuracy} del $92{,}9\%$, per sobre del
-GAT ($87{,}5\%$, $87{,}5\%$, $0{,}925$ i $87{,}5\%$ respectivament). Atesa
-la diferència de grandària del conjunt d'entrenament ($\sim\!14\!\times$) i
-l'accés a variables clíniques explícites, aquesta diferència és esperable.
-Cal notar que el LASSO sí que assoleix la sensibilitat del $100\%$ amb una
-especificitat del $85{,}8\%$, millorant el balanç respecte de JSCCR. El GAT,
-en canvi, opera exclusivament sobre la imatge i és metodológicament
-complementari als models basats en variables clíniques: en escenaris on
-les variables clíniques no siguin disponibles o es vulgui una segona opinió
-basada en morfologia pura, el GAT aporta AUC de $0{,}925$ sense dependre
-de l'anotació manual d'un patòleg.
+estructurades, assoleix sensibilitat del $100\%$ amb especificitat del
+$85{,}8\%$ i AUC de $0{,}960$. Al mateix punt operatiu (Sens.~$=\!100\%$), el
+model GAT proposat assoleix una especificitat del $85{,}0\%$ —pràcticament
+equivalent a LASSO— a partir exclusivament de la imatge histopatològica,
+sense necessitat d'anotacions clinicopatológiques manuals. La petita diferència
+d'AUC ($0{,}925$ vs $0{,}960$) és coherent amb la diferència de grandària del
+conjunt d'entrenament i de l'accés a variables explícites. Els dos models són
+metodológicament complementaris: el GAT pot operar sobre la WSI immediatament
+després de l'escanejat (sense esperar el report patològic complet), aportant
+una primera estimació basada en morfologia, mentre que el LASSO requereix
+disposar de variables clinicopatológiques estructurades.
 
 % [NEW: comparison]
 \subsection{Limitacions}
@@ -1194,12 +1199,17 @@ La prevalença N1 al test ($28{,}6\%$) supera la prevalença clínica real
 ($\sim\!8$–$15\%$) \cite{zaffalon2023}; el VPP s'ha d'interpretar amb cautela
 en context clínic (vegeu Discussió Comparativa).
 
-\textbf{(4) Sensibilitat subòptima.}
-Dos casos N1 queden sense detectar al test. En context clínic, un fals negatiu
-suposa privar un pacient de cirurgia necessària. Futures versions del model
-haurien d'explorar l'ajust del llindar de decisió i tècniques de
-\textit{cost-sensitive learning}: \textit{TODO[reportar el punt de la corba
-ROC que assoleixi sensibilitat~$=\!100\%$ amb l'especificitat corresponent]}.
+\textbf{(4) Sensibilitat subòptima al llindar per defecte.}
+Al llindar $0{,}5$, dos casos N1 (de $16$) queden sense detectar; en context clínic,
+un fals negatiu suposa privar un pacient de cirurgia necessària. Aquest punt
+operatiu, però, és ajustable: desplaçant el llindar a $0{,}388$ s'assoleix
+sensibilitat del $100\%$ a costa de baixar l'especificitat a $85\%$
+(matriu de confusió: $\text{TP}=16$, $\text{FN}=0$, $\text{TN}=34$, $\text{FP}=6$).
+La tria final del llindar és, per tant, un paràmetre clínic més que tècnic, i
+hauria de fixar-se en col·laboració amb els patòlegs en funció del cost
+relatiu entre falsos negatius i falsos positius. Futures versions del model
+poden integrar tècniques de \textit{cost-sensitive learning} per optimitzar
+directament aquest \textit{trade-off} durant l'entrenament.
 
 \subsection{Treball Futur}
 
