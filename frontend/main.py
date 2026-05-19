@@ -358,6 +358,9 @@ def _list_checkpoints() -> List[Dict]:
         return []
     test_auc_cache = _load_test_auc_cache()
     meta_cache     = _load_meta_cache()
+    settings       = _load_settings()
+    star_name      = settings.get("star")
+    thresholds     = settings.get("thresholds") or {}
     ckpts = sorted(CKPT_DIR.rglob("*.pt"))
     result = []
     cache_updated = False
@@ -369,6 +372,8 @@ def _list_checkpoints() -> List[Dict]:
             "name":       rel,
             "file":       str(p.relative_to(CKPT_DIR)),
             "active":     STATE.checkpoint_info is not None and STATE.checkpoint_info.get("name") == rel,
+            "star":       (rel == star_name),
+            "threshold":  thresholds.get(rel),
             "has_config": cfg is not None,
             "mtime":      mtime,
             "test_auc":   test_auc_cache.get(rel),
@@ -428,6 +433,46 @@ def _find_latest_checkpoint() -> Optional[Path]:
         return None
     ckpts = sorted(CKPT_DIR.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
     return ckpts[0] if ckpts else None
+
+
+# ── per-user model settings (star + thresholds) ─────────────────────────────────
+
+SETTINGS_FILE = _CKPT_ROOT / "model_settings.json"
+
+
+def _load_settings() -> dict:
+    try:
+        if SETTINGS_FILE.exists():
+            data = json.loads(SETTINGS_FILE.read_text())
+            if not isinstance(data, dict):
+                return {"star": None, "thresholds": {}}
+            data.setdefault("star", None)
+            data.setdefault("thresholds", {})
+            if not isinstance(data["thresholds"], dict):
+                data["thresholds"] = {}
+            return data
+    except Exception:
+        pass
+    return {"star": None, "thresholds": {}}
+
+
+def _save_settings(s: dict) -> None:
+    try:
+        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SETTINGS_FILE.write_text(json.dumps(s, indent=2))
+    except Exception as e:
+        log.warning(f"Could not save model settings: {e}")
+
+
+def _find_star_checkpoint() -> Optional[Path]:
+    """Si l'usuari ha marcat un model com a estrella, retornem el seu path;
+    altrament None (i el caller pot caure al checkpoint més recent)."""
+    s = _load_settings()
+    star = s.get("star")
+    if not star:
+        return None
+    p = CKPT_DIR / f"{star}.pt"
+    return p if p.exists() else None
 
 
 # ── inference helpers ──────────────────────────────────────────────────────────
@@ -684,7 +729,7 @@ async def _startup():
     STATE.device = "cuda" if torch.cuda.is_available() else "cpu"
     log.info(f"Device: {STATE.device.upper()}")
 
-    ckpt = _find_latest_checkpoint()
+    ckpt = _find_star_checkpoint() or _find_latest_checkpoint()
     if ckpt:
         try:
             model, info           = _load_model(ckpt)
@@ -692,7 +737,8 @@ async def _startup():
             STATE.checkpoint_info = info
             STATE.aggregation     = info.get("aggregation", "noisy_or")
             auc_str = f"{info['val_auc']:.4f}" if info.get("val_auc") is not None else "n/a"
-            log.info(f"Model: {info['name']}  epoch={info['epoch']}  "
+            star_tag = " (★ star)" if _find_star_checkpoint() and _find_star_checkpoint().name == ckpt.name else ""
+            log.info(f"Model: {info['name']}{star_tag}  epoch={info['epoch']}  "
                      f"val_auc={auc_str}  pooling={info['pooling']}  "
                      f"aggregation={STATE.aggregation}")
         except Exception as e:
@@ -818,6 +864,120 @@ async def status():
 @app.get("/api/checkpoints")
 async def list_checkpoints():
     return {"checkpoints": _list_checkpoints()}
+
+
+# ── star + per-model threshold ─────────────────────────────────────────────────
+
+class StarModelRequest(BaseModel):
+    name: Optional[str] = None  # null → desmarca
+
+
+@app.post("/api/star_model")
+async def set_star_model(req: StarModelRequest):
+    s = _load_settings()
+    if req.name is None:
+        s["star"] = None
+    else:
+        # Verifica que existeix
+        p = CKPT_DIR / f"{req.name}.pt"
+        if not p.exists():
+            raise HTTPException(404, f"Checkpoint not found: {req.name}")
+        s["star"] = req.name
+    _save_settings(s)
+    return {"success": True, "star": s.get("star")}
+
+
+class ThresholdRequest(BaseModel):
+    name: str
+    threshold: Optional[float] = None  # null → restaura per defecte (0.5)
+
+
+@app.post("/api/model_threshold")
+async def set_model_threshold(req: ThresholdRequest):
+    s = _load_settings()
+    th = s.get("thresholds") or {}
+    if req.threshold is None:
+        th.pop(req.name, None)
+    else:
+        if not (0.0 <= req.threshold <= 1.0):
+            raise HTTPException(400, "Threshold must be in [0, 1]")
+        th[req.name] = float(req.threshold)
+    s["thresholds"] = th
+    _save_settings(s)
+    return {"success": True, "threshold": th.get(req.name)}
+
+
+@app.post("/api/compute_sens100_threshold/{name:path}")
+async def compute_sens100_threshold(name: str):
+    """Avalua el model sobre el test set i retorna el llindar que assoleix
+    Sens=100% (TPR=1.0). El desa als settings com a llindar del model."""
+    ckpt_path = CKPT_DIR / f"{name}.pt"
+    if not ckpt_path.exists():
+        raise HTTPException(404, f"Checkpoint not found: {name}")
+    try:
+        from sklearn.metrics import roc_curve, roc_auc_score
+        import numpy as np
+        model, info = _load_model(ckpt_path)
+        model.eval().to(STATE.device)
+        agg = info.get("aggregation", "mean")
+
+        # Agrupa per pacient sobre el test set
+        patient_probs: dict[str, list[float]] = {}
+        patient_label: dict[str, int] = {}
+        for entry in STATE.graphs["val"]:
+            g = _load_pt(Path(entry["path"]))
+            if g is None: continue
+            pid = str(getattr(g, "patient_id", "")) or entry["id"]
+            y   = int(g.y.item()) if hasattr(g.y, "item") else int(g.y)
+            patient_label[pid] = y
+            g_dev = g.to(STATE.device)
+            b = torch.zeros(int(g.num_nodes), dtype=torch.long, device=STATE.device)
+            with torch.no_grad():
+                p = F.softmax(model(g_dev.x, g_dev.edge_index, b), dim=1)
+            patient_probs.setdefault(pid, []).append(float(p[0, 1].item()))
+
+        pids = sorted(patient_probs)
+        if len(pids) < 2:
+            raise HTTPException(400, "Not enough patients for ROC analysis")
+        y_true  = np.array([patient_label[p] for p in pids])
+
+        def aggregate(ps, m):
+            a = np.asarray(ps, dtype=np.float64)
+            if m == "mean":     return float(a.mean())
+            if m == "noisy_or": return float(1 - np.prod(1 - a))
+            return float(a.mean())
+
+        y_score = np.array([aggregate(patient_probs[p], agg) for p in pids])
+
+        if len(set(y_true)) < 2:
+            raise HTTPException(400, "Single-class test set; cannot compute ROC")
+
+        fpr, tpr, thr = roc_curve(y_true, y_score)
+        idx = next((i for i, t in enumerate(tpr) if t >= 1.0), None)
+        if idx is None:
+            raise HTTPException(400, "Could not reach Sens=100% on this test set")
+        t100  = float(thr[idx])
+        spec  = float(1 - fpr[idx])
+
+        # Desa el llindar als settings
+        s = _load_settings()
+        th_map = s.get("thresholds") or {}
+        rel = str(ckpt_path.relative_to(CKPT_DIR).with_suffix(""))
+        th_map[rel] = t100
+        s["thresholds"] = th_map
+        _save_settings(s)
+
+        return {
+            "name":      rel,
+            "threshold": t100,
+            "sens":      1.0,
+            "spec":      spec,
+            "auc":       float(roc_auc_score(y_true, y_score)),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Computation failed: {e}")
 
 
 class SelectModelRequest(BaseModel):
