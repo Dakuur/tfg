@@ -78,7 +78,7 @@ Graph Attention Networks}}
 Es presenta un sistema de classificació N0/N1 per a la detecció de metàstasi en ganglis limfàtics
 en càncer colorrectal pT1 a partir de \textit{Whole Slide Images}. El teixit es representa com un
 \textbf{graf espacial} construït per triangulació de Delaunay sobre les coordenades dels \textit{patches},
-de manera que es preserva la topologia real del teixit —a diferència d'enfocaments basats en similitud de
+de manera que es preserva la topologia real del teixit, a diferència d'enfocaments basats en similitud de
 característiques. Cada node és un \textit{patch} de 2048$\times$2048 px representat per l'embedding
 CLS (1.536 dim.) del model UNI2. Es comparen dues arquitectures: un GAT de referència
 amb \textit{readout} pla i un GAT amb \textbf{DiffPool jeràrquic} intercalat ($N\!\to\!K_1\!\to\!K_2$
@@ -95,7 +95,7 @@ DiffPool jeràrquic, Graf espacial de Delaunay, MIL, Desbalanceig de classes.\\
 \textbf{Abstract--}
 We present an N0/N1 classification system for lymph node metastasis prediction in pT1 colorectal
 cancer from Whole Slide Images. Tissue is represented as a \textbf{spatial graph} built by Delaunay
-triangulation over patch coordinates, preserving the real spatial topology of the tissue —unlike
+triangulation over patch coordinates, preserving the real spatial topology of the tissue, unlike
 feature-similarity graph approaches. Each node is a 2048$\times$2048 px patch represented by a
 1,536-dimensional CLS embedding from the UNI2 model. Two architectures are compared: a
 \textbf{GAT baseline} with flat readout (mean/max) and a \textbf{GAT+DiffPool} model
@@ -132,9 +132,9 @@ més freqüentment diagnosticat i en la segona causa de mort per càncer amb 14.
 El carcinoma pT1 és especialment complex: el tumor ha envaït la submucosa però no la muscular pròpia, i el risc de
 metàstasi als ganglis limfàtics oscil·la entre el \textbf{2\%} i el \textbf{23\%} depenent de la profunditat
 d'invasió \cite{ParcSalutMar2013}. % [NEW: comparison]
-Quan hi ha criteris de mal pronòstic —\textbf{invasió submucosa $\geq\!1000\,\mu$m,
+Quan hi ha criteris de mal pronòstic (\textbf{invasió submucosa $\geq\!1000\,\mu$m,
 invasió vascular o limfàtica, histologia indiferenciada, \textit{tumor budding} de
-grau~$\geq\!2$ o marge vertical positiu} \cite{jsccr2019,dawson2024budding}— el risc
+grau~$\geq\!2$ o marge vertical positiu} \cite{jsccr2019,dawson2024budding}), el risc
 s'estima al voltant del $10\%$, la qual cosa obliga les guies clíniques (JSCCR
 \cite{jsccr2019}, NCCN i ESMO \cite{esge2022}) a recomanar cirurgia radical addicional.
 Tanmateix, com que la majoria de tumors pT1 no desenvolupa LNM real, s'estima que
@@ -183,7 +183,7 @@ proposar l'agregació per atenció (\textit{attention-based MIL}), que aprèn qu
 \textit{patches} són més rellevants per al diagnòstic. Lu et al.~\cite{lu2020dataefficientweaklysupervised}
 van aplicar aquest mètode a conjunts de dades clínics reals (CLAM), i Li et
 al.~\cite{li2021dualstreammultipleinstancelearning} van proposar DSMIL, que combina dues
-branques —a nivell de \textit{patch} i de làmina— amb aprenentatge contrastiu. La
+branques, a nivell de \textit{patch} i de làmina, amb aprenentatge contrastiu. La
 predicció de metàstasi ganglionar a partir d'histopatologia s'ha estudiat en altres càncers:
 Muti et al.~\cite{muti2023deep} mostren que és possible predir l'estat N0/N1 a partir de
 làmines de càncer gàstric, amb resultats prometedors.
@@ -217,8 +217,8 @@ preentrenats en el mateix domini i capturen informació morfològica rellevant.
 \subsection{Guies Clíniques i Models Predictius per a pT1 CRC}
 \label{sec:guidelines-sota}
 
-Les guies clíniques de referència —JSCCR \cite{jsccr2019}, NCCN i
-ESMO \cite{esge2022}— recomanen cirurgia addicional quan el pacient
+Les guies clíniques de referència (JSCCR \cite{jsccr2019}, NCCN i
+ESMO \cite{esge2022}) recomanen cirurgia addicional quan el pacient
 presenta un o més dels criteris de risc histopatològics esmentats a la
 Introducció. Malgrat la seva sensibilitat elevada, la seva especificitat
 és baixa: en un estudi comparatiu sobre $560$ pacients
@@ -234,8 +234,8 @@ obtenint sensibilitat del $100\%$, especificitat del $85{,}8\%$, AUC de
 $0{,}960$ i \textit{balanced accuracy} del $92{,}9\%$; la taxa de
 pacients classificats com a alt risc es va reduir del $83{,}8\%$ (JSCCR)
 al $20{,}9\%$. Dawson et al.~\cite{dawson2024budding} van proposar
-l'IBC Score —una puntuació ponderada sobre invasió limfovascular, grau de
-\textit{tumor budding}, profunditat d'invasió i grau tumoral—
+l'IBC Score, una puntuació ponderada sobre invasió limfovascular, grau de
+\textit{tumor budding}, profunditat d'invasió i grau tumoral,
 que obté AUC de $0{,}68$ sobre $565$ pacients. A diferència d'aquests
 treballs, el present TFG aborda la predicció exclusivament a partir de la
 \textbf{imatge histopatológica} (WSI), sense variables clíniques
@@ -512,8 +512,8 @@ regularitzar l'assignació i evitar degeneracions trivials.
     \label{fig-diffpool}
 \end{figure*}
 
-Els algorismes clàssics de particionat de grafs —com el \textit{min-cut} o la clusterització
-espectral— podrien en principi reduir la mida del graf entre capes de propagació i proporcionar
+Els algorismes clàssics de particionat de grafs, com el \textit{min-cut} o la clusterització
+espectral, podrien en principi reduir la mida del graf entre capes de propagació i proporcionar
 representacions jeràrquiques. El problema fonamental és que aquestes operacions \textbf{no són
 diferenciables}: el mínim tall és un problema combinatori que no admet gradients respecte dels
 paràmetres de la xarxa, de manera que la partició no pot ajustar-se en funció de la pèrdua de
@@ -521,7 +521,7 @@ classificació final i no és possible integrar-la en un \textit{pipeline} entre
 retropropagació. DiffPool resol exactament aquest problema: la matriu d'assignació $\mathbf{S}$
 s'obté com la sortida d'una GNN auxiliar amb \textit{softmax}, de manera que cada entrada $S_{ij}$
 expressa de forma \textbf{suau} la probabilitat que el node $i$ pertanyi al super-node $j$. Com
-que tots els passos —GNN auxiliar, multiplicació matricial i pèrdua de classificació— són
+que tots els passos (GNN auxiliar, multiplicació matricial i pèrdua de classificació) són
 operacions diferenciables, el gradient flueix de cap a cap i el \textit{pooling} s'ajusta
 conjuntament amb la resta del model.
 
@@ -609,7 +609,7 @@ regularització.
   {\rotatebox{90}{MLP}};
 
 \end{tikzpicture}
-\caption{GAT Baseline — readout pla sobre els $N$ nodes originals.}
+\caption{GAT Baseline: readout pla sobre els $N$ nodes originals.}
 \label{fig:arch-baseline}
 \end{subfigure}
 \hfill
@@ -684,7 +684,7 @@ regularització.
   {\rotatebox{90}{MLP}};
 
 \end{tikzpicture}
-\caption{GAT+DiffPool — DiffPool intercalat entre capes GAT; $K_1\!\ll\!N$,
+\caption{GAT+DiffPool: DiffPool intercalat entre capes GAT; $K_1\!\ll\!N$,
 $K_2\!\ll\!K_1$ (p.~ex.\ $N\!\approx\!250$, $K_1\!=\!25$, $K_2\!=\!8$).}
 \label{fig:arch-diffpool}
 \end{subfigure}
@@ -1165,8 +1165,8 @@ El model LASSO de Piao et al.~\cite{piao2023ai}, entrenat sobre un conjunt
 $\sim\!14\!\times$ més gran i amb accés a variables clinicopatológiques
 estructurades, assoleix sensibilitat del $100\%$ amb especificitat del
 $85{,}8\%$ i AUC de $0{,}960$. Al mateix punt operatiu (Sens.~$=\!100\%$), el
-model GAT proposat assoleix una especificitat del $85{,}0\%$ —pràcticament
-equivalent a LASSO— a partir exclusivament de la imatge histopatològica,
+model GAT proposat assoleix una especificitat del $85{,}0\%$, pràcticament
+equivalent a la del LASSO, a partir exclusivament de la imatge histopatològica,
 sense necessitat d'anotacions clinicopatológiques manuals. La petita diferència
 d'AUC ($0{,}925$ vs $0{,}960$) és coherent amb la diferència de grandària del
 conjunt d'entrenament i de l'accés a variables explícites. Els dos models són
