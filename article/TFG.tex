@@ -323,14 +323,6 @@ borrositat ni per proporció de blanc): tots els \textit{patches} d'una secció 
 
 \section{Construcció del Graf}
 
-\subsection{Nodes i característiques}
-
-Cada \textit{patch} de $2048{\times}2048$\,px del WSI constitueix un \textbf{node} del graf. El
-vector de característiques de cada node és l'embedding CLS de \textbf{1.536 dimensions} obtingut
-per UNI2. La posició del node al pla WSI és el centre del patch (coordenades en píxels a nivell 0).
-A la figura~\ref{fig:preprocess} es pot observar la distribució esparsa dels \textit{patches}
-extrets sobre una làmina real.
-
 \subsection{Model de dades: dimensions i estructures}
 \label{sec:model-dades}
 
@@ -359,29 +351,11 @@ Cada secció genera un graf independent; les $S$ seccions d'un pacient es proces
 probabilitats $\{P(\text{N1}_i)\}_{i=1}^{S}$ s'agreguen a posteriori (Secció~\ref{sec:mil}).
 
 \textbf{Model 2 --- Un sol graf per pacient.}
-Com a alternativa, es pot construir un únic graf per pacient concatenant verticalment les matrius de
-característiques i col·locant les matrius d'adjacència en la diagonal d'una mega-matriu per blocs:
-
-\begin{align}
-  \mathbf{X}_{\text{pac}} &=
-  \begin{pmatrix}
-    \mathbf{X}_1 \\
-    \vdots \\
-    \mathbf{X}_S
-  \end{pmatrix}
-  \in \mathbb{R}^{\left(\sum_i N_i\right) \times 1536} \\[10pt]
-  \mathbf{A}_{\text{pac}} &=
-  \begin{pmatrix}
-    \mathbf{A}_1 & \mathbf{0} & \cdots \\
-    \mathbf{0}   & \ddots     & \mathbf{0} \\
-    \cdots       & \mathbf{0} & \mathbf{A}_S
-  \end{pmatrix}
-\end{align}
-
-Els triangles fora de la diagonal queden a zero, és a dir, no hi ha arestes entre seccions
-diferents. D'aquesta manera el mecanisme d'atenció del GAT opera sobre totes les seccions
-simultàniament, i un únic \textit{pooling} global produeix directament el diagnòstic del pacient
-sense necessitat d'una etapa d'agregació de probabilitats.
+Com a alternativa, totes les seccions d'un pacient es concatenen en un únic mega-graf bloc-diagonal:
+les matrius de característiques s'apilen i les d'adjacència s'organitzen a la diagonal (sense
+arestes entre seccions). El GAT opera llavors sobre totes les seccions simultàniament i un únic
+\textit{pooling} global produeix el diagnòstic sense etapa MIL separada. Empíricament, aquest
+enfocament és inferior al Model 1.
 
 \subsection{Connectivitat per triangulació de Delaunay}
 
@@ -525,13 +499,9 @@ que tots els passos (GNN auxiliar, multiplicació matricial i pèrdua de classif
 operacions diferenciables, el gradient flueix de cap a cap i el \textit{pooling} s'ajusta
 conjuntament amb la resta del model.
 
-Com a alternativa diferenciable, \textbf{SAGPool} \cite{lee2019selfattentiongraphpooling} proposa
-un enfocament esparç que selecciona els $K$ nodes més rellevants via puntuacions d'auto-atenció,
-descartant la resta i preservant l'estructura topològica original. A diferència de DiffPool, SAGPool
-no aprèn assignacions suaus sinó seleccions discretes, amb un cost computacional menor però sense
-la capacitat de capturar representacions jeràrquiques continues. En aquest projecte s'utilitza
-DiffPool per la seva major expressivitat i la possibilitat d'integrar la pèrdua auxiliar de
-regularització.
+Com a alternativa, SAGPool~\cite{lee2019selfattentiongraphpooling} selecciona els $K$ nodes més
+rellevants via puntuacions d'auto-atenció (selecció discreta, no assignació suau); s'ha preferit
+DiffPool per la seva expressivitat contínua i la pèrdua auxiliar de regularització.
 
 % ── Shared TikZ styles for both architecture diagrams ──────────
 \tikzset{
