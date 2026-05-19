@@ -27,6 +27,4 @@ export const API = {
   datasetSlides:   (refresh=false) => _req("GET", `/api/dataset/slides${refresh ? "?refresh=true" : ""}`),
   datasetImageUrl: (relPath)       => `/api/dataset/image?p=${encodeURIComponent(relPath)}`,
   setStarModel:    (name)          => _req("POST", "/api/star_model",       { name }),
-  setThreshold:    (name, threshold) => _req("POST", "/api/model_threshold", { name, threshold }),
-  computeSens100:  (name)          => _req("POST", `/api/compute_sens100_threshold/${encodeURIComponent(name)}`),
 };

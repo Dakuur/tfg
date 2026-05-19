@@ -59,7 +59,6 @@ export async function renderDashboard(container) {
                 <th style="padding:7px 10px;color:var(--text3);font-weight:500;white-space:nowrap;width:260px">
                   ${renderAxisHeader(ticks)}
                 </th>
-                <th style="padding:7px 8px;text-align:center;color:var(--text3);font-weight:500;white-space:nowrap" title="Llindar de decisió (default 0.5)">Llindar</th>
                 <th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:500">Pooling · MIL</th>
                 <th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:500">Nom</th>
                 <th style="padding:7px 4px"></th>
@@ -72,16 +71,12 @@ export async function renderDashboard(container) {
                 const shortName = c.name.replace(/_best$/, "").replace(/^gs\d+\//, "");
                 const isActive = c.active;
                 const isStar   = !!c.star;
-                const thr      = c.threshold;
                 const rowBg = isActive ? "background:rgba(204,0,168,0.08)" : (i % 2 === 0 ? "" : "background:var(--bg2)");
                 const aucColor = c.test_auc != null
                   ? (c.test_auc >= 0.85 ? "var(--green)" : c.test_auc >= 0.70 ? "var(--accent-light)" : "var(--text3)")
                   : "var(--text3)";
                 const starColor = isStar ? "#ffc94a" : "var(--text3)";
                 const starGlyph = isStar ? "★" : "☆";
-                const thrLabel = thr != null
-                  ? `<span style="color:var(--accent-light);font-family:var(--mono);font-weight:600">${thr.toFixed(3)}</span>`
-                  : `<span style="color:var(--text3);font-family:var(--mono)">0.500</span>`;
                 return `<tr class="ckpt-row" data-name="${c.name}" style="cursor:pointer;border-bottom:1px solid var(--border1);${rowBg}">
                   <td style="padding:4px 6px;text-align:center">
                     <button class="btn-star" data-name="${c.name}" data-star="${isStar ? 1 : 0}" title="${isStar ? "Treure estrella" : "Marcar com a model estrella (es carregarà per defecte)"}"
@@ -90,12 +85,6 @@ export async function renderDashboard(container) {
                   <td style="padding:6px 10px;color:var(--accent-light);font-size:13px">${isActive ? "▶" : ""}</td>
                   <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-weight:600;color:${aucColor}">${testAuc}</td>
                   <td style="padding:6px 10px">${renderAucTrack(c, scale, ticks)}</td>
-                  <td style="padding:4px 6px;text-align:center;white-space:nowrap">
-                    ${thrLabel}
-                    <button class="btn-thr-compute" data-name="${c.name}" title="Calcular llindar amb Sens=100% sobre test"
-                            style="background:none;border:1px solid var(--border1);border-radius:3px;cursor:pointer;padding:1px 5px;margin-left:4px;color:var(--text2);font-size:10px;font-family:var(--mono)">Sens=100%</button>
-                    ${thr != null ? `<button class="btn-thr-reset" data-name="${c.name}" title="Restaura 0.5" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:11px;margin-left:2px">✕</button>` : ""}
-                  </td>
                   <td style="padding:6px 10px;color:var(--text2);white-space:nowrap">${poolMil}</td>
                   <td style="padding:6px 10px;color:var(--text3);font-family:var(--mono);font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.name}">${shortName}</td>
                   <td style="padding:6px 4px">
@@ -255,37 +244,6 @@ export async function renderDashboard(container) {
       } catch (err) {
         selStatus.style.color = "var(--red)";
         selStatus.textContent = `✗ Star: ${err.message}`;
-      }
-    });
-  });
-  // ── Threshold: calcula Sens=100% sobre test ────────────────────────────────
-  container.querySelectorAll(".btn-thr-compute").forEach(btn => {
-    btn.addEventListener("click", async e => {
-      e.stopPropagation();
-      const orig = btn.textContent;
-      btn.disabled = true; btn.textContent = "calculant…";
-      try {
-        const res = await API.computeSens100(btn.dataset.name);
-        selStatus.style.color = "var(--green)";
-        selStatus.textContent = `✓ Llindar Sens=100%: ${res.threshold.toFixed(4)}  (Spec=${(res.spec*100).toFixed(1)}%)`;
-        setTimeout(() => renderDashboard(container), 600);
-      } catch (err) {
-        btn.textContent = orig; btn.disabled = false;
-        selStatus.style.color = "var(--red)";
-        selStatus.textContent = `✗ ${err.message}`;
-      }
-    });
-  });
-  // ── Threshold: reset a default (treu override) ────────────────────────────
-  container.querySelectorAll(".btn-thr-reset").forEach(btn => {
-    btn.addEventListener("click", async e => {
-      e.stopPropagation();
-      try {
-        await API.setThreshold(btn.dataset.name, null);
-        renderDashboard(container);
-      } catch (err) {
-        selStatus.style.color = "var(--red)";
-        selStatus.textContent = `✗ ${err.message}`;
       }
     });
   });
