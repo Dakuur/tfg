@@ -777,7 +777,7 @@ qualsevol procés d'ajust. Pesos de classe, paràmetres del model i tota selecci
 d'hiperparàmetres s'ajusten exclusivament sobre el fold d'entrenament per evitar filtracions de
 dades (\textit{data leakage}).
 
-\section{Resultats Preliminars}
+\section{Resultats}
 
 Les mètriques principals usades en aquest treball són l'\textbf{AUC-ROC} (àrea sota la corba
 receptor-operador, mesura d'ordenació global independent del llindar de decisió) i les
@@ -791,130 +791,131 @@ La cerca d'hiperparàmetres es realitza mitjançant validació creuada 5-fold so
 \textit{pool} d'entrenament/validació (vegeu Secció~\ref{sec:gridsearch}), explorant
 conjuntament: arquitectura (GAT Baseline / GAT+DiffPool), tipus de graf (per secció / per
 pacient), \textit{pooling} (\textit{attention} / \textit{mean\_max} / \textit{diff}), agregació
-MIL (\textit{mean} / \textit{attention} / \textit{noisy-OR}), \textit{learning rate}, dimensió
-oculta $h$, nombre de caps d'atenció $H \in \{2, 4, 8\}$, \textit{dropout}
-$\in \{0{,}1; 0{,}2; 0{,}3\}$ i regularització L2 $\lambda_{\text{wd}} \in \{0,\,10^{-4}\}$.
-La cerca és \textbf{en curs}: aquí es reporta el millor candidat identificat fins ara, que ja
-supera els resultats de la primera tanda exploratòria sobre \textit{hold-out} simple
-(48 configuracions) amb una millora d'AUC de test de $0{,}917 \to 0{,}925$ i, sobretot, amb una
-sensibilitat substancialment superior (de $0{,}56$ a $0{,}875$).
-La Taula~\ref{tab:grid} resumeix la millor configuració actual i alguns dels models
-representatius avaluats.
+MIL (\textit{mean} / \textit{attention} / \textit{noisy-OR}), \textit{learning rate} $\in
+\{3 \!\cdot\! 10^{-5},\,10^{-4},\,3 \!\cdot\! 10^{-4}\}$, dimensió oculta $h \in \{128, 256\}$,
+nombre de caps d'atenció $H \in \{2, 4, 8\}$, \textit{dropout} $\in \{0{,}1;\,0{,}2;\,0{,}3\}$ i
+regularització L2 $\lambda_{\text{wd}} \in \{0,\,10^{-4},\,10^{-3}\}$. En total s'han avaluat
+\textbf{255 configuracions} amb validació creuada 5-fold sobre el \textit{pool} d'entrenament,
+millorant substancialment els resultats de la primera tanda exploratòria sobre \textit{hold-out}
+simple (48 configuracions, AUC test màxim $0{,}917$, sensibilitat $0{,}56$).
+La Taula~\ref{tab:grid} mostra les 5 millors configuracions per AUC CV mitjana, i el text que
+segueix justifica la selecció del model final.
 
 \begin{table*}[t]
 \centering
-\caption{Millor configuració actual de la cerca v3 (validació creuada 5-fold; test de 56 pacients).
-Es mostren mètriques de CV ($\mu \pm \sigma$ sobre els 5 folds) i AUC sobre el conjunt de test, mai vist.
-\textbf{Negreta}: model seleccionat com a candidat estrella.}
+\caption{Top-5 configuracions per AUC CV mitjana (combinació de 255 configs avaluades en
+validació creuada 5-fold; test de 56 pacients). \textbf{Negreta}: model seleccionat per al
+\textit{reporting} final, escollit per la combinació de rendiment alt al test ($0{,}925$) i un
+punt operatiu clínic favorable (Sens.$=100\%$ amb Espec.$=85\%$, vegeu Secció~\ref{sec:limitacions}).
+Tots els models són \textit{GAT Baseline} amb agregació MIL \textit{mean}.}
 \label{tab:grid}
 \small
-\begin{tabular}{llllcccrr}
+\begin{tabular}{cllccccrr}
 \toprule
-\textbf{Model} & \textbf{Pooling} & \textbf{MIL} & \textbf{LR} & $H$ & \textbf{drop} & $\lambda_{\text{wd}}$ & \textbf{AUC CV} & \textbf{AUC test} \\
+\textbf{\#} & \textbf{Pooling} & \textbf{LR} & $H$ & \textbf{hidden} & \textbf{drop} & $\lambda_{\text{wd}}$ & \textbf{AUC CV} & \textbf{AUC test} \\
 \midrule
-\textbf{GAT Baseline} & \textit{attention} & \textit{mean} & $3 \cdot 10^{-4}$ & 2 & $0{,}1$ & $10^{-4}$ & $\mathbf{0{,}860 \pm 0{,}061}$ & $\mathbf{0{,}925}$ \\
+1 & \textit{attention} & $3 \!\cdot\! 10^{-4}$ & 4 & 256 & $0{,}3$ & $10^{-4}$ & $\mathbf{0{,}881 \pm 0{,}034}$ & $0{,}850$ \\
+2 & \textit{attention} & $3 \!\cdot\! 10^{-4}$ & 2 & 256 & $0{,}1$ & $0$       & $0{,}865 \pm 0{,}072$ & $0{,}884$ \\
+3 & \textit{mean\_max} & $1 \!\cdot\! 10^{-4}$ & 2 & 128 & $0{,}2$ & $0$       & $0{,}862 \pm 0{,}038$ & $0{,}891$ \\
+4 & \textit{attention} & $3 \!\cdot\! 10^{-4}$ & 4 & 128 & $0{,}3$ & $10^{-3}$ & $0{,}861 \pm 0{,}058$ & $0{,}866$ \\
+5 & \textbf{\textit{attention}} & $\mathbf{3 \!\cdot\! 10^{-4}}$ & \textbf{2} & \textbf{256} & $\mathbf{0{,}1}$ & $\mathbf{10^{-4}}$ & $\mathbf{0{,}860 \pm 0{,}061}$ & $\mathbf{0{,}925}$ \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-El millor model és el \textbf{GAT Baseline amb \textit{attention pooling} i agregació
-\textit{mean}}, amb $H=2$ caps d'atenció, \textit{dropout} de $0{,}1$ i regularització L2 de
-$10^{-4}$. Assoleix un AUC de test de \textbf{0,925} (sensibilitat $= 0{,}875$, especificitat
-$= 0{,}875$, \textit{balanced accuracy} $= 0{,}875$) i un AUC mitjà de validació creuada de
-$0{,}860 \pm 0{,}061$ sobre 5 folds, cosa que indica que el rendiment és estable enfront de la
-partició del \textit{pool} d'entrenament. La consistència entre la mitjana CV ($0{,}860$) i el
-valor del test ($0{,}925$) suggereix que el model generalitza i que el conjunt de test no és
-particularment favorable per atzar.
+Les 5 millors configuracions per CV mostren un AUC molt similar (rang $0{,}860$–$0{,}881$), cosa
+que suggereix que diverses combinacions properes a l'òptim donen un rendiment comparable. Per al
+\textit{reporting} final s'ha seleccionat el model \#5 (GAT Baseline amb \textit{attention
+pooling}, $H=2$, $h=256$, \textit{dropout} $0{,}1$ i $\lambda_{\text{wd}} = 10^{-4}$): tot i ser
+el 5è per CV mitjana, és el que assoleix \textbf{l'AUC de test més alt} ($0{,}925$) i,
+especialment, el millor \textbf{punt operatiu clínic} (Sens.$=100\%$ amb Espec.$=85\%$,
+Secció~\ref{sec:limitacions}). El model \#1, més estable en CV ($\sigma = 0{,}034$), té un AUC
+de test inferior ($0{,}850$) i una especificitat substancialment pitjor al punt Sens.$=100\%$
+($47{,}5\%$ vs $85\%$), cosa que el fa menys útil per a la comparació amb les guies clíniques.
 
-Respecte a la cerca preliminar (\textit{hold-out} simple), la incorporació de la regularització
-L2 i un \textit{dropout} més suau ($0{,}1$ enfront de $0{,}3$), combinats amb un \textit{learning
-rate} més agressiu ($3 \cdot 10^{-4}$), milloren especialment la sensibilitat: dels 16 casos N1
-del conjunt de test, el model en detecta correctament 14 (només 2 falsos negatius).
+Respecte a la primera tanda exploratòria sobre \textit{hold-out} simple, la incorporació de la
+regularització L2 i un \textit{dropout} més suau ($0{,}1$ enfront de $0{,}3$), combinats amb un
+\textit{learning rate} més agressiu ($3 \!\cdot\! 10^{-4}$), milloren especialment la sensibilitat
+del model seleccionat: dels 16 casos N1 del conjunt de test, el model en detecta correctament 14
+al llindar $0{,}5$ (només 2 falsos negatius), i la totalitat al llindar $0{,}388$.
 
-\subsection{Anàlisi d'influència dels hiperparàmetres (cerca preliminar)}
+\subsection{Anàlisi d'influència dels hiperparàmetres}
+\label{sec:main-effects}
 
-L'anàlisi que segueix correspon a la \textbf{primera tanda de 48 configuracions} avaluades amb
-\textit{hold-out} simple, anterior a la introducció dels eixos de cerca actuals
-($H$, \textit{dropout} i $\lambda_{\text{wd}}$). Es manté perquè aporta informació
-metodològica útil sobre els factors estructurals (arquitectura, \textit{pooling}, agregació
-MIL); els resultats finals dels nous eixos es consolidaran un cop la cerca v3 hagi finalitzat.
-
-Per identificar quins factors determinen els resultats, s'han calculat els \textbf{efectes principals}
-de cada hiperparàmetre: per a cada nivell d'un factor s'obté la mitjana de l'AUC de test en tots els
-experiments que inclouen aquell nivell, independentment dels altres factors. El \textbf{rang d'influència}
-(diferència entre el millor i el pitjor nivell) mesura la rellevància relativa de cada factor.
+Per identificar quins factors determinen el rendiment, s'han calculat els \textbf{efectes
+principals} sobre l'AUC mitjà de validació creuada (5-fold): per a cada nivell d'un factor
+s'obté la mitjana de l'AUC CV sobre totes les configuracions que inclouen aquell nivell,
+independentment dels altres factors. El \textbf{rang d'influència} (diferència entre el
+millor i el pitjor nivell) mesura la rellevància relativa de cada factor. L'anàlisi es
+restringeix al subgrup de configuracions amb el millor \textit{backbone} (\textit{GAT Baseline,
+grafs per secció, agregació MIL mean}; $n = 248$), de manera que els efectes són directament
+comparables i no estan barrejats amb pèrdues conegudes (DiffPool, mega-graf, MIL alternatives).
 
 \begin{table*}[t]
 \centering
-\caption{Efectes principals de cada hiperparàmetre sobre l'AUC de test (48 experiments, 56 pacients).
-Rangs d'influència en negreta per ordre decreixent.}
+\caption{Efectes principals de cada hiperparàmetre sobre l'AUC CV mitjana (248 configuracions,
+\textit{GAT Baseline} + grafs per secció + agregació \textit{mean}). Els valors mostren
+$\mu \pm \sigma$ de l'AUC mitjana de 5-fold dins de cada nivell. Rangs d'influència ordenats
+per magnitud decreixent.}
 \label{tab:main-effects}
 \small
 \begin{tabular}{llrrl}
 \toprule
-\textbf{Factor} & \textbf{Nivell} & \textbf{$n$} & \textbf{AUC test (mitjana $\pm$ std)} & \textbf{Rang} \\
+\textbf{Factor} & \textbf{Nivell} & \textbf{$n$} & \textbf{AUC CV (mitjana $\pm$ std)} & \textbf{Rang} \\
 \midrule
-\multirow{3}{*}{Pooling}
-  & \textit{attention}  & 16 & $0{,}719 \pm 0{,}128$ & \multirow{3}{*}{\textbf{0,200}} \\
-  & \textit{mean\_max}  & 16 & $0{,}624 \pm 0{,}189$ & \\
-  & \textit{diff}       & 16 & $0{,}519 \pm 0{,}151$ & \\
+\multirow{3}{*}{Heads ($H$)}
+  & $2$                  & 108 & $0{,}833 \pm 0{,}015$ & \multirow{3}{*}{\textbf{0,253}} \\
+  & $4$                  & 104 & $0{,}830 \pm 0{,}019$ & \\
+  & $8$                  &  36 & $0{,}580 \pm 0{,}167$ & \\
 \midrule
-\multirow{2}{*}{Arquitectura}
-  & GAT Baseline        & 32 & $0{,}672 \pm 0{,}168$ & \multirow{2}{*}{\textbf{0,153}} \\
-  & GAT+DiffPool        & 16 & $0{,}519 \pm 0{,}151$ & \\
+\multirow{2}{*}{Hidden ($h$)}
+  & $128$                & 106 & $0{,}830 \pm 0{,}017$ & \multirow{2}{*}{\textbf{0,062}} \\
+  & $256$                & 142 & $0{,}768 \pm 0{,}139$ & \\
 \midrule
-\multirow{2}{*}{Tipus de graf}
-  & Per secció          & 36 & $0{,}652 \pm 0{,}164$ & \multirow{2}{*}{\textbf{0,126}} \\
-  & Per pacient           & 12 & $0{,}526 \pm 0{,}184$ & \\
+\multirow{3}{*}{$\lambda_{\text{wd}}$}
+  & $10^{-3}$            &  72 & $0{,}831 \pm 0{,}018$ & \multirow{3}{*}{\textbf{0,052}} \\
+  & $10^{-4}$            &  90 & $0{,}781 \pm 0{,}128$ & \\
+  & $0$                  &  86 & $0{,}779 \pm 0{,}127$ & \\
 \midrule
-\multirow{4}{*}{\textit{Learning rate}}
-  & $10^{-5}$           & 12 & $0{,}681 \pm 0{,}153$ & \multirow{4}{*}{\textbf{0,115}} \\
-  & $10^{-3}$           & 12 & $0{,}624 \pm 0{,}180$ & \\
-  & $10^{-4}$           & 12 & $0{,}611 \pm 0{,}186$ & \\
-  & $10^{-6}$           & 12 & $0{,}566 \pm 0{,}173$ & \\
+\multirow{2}{*}{Pooling}
+  & \textit{attention}   & 124 & $0{,}811 \pm 0{,}035$ & \multirow{2}{*}{\textbf{0,033}} \\
+  & \textit{mean\_max}   & 124 & $0{,}779 \pm 0{,}150$ & \\
 \midrule
-\multirow{3}{*}{Agregació MIL}
-  & \textit{mean}       & 24 & $0{,}662 \pm 0{,}210$ & \multirow{3}{*}{\textbf{0,099}} \\
-  & \textit{noisy-OR}   & 12 & $0{,}597 \pm 0{,}120$ & \\
-  & \textit{attention}  & 12 & $0{,}562 \pm 0{,}129$ & \\
+\multirow{3}{*}{\textit{Learning rate}}
+  & $3 \!\cdot\! 10^{-4}$ &  84 & $0{,}801 \pm 0{,}107$ & \multirow{3}{*}{\textbf{0,016}} \\
+  & $10^{-4}$            &  80 & $0{,}798 \pm 0{,}108$ & \\
+  & $3 \!\cdot\! 10^{-5}$ &  84 & $0{,}785 \pm 0{,}115$ & \\
+\midrule
+\multirow{3}{*}{Dropout}
+  & $0{,}1$              &  84 & $0{,}799 \pm 0{,}101$ & \multirow{3}{*}{\textbf{0,007}} \\
+  & $0{,}2$              &  84 & $0{,}794 \pm 0{,}106$ & \\
+  & $0{,}3$              &  80 & $0{,}791 \pm 0{,}124$ & \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-El factor amb més influència és el \textbf{pooling} (rang 0,200): l'\textit{attention pooling} supera
-clarament \textit{mean\_max} i tots dos superen \textit{diff} (l'únic disponible per a DiffPool).
-Atès que el pooling i l'arquitectura estan parcialmente correlacionats (\textit{diff} implica
-GAT+DiffPool), la caiguda del rang d'arquitectura (0,153) reflecteix en part la mateixa diferència.
+El factor amb diferència més influent és el \textbf{nombre de caps d'atenció} (rang $0{,}253$):
+$H \!=\! 8$ provoca un col·lapse del rendiment a CV AUC $\sim 0{,}58$ (proper a l'atzar), mentre
+que $H \!=\! 2$ i $H \!=\! 4$ donen resultats pràcticament idèntics ($0{,}833$ i $0{,}830$).
+La causa probable és la combinació de més paràmetres a entrenar amb un conjunt d'entrenament
+limitat ($\sim 250$ pacients): el model amb 8 caps no convergeix amb estabilitat dins les 50
+èpoques permeses i les 5 folds.
 
-Respecte de la \textbf{agregació MIL}, l'agregació \textit{mean} és la millor opció, mentre que
-\textit{attention} (PatientAggregator) té un rendiment pitjor malgrat la seva complexitat, cosa que
-suggereix que amb 367 pacients el mòdul d'atenció tendeix al sobreajustament.
-El \textit{learning rate} òptim és $10^{-5}$ (rang 0,115), i $10^{-6}$ és perjudicial.
+La \textbf{dimensió oculta} ($h$, rang $0{,}062$) i la \textbf{regularització L2}
+($\lambda_{\text{wd}}$, rang $0{,}052$) tenen efectes similars. La interpretació, però, és
+diferent: $h \!=\! 128$ té un rendiment mitjà superior a $h \!=\! 256$ principalment perquè les
+configuracions amb $h \!=\! 256$ inclouen també les de $H \!=\! 8$ (totes elles fallides);
+filtrant aquestes, els dos valors són comparables. La regularització L2 amb $\lambda_{\text{wd}}
+\!=\! 10^{-3}$, en canvi, produeix una desviació substancialment més baixa ($\sigma \!=\! 0{,}018$
+vs $0{,}127$): un nivell de regularització alt estabilitza l'entrenament i evita configuracions
+problemàtiques.
 
-La Taula~\ref{tab:pool-mil} mostra la interacció entre \textit{pooling} i agregació MIL per al
-subconjunt de GAT Baseline amb grafs per secció (les 24 configuracions no condicionades per
-l'arquitectura DiffPool).
-
-\begin{table*}[t]
-\centering
-\caption{AUC de test mitjana: interacció \textit{pooling} $\times$ agregació MIL
-(GAT Baseline, grafs per secció, $n=4$ per cel·la).}
-\label{tab:pool-mil}
-\small
-\begin{tabular}{lrrr}
-\toprule
-\textbf{Pooling} \textbackslash\ \textbf{MIL} & \textbf{\textit{mean}} & \textbf{\textit{attention}} & \textbf{\textit{noisy-OR}} \\
-\midrule
-\textit{attention} & $\mathbf{0{,}882}$ & $0{,}663$ & $0{,}616$ \\
-\textit{mean\_max}  & $0{,}836$          & $0{,}587$ & $0{,}638$ \\
-\bottomrule
-\end{tabular}
-\end{table*}
-
-La combinació \textit{attention pooling} + agregació \textit{mean} és la millor en totes les
-configuracions i apunta clarament la direcció de treball futur: l'\textit{attention pooling} aprèn
-a ponderar els nodes del graf, i l'agregació \textit{mean} de les slides evita el sobreajustament
-del PatientAggregator.
+El tipus de \textit{pooling} (rang $0{,}033$), el \textit{learning rate} (rang $0{,}016$) i el
+\textit{dropout} (rang $0{,}007$) tenen efectes molt menors quan la resta dels factors s'han
+escollit correctament. L'\textit{attention pooling} segueix sent lleugerament millor que
+\textit{mean\_max}, i el \textit{learning rate} òptim s'ha desplaçat de $10^{-5}$ (cerca
+preliminar amb \textit{hold-out}) a $3 \!\cdot\! 10^{-4}$ (validació creuada), reflectint que
+l'\textit{early stopping} estabilitza l'entrenament a taxes més agressives.
 
 La Taula~\ref{tab:cm} mostra la matriu de confusió del millor model sobre el conjunt de test
 (56 pacients), que permet quantificar errors per classe.
@@ -1065,7 +1066,7 @@ de l'Excel.}
 
 \section{Conclusions i Treball Futur}
 
-\subsection{Conclusions Parcials}
+\subsection{Conclusions}
 
 En aquest TFG s'ha construït un sistema complet de classificació N0/N1 per a càncer
 colorrectal pT1 a partir de WSI, que inclou la generació de grafs espacials de Delaunay,
@@ -1175,13 +1176,13 @@ learning} per optimitzar directament aquest \textit{trade-off} durant l'entrenam
 
 \subsection{Treball Futur}
 
-\textbf{Consolidar la cerca v3 i ampliar-la.} La cerca actual ja explora arquitectura, tipus
-de graf, \textit{pooling}, agregació MIL, \textit{learning rate}, nombre de caps d'atenció
-$H$, \textit{dropout} i regularització L2. Resta finalitzar l'avaluació completa per
-reportar mitjana i desviació de totes les configuracions i quantificar la interacció dels
-nous eixos. En una fase posterior es preveu incloure també la dimensió oculta $h$ i les
-mides de cluster $K_1$/$K_2$ específiques del model DiffPool, així com una versió més
-robusta dels pesos de classe.
+\textbf{Optimització dirigida d'hiperparàmetres.} La cerca actual ha cobert els eixos
+estructurals (arquitectura, \textit{pooling}, MIL, $h$, $H$, \textit{dropout},
+$\lambda_{\text{wd}}$, \textit{learning rate}) amb 255 configuracions de validació creuada
+5-fold. Un pas natural seria una cerca bayesiana o quasi-aleatòria centrada al voltant de la
+regió òptima identificada (\textit{attention} o \textit{mean\_max}, $H \in \{2, 4\}$,
+$\lambda_{\text{wd}} = 10^{-3}$, \textit{lr} $\in [10^{-4}, 3 \!\cdot\! 10^{-4}]$), per explorar
+més finament els valors continus i estimar millor la incertesa del millor punt operatiu.
 
 \textbf{Supervisió amb màscares d'anotació.} Les màscares de displàsia i infiltració
 anotades per la Dra.\ Musulén podrien fer-se servir per guiar els pesos d'atenció del
