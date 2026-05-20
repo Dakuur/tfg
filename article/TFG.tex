@@ -354,9 +354,7 @@ probabilitats $\{P(\text{N1}_i)\}_{i=1}^{S}$ s'agreguen a posteriori (Secció~\r
 Com a alternativa, totes les seccions d'un pacient es concatenen en un únic mega-graf bloc-diagonal:
 les matrius de característiques s'apilen i les d'adjacència s'organitzen a la diagonal (sense
 arestes entre seccions). El GAT opera llavors sobre totes les seccions simultàniament i un únic
-\textit{pooling} global produeix el diagnòstic sense etapa MIL separada. Empíricament, aquest
-enfocament és inferior al Model 1.
-
+\textit{pooling} global produeix el diagnòstic sense etapa MIL separada. 
 \subsection{Connectivitat per triangulació de Delaunay}
 
 Una connectivitat fixa de reixeta no és adequada perquè la màscara exclou regions de fons i trenca la
@@ -486,186 +484,12 @@ regularitzar l'assignació i evitar degeneracions trivials.
     \label{fig-diffpool}
 \end{figure*}
 
-Els algorismes clàssics de particionat de grafs, com el \textit{min-cut} o la clusterització
-espectral, podrien en principi reduir la mida del graf entre capes de propagació i proporcionar
-representacions jeràrquiques. El problema fonamental és que aquestes operacions \textbf{no són
-diferenciables}: el mínim tall és un problema combinatori que no admet gradients respecte dels
-paràmetres de la xarxa, de manera que la partició no pot ajustar-se en funció de la pèrdua de
-classificació final i no és possible integrar-la en un \textit{pipeline} entrenable per
-retropropagació. DiffPool resol exactament aquest problema: la matriu d'assignació $\mathbf{S}$
-s'obté com la sortida d'una GNN auxiliar amb \textit{softmax}, de manera que cada entrada $S_{ij}$
-expressa de forma \textbf{suau} la probabilitat que el node $i$ pertanyi al super-node $j$. Com
-que tots els passos (GNN auxiliar, multiplicació matricial i pèrdua de classificació) són
-operacions diferenciables, el gradient flueix de cap a cap i el \textit{pooling} s'ajusta
-conjuntament amb la resta del model.
+A diferència dels mètodes clàssics (min-cut, clusterització espectral), DiffPool és completament diferenciable: la matriu $\mathbf{S}$ s'obté com la sortida d'una GNN auxiliar amb \textit{softmax}, de manera que el gradient flueix de cap a cap i el \textit{pooling} s'ajusta conjuntament amb la resta del model.
 
 Com a alternativa, SAGPool~\cite{lee2019selfattentiongraphpooling} selecciona els $K$ nodes més
 rellevants via puntuacions d'auto-atenció (selecció discreta, no assignació suau); s'ha preferit
 DiffPool per la seva expressivitat contínua i la pèrdua auxiliar de regularització.
 
-% ── Shared TikZ styles for both architecture diagrams ──────────
-\tikzset{
-  archB/.style = {rectangle, rounded corners=3pt, minimum width=4.7cm,
-                  minimum height=0.65cm, align=center, font=\small,
-                  draw=#1!65!black, fill=#1!9, line width=0.9pt},
-  archN/.style = {rectangle, rounded corners=2pt, minimum width=4.7cm,
-                  minimum height=0.44cm, align=center, font=\scriptsize\itshape,
-                  draw=gray!40, fill=gray!6, line width=0.7pt},
-  archdim/.style = {font=\scriptsize\ttfamily, text=black!40, anchor=west},
-  archsec/.style = {font=\scriptsize\bfseries\sffamily, text=black!45, anchor=east},
-  archarr/.style = {->, >=stealth, line width=0.85pt, draw=black!40},
-  archaux/.style = {font=\scriptsize\itshape, text=orange!70!black},
-}
-
-\begin{figure*}[t]
-\centering
-
-%% ════════════════════════════════════════════════════════════════
-%% LEFT — GAT Baseline (flat readout)
-%% ════════════════════════════════════════════════════════════════
-\begin{subfigure}[t]{0.45\textwidth}
-\centering
-\begin{tikzpicture}[node distance=0.28cm]
-
-\node[archB=gray] (inp)
-  {$\mathbf{X}\!\in\!\mathbb{R}^{N\times 1536}$,\;
-   $\mathbf{A}\!\in\!\{0,1\}^{N\times N}$};
-\node[archdim, right=0.15cm of inp] {$N\!\times\!1536$};
-
-\node[archB=blue, below=0.32cm of inp] (g1)
-  {GATConv$_1$\;$1536\!\to\!128$,\;$H\!=\!4$, concat};
-\node[archN, below=0.12cm of g1] (n1)
-  {BatchNorm\;·\;ELU\;·\;Dropout};
-\node[archdim, right=0.15cm of n1] {$N\!\times\!512$};
-
-\node[archB=blue, below=0.32cm of n1] (g2)
-  {GATConv$_2$\;$512\!\to\!128$,\;$H\!=\!4$, concat};
-\node[archN, below=0.12cm of g2] (n2)
-  {BatchNorm\;·\;ELU\;·\;Dropout};
-\node[archdim, right=0.15cm of n2] {$N\!\times\!512$};
-
-\node[archB=blue, below=0.32cm of n2] (g3)
-  {GATConv$_3$\;$512\!\to\!128$,\;$H\!=\!1$, mean};
-\node[archN, below=0.12cm of g3] (n3)
-  {BatchNorm\;·\;ELU};
-\node[archdim, right=0.15cm of n3] {$N\!\times\!128$};
-
-\node[archB=teal, below=0.32cm of n3] (ro)
-  {Readout\;mean$\,\Vert\,$max\;sobre $N$ nodes};
-\node[archdim, right=0.15cm of ro] {$256$};
-
-\node[archB=violet, below=0.32cm of ro] (m1)
-  {Linear$_{256\to 128}$\;·\;ReLU\;·\;Dropout};
-\node[archB=violet, below=0.12cm of m1] (m2)
-  {Linear$_{128\to 2}$};
-\node[archdim, right=0.15cm of m2] {$2$};
-
-\node[archB=green!60!black, below=0.32cm of m2] (out)
-  {Softmax\;$P(\text{N0}),\;P(\text{N1})$};
-
-\foreach \a/\b in {inp/g1,g1/n1,n1/g2,g2/n2,n2/g3,g3/n3,
-                   n3/ro,ro/m1,m1/m2,m2/out}
-  \draw[archarr] (\a)--(\b);
-
-\node[archsec] at ([xshift=-0.5cm]$(g1.west)!0.5!(n1.west)$)
-  {\rotatebox{90}{GAT 1}};
-\node[archsec] at ([xshift=-0.5cm]$(g2.west)!0.5!(n2.west)$)
-  {\rotatebox{90}{GAT 2}};
-\node[archsec] at ([xshift=-0.5cm]$(g3.west)!0.5!(n3.west)$)
-  {\rotatebox{90}{GAT 3}};
-\node[archsec] at ([xshift=-0.5cm]ro.west)
-  {\rotatebox{90}{Pool}};
-\node[archsec] at ([xshift=-0.5cm]$(m1.west)!0.5!(m2.west)$)
-  {\rotatebox{90}{MLP}};
-
-\end{tikzpicture}
-\caption{GAT Baseline: readout pla sobre els $N$ nodes originals.}
-\label{fig:arch-baseline}
-\end{subfigure}
-\hfill
-%% ════════════════════════════════════════════════════════════════
-%% RIGHT — GAT + DiffPool (hierarchical readout)
-%% ════════════════════════════════════════════════════════════════
-\begin{subfigure}[t]{0.50\textwidth}
-\centering
-\begin{tikzpicture}[node distance=0.28cm]
-
-\node[archB=gray] (inp)
-  {$\mathbf{X}\!\in\!\mathbb{R}^{N\times 1536}$,\;
-   $\mathbf{A}\!\in\!\{0,1\}^{N\times N}$};
-\node[archdim, right=0.15cm of inp] {$N\!\times\!1536$};
-
-\node[archB=blue, below=0.32cm of inp] (g1)
-  {GATConv$_1$\;$1536\!\to\!128$,\;$H\!=\!4$, concat};
-\node[archN, below=0.12cm of g1] (n1)
-  {BatchNorm\;·\;ELU\;·\;Dropout};
-\node[archdim, right=0.15cm of n1] {$N\!\times\!512$};
-
-\node[archB=orange, below=0.32cm of n1] (p1)
-  {DiffPool$_1$\;$N \longrightarrow K_1$ super-nodes};
-\node[archdim, right=0.15cm of p1] {$K_1\!\times\!128$};
-
-\node[archB=blue, below=0.50cm of p1] (g2)
-  {GATConv$_2$\;$128\!\to\!128$,\;$H\!=\!4$, concat};
-\node[archN, below=0.12cm of g2] (n2)
-  {BatchNorm\;·\;ELU\;·\;Dropout};
-\node[archdim, right=0.15cm of n2] {$K_1\!\times\!512$};
-
-\node[archB=orange, below=0.32cm of n2] (p2)
-  {DiffPool$_2$\;$K_1 \longrightarrow K_2$ super-nodes};
-\node[archdim, right=0.15cm of p2] {$K_2\!\times\!128$};
-
-\node[archB=blue, below=0.50cm of p2] (g3)
-  {GATConv$_3$\;$128\!\to\!128$,\;$H\!=\!1$, mean};
-\node[archN, below=0.12cm of g3] (n3)
-  {BatchNorm\;·\;ELU};
-\node[archdim, right=0.15cm of n3] {$K_2\!\times\!128$};
-
-\node[archB=teal, below=0.32cm of n3] (ro)
-  {Readout\;mean$\,\Vert\,$max\;sobre $K_2$ nodes};
-\node[archdim, right=0.15cm of ro] {$256$};
-
-\node[archB=violet, below=0.32cm of ro] (m1)
-  {Linear$_{256\to 128}$\;·\;ReLU\;·\;Dropout};
-\node[archB=violet, below=0.12cm of m1] (m2)
-  {Linear$_{128\to 2}$};
-\node[archdim, right=0.15cm of m2] {$2$};
-
-\node[archB=green!60!black, below=0.32cm of m2] (out)
-  {Softmax\;$P(\text{N0}),\;P(\text{N1})$};
-
-\foreach \a/\b in {inp/g1,g1/n1,n1/p1,p1/g2,g2/n2,n2/p2,
-                   p2/g3,g3/n3,n3/ro,ro/m1,m1/m2,m2/out}
-  \draw[archarr] (\a)--(\b);
-
-\node[archsec] at ([xshift=-0.5cm]$(g1.west)!0.5!(n1.west)$)
-  {\rotatebox{90}{GAT 1}};
-\node[archsec] at ([xshift=-0.5cm]p1.west)
-  {\rotatebox{90}{Pool 1}};
-\node[archsec] at ([xshift=-0.5cm]$(g2.west)!0.5!(n2.west)$)
-  {\rotatebox{90}{GAT 2}};
-\node[archsec] at ([xshift=-0.5cm]p2.west)
-  {\rotatebox{90}{Pool 2}};
-\node[archsec] at ([xshift=-0.5cm]$(g3.west)!0.5!(n3.west)$)
-  {\rotatebox{90}{GAT 3}};
-\node[archsec] at ([xshift=-0.5cm]ro.west)
-  {\rotatebox{90}{Pool}};
-\node[archsec] at ([xshift=-0.5cm]$(m1.west)!0.5!(m2.west)$)
-  {\rotatebox{90}{MLP}};
-
-\end{tikzpicture}
-\caption{GAT+DiffPool: DiffPool intercalat entre capes GAT; $K_1\!\ll\!N$,
-$K_2\!\ll\!K_1$ (p.~ex.\ $N\!\approx\!250$, $K_1\!=\!25$, $K_2\!=\!8$).}
-\label{fig:arch-diffpool}
-\end{subfigure}
-
-\caption{Comparació de les dues arquitectures \texttt{GATClassifier}.
-\textbf{Esquerra}: model de referència amb readout pla (mean\,$\Vert$\,max global);
-\textbf{Dreta}: model jeràrquic on DiffPool redueix progressivament $N\!\to\!K_1\!\to\!K_2$
-super-nodes. Les dimensions del tensor de sortida s'indiquen a la dreta de cada bloc
-($h\!=\!128$, $H\!=\!4$, per tant $h{\cdot}H\!=\!512$).}
-\label{fig:arch}
-\end{figure*}
 
 \section{Metodologia}
 
@@ -1165,16 +989,11 @@ de la prevalença, continuen sent les mètriques comparatives més robustes.
 
 \textbf{Sensibilitat respecte de les guies.}
 La sensibilitat de $87{,}5\%$ al llindar per defecte ($0{,}5$) és inferior a la
-de JSCCR/NCCN/ESMO ($98$–$100\%$). Cal tenir en compte que les guies assoleixen
-la sensibilitat màxima a costa d'una especificitat del $19\%$ (JSCCR),
-classificant com a alt risc fins a quatre pacients N0 per cada N1 detectat. El
-llindar de decisió del model GAT és, en canvi, ajustable: si es determina
-exclusivament sobre el val set del fold ($t^* \!=\! 0{,}261$, vegeu
-Limitació~4), s'assoleix \textbf{sensibilitat del $100\%$ al test amb una
-especificitat del $77{,}5\%$} (matriu de confusió: TP$\,=\!16$, FN$\,=\!0$,
-TN$\,=\!31$, FP$\,=\!9$). Respecte de JSCCR, aquest punt operatiu suposa una
-millora de \textbf{$58{,}5$ punts d'especificitat} per al mateix nivell de
-sensibilitat, mantenint una \textit{balanced accuracy} del $88{,}7\%$.
+de JSCCR/NCCN/ESMO ($98$–$100\%$), però les guies assoleixen aquest nivell a
+costa d'una especificitat del $19\%$ (JSCCR). El llindar del model GAT és
+ajustable: amb $t^* \!=\! 0{,}261$ determinat sobre el val set (vegeu
+Limitació~4), s'assoleix sensibilitat del $100\%$ amb especificitat del $77{,}5\%$,
+una millora de $58{,}5$ punts sobre JSCCR al mateix nivell de sensibilitat.
 
 \textbf{Comparació amb IA SOTA.}
 El model LASSO de Piao et al.~\cite{piao2023ai}, entrenat sobre un conjunt
@@ -1238,10 +1057,10 @@ selecció anterior). Futures versions del model poden integrar tècniques de
 \textbf{Optimització dirigida d'hiperparàmetres.} La cerca actual ha cobert els eixos
 estructurals (arquitectura, \textit{pooling}, MIL, $h$, $H$, \textit{dropout},
 $\lambda_{\text{wd}}$, \textit{learning rate}) amb 255 configuracions de validació creuada
-5-fold. Un pas natural seria una cerca bayesiana o quasi-aleatòria centrada al voltant de la
-regió òptima identificada (\textit{attention} o \textit{mean\_max}, $H \in \{2, 4\}$,
-$\lambda_{\text{wd}} = 10^{-3}$, \textit{lr} $\in [10^{-4}, 3 \!\cdot\! 10^{-4}]$), per explorar
-més finament els valors continus i estimar millor la incertesa del millor punt operatiu.
+5-fold. Un pas natural seria explorar de manera més fina la regió òptima identificada
+(\textit{attention pooling}, $H \in \{2, 4\}$, $\lambda_{\text{wd}} = 10^{-3}$,
+$\text{lr} \in [10^{-4}, 3 \!\cdot\! 10^{-4}]$) per millorar la calibració del model
+i reduir la variabilitat entre folds.
 
 \textbf{Supervisió amb màscares d'anotació.} Les màscares de displàsia i infiltració
 anotades per la Dra.\ Musulén podrien fer-se servir per guiar els pesos d'atenció del
