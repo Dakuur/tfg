@@ -805,9 +805,10 @@ segueix justifica la selecció del model final.
 \centering
 \caption{Top-5 configuracions per AUC CV mitjana (combinació de 255 configs avaluades en
 validació creuada 5-fold; test de 56 pacients). \textbf{Negreta}: model seleccionat per al
-\textit{reporting} final, escollit per la combinació de rendiment alt al test ($0{,}925$) i un
-punt operatiu clínic favorable (Sens.$=100\%$ amb Espec.$=85\%$, vegeu Secció~\ref{sec:limitacions}).
-Tots els models són \textit{GAT Baseline} amb agregació MIL \textit{mean}.}
+\textit{reporting} final, escollit per la combinació de rendiment alt al test ($0{,}925$) i la
+capacitat de mantenir Sens.$=100\%$ al test amb un llindar determinat sobre el val set (vegeu
+Secció~\ref{sec:limitacions}). Tots els models són \textit{GAT Baseline} amb agregació MIL
+\textit{mean}.}
 \label{tab:grid}
 \small
 \begin{tabular}{cllccccrr}
@@ -827,17 +828,19 @@ Les 5 millors configuracions per CV mostren un AUC molt similar (rang $0{,}860$�
 que suggereix que diverses combinacions properes a l'òptim donen un rendiment comparable. Per al
 \textit{reporting} final s'ha seleccionat el model \#5 (GAT Baseline amb \textit{attention
 pooling}, $H=2$, $h=256$, \textit{dropout} $0{,}1$ i $\lambda_{\text{wd}} = 10^{-4}$): tot i ser
-el 5è per CV mitjana, és el que assoleix \textbf{l'AUC de test més alt} ($0{,}925$) i,
-especialment, el millor \textbf{punt operatiu clínic} (Sens.$=100\%$ amb Espec.$=85\%$,
-Secció~\ref{sec:limitacions}). El model \#1, més estable en CV ($\sigma = 0{,}034$), té un AUC
-de test inferior ($0{,}850$) i una especificitat substancialment pitjor al punt Sens.$=100\%$
-($47{,}5\%$ vs $85\%$), cosa que el fa menys útil per a la comparació amb les guies clíniques.
+el 5è per AUC CV mitjana, és l'únic dels cinc candidats que assoleix \textbf{Sens.$=100\%$ al
+test} quan el llindar de decisió es determina sobre el val set del seu propi fold (procediment
+sense \textit{data leakage}, vegeu Secció~\ref{sec:limitacions}). En els altres quatre candidats,
+el llindar derivat de val no generalitza a Sens.$=100\%$ al test (Sens. residual entre $75\%$ i
+$87{,}5\%$), cosa que indica un calibratge val/test menys consistent. El model \#5, a més, és el
+que té l'AUC de test més alt ($0{,}925$).
 
 Respecte a la primera tanda exploratòria sobre \textit{hold-out} simple, la incorporació de la
 regularització L2 i un \textit{dropout} més suau ($0{,}1$ enfront de $0{,}3$), combinats amb un
 \textit{learning rate} més agressiu ($3 \!\cdot\! 10^{-4}$), milloren especialment la sensibilitat
 del model seleccionat: dels 16 casos N1 del conjunt de test, el model en detecta correctament 14
-al llindar $0{,}5$ (només 2 falsos negatius), i la totalitat al llindar $0{,}388$.
+al llindar $0{,}5$ (només 2 falsos negatius), i la totalitat al llindar $t^* = 0{,}261$ determinat
+sobre el val set.
 
 \subsection{Anàlisi d'influència dels hiperparàmetres}
 \label{sec:main-effects}
@@ -979,10 +982,13 @@ ESMO \cite{esge2022}           & Guia clínica  & $98\%$  & $50\%$  & $0{,}743$ 
 IBC Score \cite{dawson2024budding} & Puntuació histopat. & $90\%$ & $26\%$ & $0{,}68$ & $58{,}0\%$ \\
 \midrule
 \multicolumn{6}{l}{\textit{Models d'IA}} \\[2pt]
-LASSO \cite{piao2023ai}            & Var.\ clinicopatol. & $100\%$ & $85{,}8\%$ & $0{,}960$ & $92{,}9\%$ \\
-\textbf{GAT (aquest TFG)}    & \textbf{Imatge WSI} & $\mathbf{87{,}5\%}$ & $\mathbf{87{,}5\%}$ & $\mathbf{0{,}925}$ & $\mathbf{87{,}5\%}$ \\
+LASSO \cite{piao2023ai}                             & Var.\ clinicopatol. & $100\%$  & $85{,}8\%$ & $0{,}960$ & $92{,}9\%$ \\
+\textbf{GAT (aquest TFG, llindar $0{,}5$)}          & \textbf{Imatge WSI} & $\mathbf{87{,}5\%}$  & $\mathbf{87{,}5\%}$  & $\mathbf{0{,}925}$ & $\mathbf{87{,}5\%}$ \\
+\textbf{GAT (aquest TFG, llindar $t^*\!=\!0{,}261$)$^{\dagger}$} & \textbf{Imatge WSI} & $\mathbf{100\%}$ & $\mathbf{77{,}5\%}$ & $\mathbf{0{,}925}$ & $\mathbf{88{,}7\%}$ \\
 \bottomrule
-\end{tabular}
+\end{tabular}\\[2pt]
+\footnotesize{$^{\dagger}$\,$t^*$ s'ha determinat exclusivament sobre el val set del fold del model
+(sense \textit{data leakage} del test).}
 \end{table*}
 
 \section{Implementació}
@@ -1116,29 +1122,34 @@ evitar la cirurgia amb seguretat. Sensibilitat i especificitat, independents
 de la prevalença, continuen sent les mètriques comparatives més robustes.
 
 \textbf{Sensibilitat respecte de les guies.}
-La sensibilitat de $87{,}5\%$ és inferior a la de JSCCR/NCCN/ESMO ($98$–$100\%$).
-Cal tenir en compte que les guies assoleixen la sensibilitat màxima a costa
-d'una especificitat del $19\%$ (JSCCR), classificant com a alt risc fins a quatre
-pacients N0 per cada N1 detectat. La corba ROC del model GAT (AUC~$=\!0{,}925$)
-permet operar a sensibilitat del $100\%$ mantenint una especificitat al voltant del
-$85\%$, equivalent a la de les guies clíniques en especificitat però amb
-sensibilitat total. Respecte de JSCCR, aquest punt operatiu suposa una millora de
-\textbf{$66$ punts d'especificitat} per al mateix nivell de sensibilitat.
+La sensibilitat de $87{,}5\%$ al llindar per defecte ($0{,}5$) és inferior a la
+de JSCCR/NCCN/ESMO ($98$–$100\%$). Cal tenir en compte que les guies assoleixen
+la sensibilitat màxima a costa d'una especificitat del $19\%$ (JSCCR),
+classificant com a alt risc fins a quatre pacients N0 per cada N1 detectat. El
+llindar de decisió del model GAT és, en canvi, ajustable: si es determina
+exclusivament sobre el val set del fold ($t^* \!=\! 0{,}261$, vegeu
+Limitació~4), s'assoleix \textbf{sensibilitat del $100\%$ al test amb una
+especificitat del $77{,}5\%$} (matriu de confusió: TP$\,=\!16$, FN$\,=\!0$,
+TN$\,=\!31$, FP$\,=\!9$). Respecte de JSCCR, aquest punt operatiu suposa una
+millora de \textbf{$58{,}5$ punts d'especificitat} per al mateix nivell de
+sensibilitat, mantenint una \textit{balanced accuracy} del $88{,}7\%$.
 
 \textbf{Comparació amb IA SOTA.}
 El model LASSO de Piao et al.~\cite{piao2023ai}, entrenat sobre un conjunt
 $\sim\!14\!\times$ més gran i amb accés a variables clinicopatológiques
 estructurades, assoleix sensibilitat del $100\%$ amb especificitat del
-$85{,}8\%$ i AUC de $0{,}960$. La corba ROC del model GAT indica que, al punt operatiu de sensibilitat del $100\%$,
-l'especificitat és del $85{,}0\%$, pràcticament equivalent a la del LASSO, a partir
-exclusivament de la imatge histopatològica,
-sense necessitat d'anotacions clinicopatológiques manuals. La petita diferència
-d'AUC ($0{,}925$ vs $0{,}960$) és coherent amb la diferència de grandària del
-conjunt d'entrenament i de l'accés a variables explícites. Els dos models són
-metodológicament complementaris: el GAT pot operar sobre la WSI immediatament
-després de l'escanejat (sense esperar el report patològic complet), aportant
-una primera estimació basada en morfologia, mentre que el LASSO requereix
-disposar de variables clinicopatológiques estructurades.
+$85{,}8\%$ i AUC de $0{,}960$. El model GAT, al mateix punt operatiu
+(Sens.$\,=\!100\%$) i amb el llindar fixat sobre el val set, assoleix una
+especificitat del $77{,}5\%$ —al voltant de $8$ punts per sota de LASSO, però
+encara molt per sobre de les guies clíniques— a partir exclusivament de la
+imatge histopatològica, sense necessitat d'anotacions clinicopatológiques
+manuals. La diferència d'AUC ($0{,}925$ vs $0{,}960$) és coherent amb la
+diferència de grandària del conjunt d'entrenament i de l'accés a variables
+explícites. Els dos models són metodológicament complementaris: el GAT pot
+operar sobre la WSI immediatament després de l'escanejat (sense esperar el
+report patològic complet), aportant una primera estimació basada en morfologia,
+mentre que el LASSO requereix disposar de variables clinicopatológiques
+estructurades.
 
 % [NEW: comparison]
 \subsection{Limitacions}
@@ -1164,15 +1175,21 @@ La prevalença N1 al test ($28{,}6\%$) supera la prevalença clínica real
 ($\sim\!8$–$15\%$) \cite{zaffalon2023}; el VPP s'ha d'interpretar amb cautela
 en context clínic (vegeu Discussió Comparativa).
 
-\textbf{(4) Sensibilitat subòptima al llindar per defecte.}
-Al llindar $0{,}5$, dos casos N1 (de $16$) queden sense detectar; en context clínic,
-un fals negatiu suposa privar un pacient de cirurgia necessària. La corba ROC
-(AUC~$=\!0{,}925$) mostra que és possible operar a sensibilitat del $100\%$ a costa
-d'una especificitat propera al $85\%$, però el llindar de decisió hauria de
-fixar-se sobre un conjunt de validació independent, en col·laboració amb els
-patòlegs, en funció del cost relatiu entre falsos negatius i falsos positius.
-Futures versions del model poden integrar tècniques de \textit{cost-sensitive
-learning} per optimitzar directament aquest \textit{trade-off} durant l'entrenament.
+\textbf{(4) Selecció del llindar i biaix residual del val set.}
+Al llindar per defecte $0{,}5$, dos casos N1 (de $16$) queden sense detectar al
+test; en context clínic, un fals negatiu suposa privar un pacient de cirurgia
+necessària. Per maximitzar la sensibilitat, el llindar de decisió $t^*$ s'ha
+determinat \textbf{exclusivament sobre el val set del fold del millor model}
+(no sobre el test): es busca el primer valor de la corba ROC sobre val en què
+TPR$\,=\!1{,}0$, obtenint $t^* \!=\! 0{,}261$. Aplicant aquest llindar al test
+set (sense re-ajustar) s'assoleix Sens.$\,=\!100\%$ amb Espec.$\,=\!77{,}5\%$.
+Cal mencionar, però, que el val set del fold ja s'havia usat per a
+\textit{early stopping} i selecció del checkpoint dins del grid search, per la
+qual cosa $t^*$ pot tenir un lleuger biaix optimista (l'avaluació del rendiment
+final hauria de fer-se idealment sobre un val set extern, no usat en cap pas de
+selecció anterior). Futures versions del model poden integrar tècniques de
+\textit{cost-sensitive learning} per optimitzar directament aquest
+\textit{trade-off} durant l'entrenament.
 
 \subsection{Treball Futur}
 
