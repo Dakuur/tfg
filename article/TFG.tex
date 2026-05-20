@@ -881,6 +881,8 @@ connectivitat basada en similitud de \textit{features}.
 
 \printbibliography
 
+\clearpage
+\onecolumn
 \appendix
 
 \section*{Apèndix}
@@ -890,7 +892,7 @@ connectivitat basada en similitud de \textit{features}.
 \subsection{Diagrama de flux del \textit{pipeline}}
 \label{app:pipeline}
 
-\begin{figure*}[h]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[
     node distance=0.45cm,
@@ -952,7 +954,9 @@ contribucions d'aquest TFG. La fletxa ${\times}S$ indica que les $S$ seccions d'
 pacient es processen com a grafs independents i les $P(\text{N1})$ s'agreguen via MIL
 per obtenir el diagnòstic per pacient, que es compara amb el diagnòstic real de l'Excel.}
 \label{fig:pipeline}
-\end{figure*}
+\end{figure}
+
+\newpage
 
 \subsection{Efectes principals dels hiperparàmetres}
 \label{app:main-effects}
@@ -965,7 +969,7 @@ amb la millor base (GAT Baseline + grafs per secció + agregació \textit{mean};
 avaluat amb validació creuada 5-fold (AUC CV mitjana). El \textit{rang} és la diferència entre
 el millor i el pitjor nivell de cada factor.
 
-\begin{table*}[h]
+\begin{table}[H]
 \centering
 \caption{Efectes principals de cada hiperparàmetre sobre l'AUC. Files superiors ($n\!=\!48$,
 AUC val): decisions arquitectòniques de la cerca inicial. Files inferiors ($n\!=\!248$,
@@ -1021,6 +1025,6 @@ decreixent dins de cada bloc.}
   & $0{,}3$               &  80 & $0{,}791 \pm 0{,}124$ & \\
 \bottomrule
 \end{tabular}
-\end{table*}
+\end{table}
 
 \end{document}
