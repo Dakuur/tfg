@@ -881,10 +881,13 @@ connectivitat basada en similitud de \textit{features}.
 
 \printbibliography
 
-\onecolumn
 \appendix
 
-\section{Diagrama de flux del \textit{pipeline}}
+\section*{Apèndix}
+
+\setcounter{section}{1}
+
+\subsection{Diagrama de flux del \textit{pipeline}}
 \label{app:pipeline}
 
 \begin{figure*}[h]
@@ -951,8 +954,7 @@ per obtenir el diagnòstic per pacient, que es compara amb el diagnòstic real d
 \label{fig:pipeline}
 \end{figure*}
 
-\clearpage
-\section{Efectes principals dels hiperparàmetres}
+\subsection{Efectes principals dels hiperparàmetres}
 \label{app:main-effects}
 
 La Taula~\ref{tab:main-effects} mostra l'efecte de cada factor sobre l'AUC, ordenat per rang
@@ -963,7 +965,7 @@ amb la millor base (GAT Baseline + grafs per secció + agregació \textit{mean};
 avaluat amb validació creuada 5-fold (AUC CV mitjana). El \textit{rang} és la diferència entre
 el millor i el pitjor nivell de cada factor.
 
-\begin{table}[h]
+\begin{table*}[h]
 \centering
 \caption{Efectes principals de cada hiperparàmetre sobre l'AUC. Files superiors ($n\!=\!48$,
 AUC val): decisions arquitectòniques de la cerca inicial. Files inferiors ($n\!=\!248$,
@@ -1019,6 +1021,6 @@ decreixent dins de cada bloc.}
   & $0{,}3$               &  80 & $0{,}791 \pm 0{,}124$ & \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 \end{document}
