@@ -991,6 +991,48 @@ LASSO \cite{piao2023ai}                             & Var.\ clinicopatol. & $100
 (sense \textit{data leakage} del test).}
 \end{table*}
 
+L'objectiu clínic del sistema dicta directament com s'ha d'interpretar la corba ROC: en una
+detecció de metàstasi, un fals negatiu (deixar sense tractar un pacient N1) és un resultat
+inacceptable, mentre que un fals positiu (cirurgia innecessària) és recuperable. Per tant, el
+punt operatiu desitjat és el que toca \textbf{la part superior} de la corba (Sens.$\,=\!100\%$,
+cap N1 perdut) i, alhora, queda \textbf{tan a l'esquerra com sigui possible} (Espec.\ màxima,
+mínim de N0 mal classificats). La Figura~\ref{fig:roc-top5} superposa les corbes ROC dels cinc
+millors candidats del grid juntament amb els punts operatius de les guies clíniques i del model
+d'IA de referència; el model seleccionat per al \textit{reporting} final és l'únic que assoleix
+Sens.$\,=\!100\%$ al test amb un llindar determinat sobre el val set —i ho fa amb la menor
+fracció de falsos positius dels cinc candidats.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.48\textwidth]{img/roc_top5.pdf}
+\caption{Corbes ROC al conjunt de test (56 pacients) dels cinc millors models del grid v3+v4
+ordenats per AUC CV. El model seleccionat (\#5, magenta) és l'únic que assoleix
+Sens.$\,=\!100\%$ al test amb el llindar $t^* \!=\! 0{,}261$ derivat exclusivament del val set
+(cercle gros, sense \textit{data leakage}). Per comparació, es marquen els punts operatius
+publicats de JSCCR, NCCN, ESMO (quadrats) i LASSO (diamant). La regió ressaltada al voltant
+de Sens.$\,=\!1$ delimita el rang clínicament acceptable: el sistema busca el punt més a
+l'esquerra possible dins d'aquesta regió per minimitzar les cirurgies innecessàries.}
+\label{fig:roc-top5}
+\end{figure}
+
+L'\textbf{impacte clínic} d'aquesta especificitat es pot quantificar directament. En la
+literatura citada (\S\ref{sec:intro}), s'estima que \textbf{entre el $80\%$ i el $90\%$ de les
+cirurgies actuals en pT1 amb criteris de risc resulten innecessàries}~\cite{MartinezDeJuan2024},
+xifra compatible amb l'especificitat del $19\%$ que ofereix la guia JSCCR sobre poblacions
+externes. Per cada $100$ pacients N0 (sense metàstasi real):
+
+\begin{itemize}\itemsep1pt
+  \item \textbf{JSCCR}: $81$ rebrien cirurgia innecessària (Espec.$\,=\!19\%$).
+  \item \textbf{NCCN/ESMO}: aproximadament $48$–$50$ cirurgies innecessàries.
+  \item \textbf{GAT (llindar $t^*$)}: només $22{,}5$ cirurgies innecessàries (Espec.$\,=\!77{,}5\%$).
+\end{itemize}
+
+És a dir, mantenint la sensibilitat al $100\%$, el model GAT redueix les cirurgies innecessàries
+en \textbf{$\sim\!58$ pacients de cada $100$ N0 respecte de JSCCR} (reducció relativa del $\sim\!72\%$)
+i en $\sim\!26$ pacients respecte de NCCN/ESMO ($\sim\!54\%$). Sobre el test d'aquest treball
+($40$ pacients N0), això es tradueix en $9$ cirurgies innecessàries (FP) en lloc de les $\sim\!32$
+que aplicaria JSCCR sobre la mateixa població.
+
 \section{Implementació}
 
 La implementació segueix un disseny modular: la construcció de grafs, el model, el codi d'entrenament i els
