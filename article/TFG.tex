@@ -374,7 +374,7 @@ objecte \texttt{Data}, i el \textit{pooling} global opera sobre tots els nodes c
 
 \begin{figure*}[h]
     \centering
-    \includegraphics[width=\textwidth]{img/preprocess.png}
+    \includegraphics[width=\textwidth]{img/preprocess.pdf}
     \caption{Etapes del preprocessament per a la construcció del graf. D'esquerra a dreta:
     WSI original $\to$ extracció de \textit{patches} de $2048{\times}2048$ px per finestra lliscant + filtratge
     $\to$ extracció de l'embedding CLS de 1.536 dimensions per UNI2 (un vector per \textit{patch})
@@ -476,7 +476,7 @@ regularitzar l'assignació i evitar degeneracions trivials.
 
 \begin{figure*}[h]
     \centering
-    \includegraphics[width=\textwidth]{img/baseline_vs_diffpool.png}
+    \includegraphics[width=\textwidth]{img/baseline_vs_diffpool.pdf}
     \caption{Comparació visual de les dues arquitectures.
     \textbf{Dalt}: GAT Baseline, on les capes d'atenció operen sobre els $N$ nodes originals al llarg de
     tota la xarxa i un \textit{readout} global (mean, max) produeix l'embedding final de dimensió $1 \times F_2$.
