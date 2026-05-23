@@ -27,4 +27,12 @@ export const API = {
   datasetSlides:   (refresh=false) => _req("GET", `/api/dataset/slides${refresh ? "?refresh=true" : ""}`),
   datasetImageUrl: (relPath)       => `/api/dataset/image?p=${encodeURIComponent(relPath)}`,
   setStarModel:    (name)          => _req("POST", "/api/star_model",       { name }),
+
+  // Sweep (Optuna) — només lectura, no entrena res des del frontend
+  sweepStatus:     ()        => _req("GET",  "/api/sweep/status"),
+  sweepTrials:     (limit=100)=> _req("GET", `/api/sweep/trials?limit=${limit}`),
+  sweepBest:       ()        => _req("GET",  "/api/sweep/best"),
+  sweepRoc:        (trialId) => _req("GET", `/api/sweep/roc/${trialId}`),
+  sweepImportance: ()        => _req("GET",  "/api/sweep/importance"),
+  sweepFinal:      ()        => _req("GET",  "/api/sweep/final"),
 };

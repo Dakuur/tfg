@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn.functional as F
 import yaml
@@ -820,6 +821,168 @@ async def dataset_image(p: str):
         raise HTTPException(404, f"Not found: {p}")
     return FileResponse(str(full), media_type="image/png",
                         headers={"Cache-Control": "public, max-age=86400"})
+
+
+# ── Sweep (Optuna) — només lectura de fitxers, no entrena ───────────────────
+
+_SWEEP_DIR = Path.home() / "outputs" / "sweep"
+
+
+def _sweep_safe_read_json(p: Path):
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return None
+
+
+@app.get("/api/sweep/status")
+async def sweep_status():
+    """Resum global del sweep: nombre de trials, millor objectiu, params."""
+    out = {
+        "exists":           _SWEEP_DIR.exists(),
+        "best_params_path": str(_SWEEP_DIR / "best_params.json"),
+        "progress_csv":     str(_SWEEP_DIR / "progress.csv"),
+        "trials_total":     0,
+        "best":             None,
+        "running":          False,
+    }
+    progress = _SWEEP_DIR / "progress.csv"
+    if progress.exists():
+        try:
+            df = pd.read_csv(progress)
+            out["trials_total"] = int(len(df))
+            if len(df):
+                idx = df["objective"].idxmax()
+                row = df.loc[idx]
+                # ts del darrer trial — si fa < 5 min, considera "running"
+                ts_last = pd.to_datetime(df["timestamp"]).max()
+                out["last_trial_ts"] = ts_last.isoformat()
+                age_sec = (pd.Timestamp.now() - ts_last).total_seconds()
+                out["running"] = age_sec < 600  # 10 min de gràcia
+        except Exception:
+            pass
+    best = _sweep_safe_read_json(_SWEEP_DIR / "best_params.json")
+    if best:
+        out["best"] = best
+    return out
+
+
+@app.get("/api/sweep/trials")
+async def sweep_trials(limit: int = 100):
+    """Llista de trials ordenats per objectiu (desc)."""
+    progress = _SWEEP_DIR / "progress.csv"
+    if not progress.exists():
+        return {"trials": []}
+    try:
+        df = pd.read_csv(progress)
+    except Exception:
+        return {"trials": []}
+    df = df.sort_values("objective", ascending=False).head(limit)
+    # Parse params_json string into dict for easier client use
+    trials = []
+    for _, row in df.iterrows():
+        try:
+            params = json.loads(row.get("params_json", "{}"))
+        except Exception:
+            params = {}
+        trials.append({
+            "trial_id":      int(row["trial_id"]),
+            "timestamp":     str(row["timestamp"]),
+            "sens_mean":     float(row["sens_mean"]),
+            "sens_std":      float(row["sens_std"]),
+            "spec_mean":     float(row["spec_mean"]),
+            "spec_std":      float(row["spec_std"]),
+            "auc_mean":      float(row["auc_mean"]),
+            "auc_std":       float(row["auc_std"]),
+            "threshold_med": float(row["threshold_med"]),
+            "objective":     float(row["objective"]),
+            "batch_size":    int(row["batch_size"]),
+            "params":        params,
+        })
+    return {"trials": trials}
+
+
+@app.get("/api/sweep/best")
+async def sweep_best():
+    """Detall del millor trial fins ara, incloses corbes ROC dels seus folds."""
+    best = _sweep_safe_read_json(_SWEEP_DIR / "best_params.json")
+    if not best:
+        raise HTTPException(404, "Cap millor trial encara.")
+    trial_id = best.get("trial_id")
+    payload = {"best": best, "folds": []}
+    if trial_id is not None:
+        trial_dir = _SWEEP_DIR / f"trial_{trial_id:04d}"
+        if trial_dir.exists():
+            metrics = _sweep_safe_read_json(trial_dir / "metrics.json") or {}
+            payload["metrics"] = metrics
+            for i in range(1, 11):
+                probs_f  = trial_dir / f"fold_{i}_probs.npy"
+                labels_f = trial_dir / f"fold_{i}_labels.npy"
+                if probs_f.exists() and labels_f.exists():
+                    import numpy as np
+                    probs  = np.load(probs_f).tolist()
+                    labels = np.load(labels_f).astype(int).tolist()
+                    payload["folds"].append({
+                        "fold":   i,
+                        "probs":  probs,
+                        "labels": labels,
+                    })
+    return payload
+
+
+@app.get("/api/sweep/roc/{trial_id}")
+async def sweep_roc(trial_id: int):
+    """Corbes ROC per cada fold d'un trial."""
+    trial_dir = _SWEEP_DIR / f"trial_{trial_id:04d}"
+    if not trial_dir.exists():
+        raise HTTPException(404, f"Trial {trial_id} no trobat.")
+    import numpy as np
+    from sklearn.metrics import roc_curve
+    folds = []
+    for i in range(1, 11):
+        probs_f  = trial_dir / f"fold_{i}_probs.npy"
+        labels_f = trial_dir / f"fold_{i}_labels.npy"
+        if probs_f.exists() and labels_f.exists():
+            probs  = np.load(probs_f)
+            labels = np.load(labels_f).astype(int)
+            if len(set(labels.tolist())) >= 2:
+                fpr, tpr, thr = roc_curve(labels, probs)
+                folds.append({
+                    "fold": i,
+                    "fpr":  fpr.tolist(),
+                    "tpr":  tpr.tolist(),
+                    "thr":  thr.tolist(),
+                })
+    return {"trial_id": trial_id, "folds": folds}
+
+
+@app.get("/api/sweep/importance")
+async def sweep_importance():
+    """Importància de cada hiperparàmetre (Optuna fANOVA)."""
+    db_path = _SWEEP_DIR / "sweep_study.db"
+    if not db_path.exists():
+        raise HTTPException(404, "No hi ha estudi.")
+    try:
+        import optuna
+        storage = optuna.storages.RDBStorage(url=f"sqlite:///{db_path}")
+        study = optuna.load_study(study_name="sweep_sens100_spec_max", storage=storage)
+        if len(study.trials) < 10:
+            return {"importance": {}, "n_trials": len(study.trials),
+                    "note": "Cal almenys 10 trials per calcular importància."}
+        imp = optuna.importance.get_param_importances(study)
+        return {"importance": {k: float(v) for k, v in imp.items()},
+                "n_trials": len(study.trials)}
+    except Exception as e:
+        raise HTTPException(500, f"Error calculant importància: {e}")
+
+
+@app.get("/api/sweep/final")
+async def sweep_final():
+    """Resultats finals (només existeix després de `python sweep.py --finalize`)."""
+    final = _sweep_safe_read_json(_SWEEP_DIR / "final_results.json")
+    if not final:
+        raise HTTPException(404, "Sweep encara no s'ha finalitzat.")
+    return final
 
 
 # ── routes ─────────────────────────────────────────────────────────────────────

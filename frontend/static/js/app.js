@@ -7,6 +7,7 @@ import { renderDashboard }  from "./pages/dashboard.js";
 import { renderInference, appendDebugLog } from "./pages/inference.js";
 import { renderStatistics } from "./pages/statistics.js";
 import { renderDataset }    from "./pages/dataset.js";
+import { renderSweep, stopSweep } from "./pages/sweep.js";
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const STATE = {
@@ -25,6 +26,9 @@ const reloadBtn  = document.getElementById("reload-btn");
 
 // ── Routing ────────────────────────────────────────────────────────────────────
 async function navigate(page) {
+  // Aturar polling del sweep si sortim de la pàgina
+  if (STATE.page === "sweep" && page !== "sweep") stopSweep();
+
   STATE.page = page;
 
   // Update nav active state
@@ -39,6 +43,7 @@ async function navigate(page) {
     case "inference":  await renderInference(content, STATE.debug); break;
     case "statistics": await renderStatistics(content); break;
     case "dataset":    await renderDataset(content); break;
+    case "sweep":      await renderSweep(content); break;
   }
 
   lucide.createIcons();
