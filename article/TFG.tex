@@ -524,7 +524,7 @@ s'implementen quatre estratègies d'agregació:
 \subsection{Desbalanceig de Classes}
 
 El conjunt de dades presenta un fort desbalanceig: els casos N0 superen àmpliament els N1 (proporció aproximada
-80/20). Per combatre-ho s'apliquen tres mesures complementàries.
+80/20). Per combatre-ho s'apliquen mesures complementàries.
 
 \textbf{(1) Partició estratificada.} La divisió train/val/test es realitza amb estratificació a
 nivell de pacient, assegurant que la proporció N0/N1 sigui representativa en cada subconjunt
@@ -535,12 +535,6 @@ mètriques.
 \textbf{(2) Pesos de classe.} S'apliquen pesos balancejats $w_c = N / (C \cdot n_c)$, on $n_c$ és el
 nombre de pacients de la classe $c$, incorporats directament a la funció de pèrdua BCE. Així, cada error
 sobre un cas N1 té més pes en el gradient que un error sobre N0, penalitzant més els falsos negatius.
-
-\textbf{(3) Mostratge ponderat per \textit{batch}.} Durant l'entrenament s'utilitza un
-\textit{WeightedRandomSampler} que assigna a cada pacient una probabilitat de mostratge inversament
-proporcional a la freqüència de la seva classe. Això garanteix que cada \textit{mini-batch} contingui una
-proporció equilibrada de casos N0 i N1, evitant que el model vegi gairebé exclusivament N0 durant molts
-\textit{batches} consecutius.
 
 \subsection{Grid Search i Validació Creuada}
 \label{sec:gridsearch}
