@@ -95,9 +95,40 @@ STATE = _State()
 
 _CKPT_ROOT      = Path.home() / "outputs" / "checkpoints"
 CKPT_DIR        = _CKPT_ROOT / "final"
+SWEEP_DIR       = Path.home() / "outputs" / "sweep"
 TEST_AUC_CACHE  = _CKPT_ROOT / "test_auc_cache.json"
 META_CACHE      = _CKPT_ROOT / "checkpoint_meta_cache.json"
 GRAPHS_DIR      = Path.home() / "outputs" / "graphs"
+
+# Roots on cercar checkpoints (rel-name = "{prefix}/{relative_path}")
+_CKPT_ROOTS: List[tuple[str, Path]] = [
+    ("final", CKPT_DIR),
+    ("sweep", SWEEP_DIR),
+]
+
+
+def _all_ckpts() -> List[tuple[str, Path, Path]]:
+    """Llista tots els checkpoints. Retorna (prefix, root, path)."""
+    out: List[tuple[str, Path, Path]] = []
+    for prefix, root in _CKPT_ROOTS:
+        if not root.exists():
+            continue
+        for p in root.rglob("*.pt"):
+            out.append((prefix, root, p))
+    return out
+
+
+def _ckpt_path_from_name(name: str) -> Optional[Path]:
+    """Resol un name (p.ex. 'sweep/trial_0042/fold_1_best') a un path absolut."""
+    for prefix, root in _CKPT_ROOTS:
+        if name.startswith(prefix + "/"):
+            rel = name[len(prefix) + 1:]
+            p = root / f"{rel}.pt"
+            if p.exists():
+                return p
+    # Backward compat: nom sense prefix → assumeix 'final'
+    p = CKPT_DIR / f"{name}.pt"
+    return p if p.exists() else None
 
 # Image serving — requires access to /mnt/iam (or IAM_PATH env var)
 _IAM_PATH = Path(os.environ.get("IAM_PATH", "/mnt/iam"))
@@ -135,6 +166,28 @@ def _read_config_yaml(ckpt_path: Path) -> Optional[dict]:
     return None
 
 
+def _migrate_legacy_state_dict(sd: dict) -> dict:
+    """Migra noms d'estat antics (conv1/conv2/conv3, bn1/bn2/bn3,
+    diff_pool1/diff_pool2) a la nova estructura ModuleList (convs.X, bns.X,
+    diff_pools.X).
+    """
+    out = {}
+    for k, v in sd.items():
+        nk = k
+        for i in (1, 2, 3, 4, 5):
+            if k.startswith(f"conv{i}."):
+                nk = f"convs.{i-1}." + k[len(f"conv{i}."):]
+                break
+            if k.startswith(f"bn{i}."):
+                nk = f"bns.{i-1}." + k[len(f"bn{i}."):]
+                break
+            if k.startswith(f"diff_pool{i}."):
+                nk = f"diff_pools.{i-1}." + k[len(f"diff_pool{i}."):]
+                break
+        out[nk] = v
+    return out
+
+
 def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
     ckpt = torch.load(ckpt_path, weights_only=False, map_location="cpu")
     if isinstance(ckpt, dict) and "model" in ckpt:
@@ -143,11 +196,20 @@ def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
         sd   = ckpt
         ckpt = {}
 
+    # Compatibilitat amb checkpoints antics (conv1/conv2/conv3 → convs.0/1/2)
+    if any(k.startswith("conv1.") for k in sd) and not any(k.startswith("convs.") for k in sd):
+        sd = _migrate_legacy_state_dict(sd)
+
+    # Detecció de n_gat_layers a partir dels indexs de convs.X
+    conv_idxs = sorted({int(k.split(".")[1]) for k in sd if k.startswith("convs.")})
+    n_gat_detected = (max(conv_idxs) + 1) if conv_idxs else 3
+
+    # in_channels des de la primera GAT
     _in_ch_candidates = [
-        ("conv1.lin_src.weight", 1),
-        ("conv1.lin.weight",     1),
-        ("conv1.weight",         1),
-        ("conv1.lin_src.weight", 0),
+        ("convs.0.lin_src.weight", 1),
+        ("convs.0.lin.weight",     1),
+        ("convs.0.weight",         1),
+        ("convs.0.lin_src.weight", 0),
     ]
     in_channels = None
     for key, dim in _in_ch_candidates:
@@ -155,22 +217,58 @@ def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
             in_channels = sd[key].shape[dim]
             break
     if in_channels is None:
-        conv1_keys = [k for k in sd if "conv1" in k and "weight" in k]
-        raise KeyError(f"Cannot detect in_channels. conv1 keys: {conv1_keys}")
+        ck = [k for k in sd if k.startswith("convs.0") and "weight" in k]
+        raise KeyError(f"Cannot detect in_channels. convs.0 keys: {ck}")
 
-    hidden = sd["bn3.weight"].shape[0]
-    heads  = sd["bn1.weight"].shape[0] // hidden
+    # hidden des de la BN del darrer GAT (1 head, concat=False → dim=hidden)
+    last_bn_key = f"bns.{n_gat_detected - 1}.weight"
+    hidden = sd[last_bn_key].shape[0]
+    # heads des de la BN de la primera capa (heads*hidden)
+    heads = sd["bns.0.weight"].shape[0] // hidden
+
+    # Detecció de n_diffpool_layers via diff_pools.X
+    dp_idxs = sorted({int(k.split(".")[1]) for k in sd if k.startswith("diff_pools.")})
+    n_dp_detected = (max(dp_idxs) + 1) if dp_idxs else 2
 
     cfg = _read_config_yaml(ckpt_path)
     if cfg and "model" in cfg:
-        pooling       = cfg["model"].get("pooling",       "mean_max")
-        diff_clusters = cfg["model"].get("diff_clusters", 10)
-        dropout       = cfg["model"].get("dropout",       0.3)
+        m = cfg["model"]
+        pooling           = m.get("pooling",         "mean_max")
+        diff_clusters     = m.get("diff_clusters",   10)
+        diff_final_pool   = m.get("diff_final_pool", "mean_max")
+        dropout           = m.get("dropout",         0.3)
+        n_gat_layers      = m.get("n_gat_layers",      n_gat_detected)
+        n_diffpool_layers = m.get("n_diffpool_layers", n_dp_detected)
+        aux_loss_weight   = m.get("aux_loss_weight",   1.0)
     else:
-        mlp_in        = sd["mlp.0.weight"].shape[1]
-        pooling       = "mean_max" if mlp_in == hidden * 2 else "mean"
-        diff_clusters = 10
-        dropout       = 0.3
+        mlp_in            = sd["mlp.0.weight"].shape[1]
+        pooling           = "mean_max" if mlp_in == hidden * 2 else "mean"
+        diff_clusters     = 10
+        if any(k.startswith("diff_global_attn") for k in sd):
+            diff_final_pool = "attention"
+        elif mlp_in == hidden * 2:
+            diff_final_pool = "mean_max"
+        else:
+            diff_final_pool = "mean"
+        dropout           = 0.3
+        n_gat_layers      = n_gat_detected
+        n_diffpool_layers = n_dp_detected
+        aux_loss_weight   = 1.0
+    # Si hi ha diff_pools al state_dict, forçar pooling="diff" encara que el
+    # YAML no ho digui (precaució per a checkpoints antics)
+    if dp_idxs:
+        pooling = "diff"
+
+    # Reconstruir K de cada DiffPool des dels pesos (mida de la sortida de
+    # assign_net) si tenim diff_pools al state_dict
+    if dp_idxs:
+        diff_clusters_list = []
+        for i in dp_idxs:
+            k = f"diff_pools.{i}.assign_net.2.weight"
+            if k in sd:
+                diff_clusters_list.append(int(sd[k].shape[0]))
+        if diff_clusters_list:
+            diff_clusters = diff_clusters_list
 
     aggregation = "noisy_or"
     if cfg and "training" in cfg:
@@ -192,15 +290,24 @@ def _load_model(ckpt_path: Path) -> tuple[GATClassifier, dict]:
 
     model = GATClassifier(
         in_channels=in_channels, hidden=hidden, heads=heads,
-        dropout=dropout, pooling=pooling, diff_clusters=diff_clusters,
+        dropout=dropout, pooling=pooling,
+        n_gat_layers=n_gat_layers, n_diffpool_layers=n_diffpool_layers,
+        diff_clusters=diff_clusters,
+        diff_final_pool=diff_final_pool, aux_loss_weight=aux_loss_weight,
         patient_aggregation=aggregation,
     )
     model.load_state_dict(sd)
     model.eval()
 
-    try:
-        rel_name = str(ckpt_path.relative_to(CKPT_DIR).with_suffix(""))
-    except ValueError:
+    # Nom relatiu amb prefix (final/ o sweep/) per al frontend
+    rel_name = None
+    for prefix, root in _CKPT_ROOTS:
+        try:
+            rel_name = f"{prefix}/{ckpt_path.relative_to(root).with_suffix('')}"
+            break
+        except ValueError:
+            continue
+    if rel_name is None:
         rel_name = ckpt_path.stem
     info = {
         "path":         str(ckpt_path),
@@ -239,8 +346,8 @@ def _scan_graphs() -> Dict[str, List[Dict]]:
     """Carrega únicament els grafs del test set per evitar data leakage.
 
     Prioritat:
-    1. Directori físic per-slide/test/   (generat per build_dataset.py)
-    2. Filtratge via split.json des de per-slide/  (make_split.py / llegat)
+    1. Directori físic per-section/test/   (generat per build_dataset.py)
+    2. Filtratge via split.json des de per-section/  (make_split.py / llegat)
     """
     result: Dict[str, List[Dict]] = {"train": [], "val": []}
 
@@ -263,7 +370,7 @@ def _scan_graphs() -> Dict[str, List[Dict]]:
             "metastasis_score": str(getattr(g, "metastasis_score", "—")),
         })
 
-    per_slide_dir = GRAPHS_DIR / "per-slide"
+    per_slide_dir = GRAPHS_DIR / "per-section"
     if not per_slide_dir.exists():
         log.warning(f"Directori de grafs no trobat: {per_slide_dir}")
         return result
@@ -355,27 +462,32 @@ def _save_meta_cache(cache: dict) -> None:
 
 
 def _list_checkpoints() -> List[Dict]:
-    if not CKPT_DIR.exists():
+    ckpts = _all_ckpts()
+    if not ckpts:
         return []
     test_auc_cache = _load_test_auc_cache()
     meta_cache     = _load_meta_cache()
     settings       = _load_settings()
     star_name      = settings.get("star")
-    ckpts = sorted(CKPT_DIR.rglob("*.pt"))
     result = []
     cache_updated = False
-    for p in ckpts:
+    # Ordenar per estabilitat (prefix, path relatiu)
+    ckpts.sort(key=lambda t: (t[0], str(t[2])))
+    for prefix, root, p in ckpts:
         cfg  = _read_config_yaml(p)
-        rel  = str(p.relative_to(CKPT_DIR).with_suffix(""))
+        rel  = f"{prefix}/{p.relative_to(root).with_suffix('')}"
         mtime = int(p.stat().st_mtime)
         entry: dict = {
             "name":       rel,
-            "file":       str(p.relative_to(CKPT_DIR)),
+            "file":       str(p.relative_to(root)),
+            "source":     prefix,
             "active":     STATE.checkpoint_info is not None and STATE.checkpoint_info.get("name") == rel,
             "star":       (rel == star_name),
             "has_config": cfg is not None,
             "mtime":      mtime,
-            "test_auc":   test_auc_cache.get(rel),
+            # Backward compat: cache antiga usava noms sense prefix 'final/'.
+            "test_auc":   test_auc_cache.get(rel, test_auc_cache.get(
+                rel[len(prefix)+1:] if rel.startswith(prefix + "/") else rel)),
         }
         if cfg and "model" in cfg:
             entry["pooling"]     = cfg["model"].get("pooling")
@@ -428,10 +540,11 @@ def _list_checkpoints() -> List[Dict]:
 
 
 def _find_latest_checkpoint() -> Optional[Path]:
-    if not CKPT_DIR.exists():
+    all_paths = [p for _, _, p in _all_ckpts()]
+    if not all_paths:
         return None
-    ckpts = sorted(CKPT_DIR.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return ckpts[0] if ckpts else None
+    all_paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return all_paths[0]
 
 
 # ── per-user model settings (star + thresholds) ─────────────────────────────────
@@ -467,8 +580,7 @@ def _find_star_checkpoint() -> Optional[Path]:
     star = s.get("star")
     if not star:
         return None
-    p = CKPT_DIR / f"{star}.pt"
-    return p if p.exists() else None
+    return _ckpt_path_from_name(star)
 
 
 # ── inference helpers ──────────────────────────────────────────────────────────
@@ -478,7 +590,7 @@ def _infer_slide_quick(
     model: GATClassifier,
     device: str,
 ) -> Optional[dict]:
-    """Quick per-slide inference: returns probabilities only (no attention/PCA)."""
+    """Quick per-section inference: returns probabilities only (no attention/PCA)."""
     g = _load_pt(Path(entry["path"]))
     if g is None:
         return None
@@ -508,7 +620,7 @@ def _infer_slide_full(
     device: str,
     debug:  bool = False,
 ) -> dict:
-    """Full per-slide inference with attention extraction and PCA."""
+    """Full per-section inference with attention extraction and PCA."""
     debug_log: List[dict] = []
 
     def dlog(msg: str, level: str = "info"):
@@ -539,32 +651,20 @@ def _infer_slide_full(
             logits  = model(x, ei, batch)
             probs   = F.softmax(logits, dim=1)
         else:
-            # GAT Capa 1
-            dlog(f"GAT Capa 1 — heads={model.conv1.heads}")
-            x1_raw, (ei1, a1) = model.conv1(x, ei, return_attention_weights=True)
-            x1 = F.elu(model.bn1(x1_raw))
-            x1 = F.dropout(x1, p=model.dropout, training=False)
-            a1_mean = a1.mean(dim=1).cpu().float()
+            # Propagació capa a capa amb extracció d'atenció per cada GAT.
+            # L'atenció a una aresta (i,j) és la mitjana sobre els H caps;
+            # l'atenció a un node és la mitjana de pesos entrants. Valors ∈ [0, 1]
+            # perquè GAT fa softmax sobre els veïns de cada node.
+            xi = x
+            n_layers = len(model.convs)
+            for l in range(n_layers):
+                dlog(f"GAT Capa {l+1}/{n_layers} — heads={model.convs[l].heads}")
+                x_raw, (ei_l, a_l) = model.convs[l](xi, ei, return_attention_weights=True)
+                xi = F.elu(model.bns[l](x_raw))
+                if l < n_layers - 1:
+                    xi = F.dropout(xi, p=model.dropout, training=False)
+                a_mean = a_l.mean(dim=1).cpu().float()
 
-            # GAT Capa 2
-            dlog(f"GAT Capa 2 — heads={model.conv2.heads}")
-            x2_raw, (ei2, a2) = model.conv2(x1, ei, return_attention_weights=True)
-            x2 = F.elu(model.bn2(x2_raw))
-            x2 = F.dropout(x2, p=model.dropout, training=False)
-            a2_mean = a2.mean(dim=1).cpu().float()
-
-            # GAT Capa 3
-            dlog(f"GAT Capa 3 — heads={model.conv3.heads}")
-            x3_raw, (ei3, a3) = model.conv3(x2, ei, return_attention_weights=True)
-            x3 = F.elu(model.bn3(x3_raw))
-            a3_mean = a3.mean(dim=1).cpu().float()
-
-            # Aggregate per-node attention
-            for name, ei_l, a_mean, a_full in [
-                ("layer1", ei1, a1_mean, a1),
-                ("layer2", ei2, a2_mean, a2),
-                ("layer3", ei3, a3_mean, a3),
-            ]:
                 ei_cpu    = ei_l.cpu()
                 node_attn = torch.zeros(num_nodes)
                 counts    = torch.zeros(num_nodes)
@@ -573,18 +673,18 @@ def _infer_slide_full(
                     if dst < num_nodes:
                         node_attn[dst] += a_mean[k].item()
                         counts[dst]    += 1
-                counts    = counts.clamp(min=1)
-                attention_layers[name] = {
+                counts = counts.clamp(min=1)
+                attention_layers[f"layer{l+1}"] = {
                     "edge_index":       ei_l.cpu().numpy().tolist(),
                     "weights_mean":     a_mean.numpy().tolist(),
-                    "weights_per_head": a_full.cpu().float().numpy().tolist(),
+                    "weights_per_head": a_l.cpu().float().numpy().tolist(),
                     "node_attention":   (node_attn / counts).numpy().tolist(),
-                    "num_heads":        a_full.shape[1],
+                    "num_heads":        a_l.shape[1],
                 }
 
             # Pooling + MLP
             dlog(f"Pooling ({model.pooling_type}) + MLP…")
-            h      = model.pool_readout(x3, ei, batch)
+            h      = model.pool_readout(xi, ei, batch)
             logits = model.mlp(h)
             probs  = F.softmax(logits, dim=1)
 
@@ -1036,9 +1136,9 @@ async def set_star_model(req: StarModelRequest):
     if req.name is None:
         s["star"] = None
     else:
-        # Verifica que existeix
-        p = CKPT_DIR / f"{req.name}.pt"
-        if not p.exists():
+        # Verifica que existeix (busca a tots els roots)
+        p = _ckpt_path_from_name(req.name)
+        if p is None:
             raise HTTPException(404, f"Checkpoint not found: {req.name}")
         s["star"] = req.name
     _save_settings(s)
@@ -1051,12 +1151,8 @@ class SelectModelRequest(BaseModel):
 
 @app.post("/api/select_model")
 async def select_model(req: SelectModelRequest):
-    if not CKPT_DIR.exists():
-        raise HTTPException(404, "Checkpoint directory not found")
-    ckpt_path = CKPT_DIR / f"{req.name}.pt"
-    if not ckpt_path.exists():
-        ckpt_path = CKPT_DIR / req.name
-    if not ckpt_path.exists():
+    ckpt_path = _ckpt_path_from_name(req.name)
+    if ckpt_path is None:
         raise HTTPException(404, f"Checkpoint not found: {req.name}")
     try:
         model, info           = _load_model(ckpt_path)
@@ -1135,7 +1231,7 @@ async def inference_patient(req: PatientInferenceRequest):
     """Patient-level inference: aggregates all slides.
 
     Rule: if ANY slide predicts N1 → patient = N1.
-    Returns per-slide breakdown + full visualization from the most informative slide.
+    Returns per-section breakdown + full visualization from the most informative slide.
     """
     if STATE.model is None:
         raise HTTPException(503, "No model checkpoint loaded")

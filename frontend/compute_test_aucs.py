@@ -5,7 +5,7 @@ el fitxer `test_auc_cache.json`.
 
     .venv/bin/python frontend/compute_test_aucs.py
 
-Llegeix els grafs de test des de `outputs/graphs/per-slide/test/` (o el
+Llegeix els grafs de test des de `outputs/graphs/per-section/test/` (o el
 subdir mega segons el `graph_type` del YAML del checkpoint), carrega cada
 model, fa forward pacient-a-pacient amb la seva agregació MIL i guarda
 l'AUC a la cache. Es pot reexecutar — només calcula els que falten.
@@ -31,7 +31,7 @@ from main import (
 
 
 def load_test_graphs(graph_type: str):
-    sub = "per-pacient" if graph_type == "mega" else "per-slide"
+    sub = "per-pacient" if graph_type == "mega" else "per-section"
     test_dir = GRAPHS_DIR / sub / "test"
     if not test_dir.exists():
         raise FileNotFoundError(f"No existeix {test_dir}")
@@ -59,9 +59,9 @@ def aggregate_patient(probs: list[float], method: str) -> float:
 def compute_test_auc(ckpt_path: Path, device: torch.device,
                      graphs_cache: dict) -> float | None:
     cfg = _read_config_yaml(ckpt_path)
-    graph_type = "per-slide"
+    graph_type = "per-section"
     if cfg and "training" in cfg:
-        graph_type = cfg["training"].get("graph_type", "per-slide")
+        graph_type = cfg["training"].get("graph_type", "per-section")
     # També consultem el slug — si conté "mega", forcem mega
     if "mega" in ckpt_path.stem:
         graph_type = "mega"
@@ -80,7 +80,7 @@ def compute_test_auc(ckpt_path: Path, device: torch.device,
         return None
     model.eval().to(device)
 
-    # Agrupem per pacient (a per-slide múltiples grafs comparteixen patient_id)
+    # Agrupem per pacient (a per-section múltiples grafs comparteixen patient_id)
     patient_probs: dict[str, list[float]] = {}
     patient_label: dict[str, int]         = {}
     with torch.no_grad():
