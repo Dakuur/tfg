@@ -617,9 +617,11 @@ L'avaluació segueix un esquema en tres etapes que aïlla completament el conjun
   \item \textbf{Test (15\%):} es separa des de la construcció dels grafs i \textbf{mai
         s'usa} per a selecció d'hiperparàmetres ni \textit{early stopping}.
   \item \textbf{Cerca bayesiana + CV 5-\textit{fold}} sobre el 85\% restant: cada configuració
-        s'avalua amb \textit{Stratified K-Fold} per pacient, amb \textit{early stopping}
-        (\textit{patience}$=\!20$) sobre la pèrdua de validació del \textit{fold}. L'objectiu
-        és $\text{spec}_{\text{mean}}@\text{sens}=1$ amb penalització forta si sens cau de 1.
+        s'avalua amb \textit{Stratified K-Fold} per pacient i \textit{early stopping}
+        (\textit{patience}$=\!20$). L'objectiu maximitzat és
+        $\overline{\text{spec}}_{\text{CV}} - 10\cdot\max(0, 1-\overline{\text{sens}}_{\text{CV}})$:
+        especificitat mitjana penalitzant fortament caigudes de sensibilitat (vegeu Annex
+        \ref{app:sweep-config}).
   \item \textbf{Entrenament final i avaluació al test:} amb els millors hiperparàmetres,
         el 85\% es torna a dividir 90/10 per fer \textit{early stopping} intern, i el model
         final s'avalua una sola vegada al test (15\%) amb el llindar $t^*$ mediana de les 5
@@ -1149,9 +1151,16 @@ Llindar $t^*$           & post-CV            & sobre la corba ROC del val, condi
 \end{tabular}
 \end{table}
 
-\textbf{Objectiu del sweep:} $\text{spec}_{\text{mean}} - 20 \cdot \max(0,\,1 - \text{sens}_{\text{mean}})$,
-calculat sobre els 5 \textit{val sets} de la CV. La penalització forta garanteix que els models
-amb sensibilitat $<1$ siguin descartats, mentre que entre els que sí mantenen sensibilitat = 1, el
-TPE maximitza la mitjana d'especificitat.
+\textbf{Objectiu del sweep:}
+\begin{equation*}
+  \text{objective} \;=\; \overline{\text{spec}}_{\text{CV}} \;-\; 10 \cdot \max\!\big(0,\; 1 - \overline{\text{sens}}_{\text{CV}}\big)
+\end{equation*}
+on $\overline{\text{spec}}_{\text{CV}}$ i $\overline{\text{sens}}_{\text{CV}}$ són les mitjanes
+sobre els 5 \textit{val sets}, calculades amb el llindar $t^*$ derivat de cada \textit{fold}
+(threshold més alt amb TPR$=1$). Aquesta és l'\textbf{única} mètrica que el TPE veu per decidir
+els paràmetres del següent \textit{trial}; la resta de mètriques (AUC, threshold, mètriques per
+\textit{fold}) es desen per a anàlisi posterior, però no influeixen en la cerca. La penalització
+$\times 10$ garanteix que el TPE prioritzi sensibilitat $\approx 100\%$, però accepta una pèrdua
+moderada (sens $\geq 95\%$) si s'aconsegueix un guany substancial d'especificitat ($> 5$ punts).
 
 \end{document}
