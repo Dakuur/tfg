@@ -645,11 +645,33 @@ def _infer_slide_full(
         x, ei = g_dev.x, g_dev.edge_index
 
         if model.pooling_type == "diff":
-            # Hierarchical DiffPool changes node count and topology between layers;
-            # skip per-layer attention breakdown and run the full forward pass.
-            dlog("Pooling jeràrquic (diff): forward pass directe, sense desglossar atenció per capa")
-            logits  = model(x, ei, batch)
-            probs   = F.softmax(logits, dim=1)
+            # DiffPool canvia el nombre de nodes i la topologia entre capes; aquí
+            # extraiem només l'atenció de la primera GAT (que opera sobre els
+            # patches reals, abans del primer DiffPool) per a la visualització.
+            # Les capes posteriors operen sobre super-nodes (sense correspondència
+            # amb els patches del WSI), per tant no s'inclouen.
+            dlog("Pooling jeràrquic (diff): extraient atenció de la capa 1 (pre-DiffPool)")
+            x_raw, (ei_l, a_l) = model.convs[0](x, ei, return_attention_weights=True)
+            a_mean = a_l.mean(dim=1).cpu().float()
+            ei_cpu = ei_l.cpu()
+            node_attn = torch.zeros(num_nodes)
+            counts    = torch.zeros(num_nodes)
+            for k in range(ei_cpu.shape[1]):
+                dst = ei_cpu[1, k].item()
+                if dst < num_nodes:
+                    node_attn[dst] += a_mean[k].item()
+                    counts[dst]    += 1
+            counts = counts.clamp(min=1)
+            attention_layers["layer1"] = {
+                "edge_index":       ei_l.cpu().numpy().tolist(),
+                "weights_mean":     a_mean.numpy().tolist(),
+                "weights_per_head": a_l.cpu().float().numpy().tolist(),
+                "node_attention":   (node_attn / counts).numpy().tolist(),
+                "num_heads":        a_l.shape[1],
+            }
+            # Forward pass complet per a la predicció
+            logits = model(x, ei, batch)
+            probs  = F.softmax(logits, dim=1)
         else:
             # Propagació capa a capa amb extracció d'atenció per cada GAT.
             # L'atenció a una aresta (i,j) és la mitjana sobre els H caps;

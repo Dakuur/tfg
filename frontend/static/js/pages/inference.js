@@ -18,22 +18,39 @@ let _vizBgImageUrl = null;
 let _vizWsiExtent  = null;
 let _vizSlideInfo  = null;
 
-function _reRenderGraph(container, scores) {
+function _availableLayers() {
+  // Retorna les keys disponibles ordenades (layer1, layer2, ...).
+  const attn = _vizData?.attention;
+  if (!attn) return [];
+  return Object.keys(attn)
+    .filter(k => /^layer\d+$/.test(k))
+    .sort((a, b) => Number(a.replace("layer", "")) - Number(b.replace("layer", "")));
+}
+
+function _reRenderGraph(container, scores, layerKey = null) {
   const svgContainer = container.querySelector("#graph-svg-container");
   if (!svgContainer || !_vizData) return;
-  const attn3 = _vizData.attention?.layer3;
+  // Si no s'ha passat layerKey, agafem l'última capa disponible.
+  const layers = _availableLayers();
+  const useLayer = layerKey ?? layers[layers.length - 1] ?? null;
+  const lyr = useLayer ? _vizData.attention?.[useLayer] : null;
+  const effectiveScores = scores ?? lyr?.node_attention ?? null;
+  // Per a capes >1 amb DiffPool, els nodes són super-nodes i no hi ha
+  // posicions reals → no superposem el WSI ni mostrem patches.
+  const layerIdx = useLayer ? Number(useLayer.replace("layer", "")) : 1;
+  const isSuperNodeLayer = (_vizData.pooling_type === "diff" && layerIdx > 1);
   renderGraph(svgContainer, {
-    edge_index:     _vizData.edge_index,
-    node_positions: _vizData.node_positions,
-    num_nodes:      _vizData.num_nodes,
-    feature_norms:  _vizData.feature_norms,
+    edge_index:     lyr?.edge_index ?? _vizData.edge_index,
+    node_positions: isSuperNodeLayer ? null : _vizData.node_positions,
+    num_nodes:      lyr ? (lyr.node_attention?.length ?? _vizData.num_nodes) : _vizData.num_nodes,
+    feature_norms:  isSuperNodeLayer ? null : _vizData.feature_norms,
   }, {
-    nodeAttention: scores,
-    edgeAttention: attn3 ? { edge_index: attn3.edge_index, weights_mean: attn3.weights_mean } : null,
+    nodeAttention: effectiveScores,
+    edgeAttention: lyr ? { edge_index: lyr.edge_index, weights_mean: lyr.weights_mean } : null,
     height:        440,
-    slideInfo:     _vizSlideInfo,
-    bgImageUrl:    _vizBgImageUrl,
-    wsiExtent:     _vizWsiExtent,
+    slideInfo:     isSuperNodeLayer ? null : _vizSlideInfo,
+    bgImageUrl:    isSuperNodeLayer ? null : _vizBgImageUrl,
+    wsiExtent:     isSuperNodeLayer ? null : _vizWsiExtent,
   });
 }
 
@@ -127,9 +144,14 @@ function buildLayout() {
         <span id="viz-slide-label" style="font-size:12px;color:var(--text3);margin-left:8px"></span>
         <span id="viz-loading" style="display:none;font-size:11px;color:var(--accent-light);margin-left:8px">carregant…</span>
       </div>
-      <div style="margin-bottom:10px;font-size:12px;color:var(--text3)">
-        <i data-lucide="info" style="width:13px;height:13px;vertical-align:middle"></i>
-        Clic sobre un node per veure el patch d'histopatologia · Scroll per zoom · Colors: atenció GAT capa 3
+      <div style="margin-bottom:10px;font-size:12px;color:var(--text3);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span><i data-lucide="info" style="width:13px;height:13px;vertical-align:middle"></i>
+          Clic sobre un node per veure el patch · Scroll per zoom · Colors: atenció</span>
+        <label style="display:inline-flex;gap:6px;align-items:center;color:var(--text)">
+          Capa GAT:
+          <select id="attn-layer-select" style="padding:3px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11.5px"></select>
+        </label>
+        <span id="attn-layer-note" style="color:var(--accent-light);font-size:11px"></span>
       </div>
       <div class="two-col" style="align-items:start">
         <div>
@@ -461,7 +483,35 @@ async function _drawViz(container, viz, graphId) {
     }
   }
 
-  _reRenderGraph(container, viz.attention?.layer3?.node_attention ?? null);
+  // Inicialitza el selector de capa amb totes les capes disponibles.
+  const layerSelect = container.querySelector("#attn-layer-select");
+  const layerNote   = container.querySelector("#attn-layer-note");
+  const layers      = _availableLayers();
+  if (layerSelect) {
+    if (layers.length === 0) {
+      layerSelect.innerHTML = `<option value="">(no disponible)</option>`;
+      layerSelect.disabled  = true;
+      if (layerNote) layerNote.textContent = (viz.pooling_type === "diff")
+        ? "DiffPool: l'extracció d'atenció per capa no està disponible (super-nodes intermedis)."
+        : "";
+    } else {
+      layerSelect.innerHTML = layers.map(k => `<option value="${k}">${k.replace("layer","Capa ")}</option>`).join("");
+      layerSelect.value     = layers[layers.length - 1];   // darrera capa per defecte
+      layerSelect.disabled  = false;
+      if (layerNote) layerNote.textContent = "";
+      layerSelect.onchange = () => {
+        const k = layerSelect.value;
+        const idx = Number(k.replace("layer",""));
+        if (viz.pooling_type === "diff" && idx > 1) {
+          if (layerNote) layerNote.textContent = "Capa sobre super-nodes (sense WSI ni patches)";
+        } else {
+          if (layerNote) layerNote.textContent = "";
+        }
+        _reRenderGraph(container, null, k);
+      };
+    }
+  }
+  _reRenderGraph(container, null, layers[layers.length - 1] ?? null);
 
   const bgStatusHtml = bgError
     ? `<div class="stat-row"><span class="stat-key">Imatge fons</span><span class="stat-val" style="color:var(--red);font-size:11px">${bgError}</span></div>`
