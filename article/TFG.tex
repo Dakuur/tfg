@@ -626,15 +626,12 @@ L'avaluació segueix un esquema en tres etapes que aïlla completament el conjun
         $t^*$ obtingudes als folds CV.
 \end{enumerate}
 
-\textbf{Cerca bayesiana.} En lloc d'una graella exhaustiva, s'utilitza el \textit{Tree-structured
-Parzen Estimator}~(TPE) sobre $\sim$15 eixos d'optimització (arquitectura, profunditat, pooling, MIL,
-hiperparàmetres d'optimitzador). Cada \textit{trial} és una configuració mostrejada pel
-\textit{sampler}: els \textbf{40 primers trials} són mostreig uniforme aleatori (exploració inicial),
-i a partir del 41è el TPE explota l'historial per concentrar el mostreig a la regió amb millor
-\textit{objective}. Tots els mostratges, els 5 \textit{folds} del CV i la inicialització dels pesos
-usen \textit{seed} fixa per a reproduïbilitat. L'estudi és persistent (\texttt{SQLite}) i reprenible;
-l'espai complet de cerca es recull a l'Annex \ref{app:sweep-config}. \textbf{El conjunt de test
-(15\%) no es toca en cap pas del sweep}; només es carrega una vegada, al pas de finalització.
+\textbf{Cerca bayesiana.} S'utilitza el \textit{Tree-structured Parzen Estimator}~(TPE) sobre
+$\sim$15 eixos. Els \textbf{200 primers trials} ($\sim$10$\times$ dimensions) són mostreig uniforme
+aleatori (exploració); després el TPE explota l'historial. Tots els mostratges, \textit{folds} CV i
+inicialització de pesos usen \textit{seed} fixa. L'estudi és persistent (\texttt{SQLite}) i reprenible;
+l'espai complet es recull a l'Annex \ref{app:sweep-config}. \textbf{El conjunt de test (15\%) no es
+toca en cap pas del sweep}; només es carrega al pas de finalització, una sola vegada.
 
 \section{Resultats}
 
