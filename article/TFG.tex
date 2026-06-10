@@ -838,7 +838,7 @@ d'inferència} amb desglossament de la propagació capa a capa (mode depuració)
 d'estadístiques} amb corbes ROC/PR, matriu de confusió i mètriques per classe al test, generades
 sense \textit{data leakage}. El diagrama de blocs del pipeline és la Figura~\ref{fig:pipeline}.
 
-\section{Conclusions i Treball Futur}
+\section{Conclusions}
 
 \subsection{Conclusions}
 
@@ -925,28 +925,6 @@ dona Sens.$=\!100\%$ amb Espec.$=\!77{,}5\%$. El val set ja s'havia usat per a \
 stopping} i selecció del checkpoint, per la qual cosa $t^*$ pot tenir un biaix optimista
 lleuger; idealment, hauria de fixar-se sobre un val set extern.
 
-\subsection{Treball Futur}
-
-\textbf{Optimització dirigida d'hiperparàmetres.} La cerca actual ha cobert els eixos
-estructurals (arquitectura, \textit{pooling}, MIL, $h$, $H$, \textit{dropout},
-$\lambda_{\text{wd}}$, \textit{learning rate}) amb 255 configuracions de validació creuada
-5-fold. Un pas natural seria explorar de manera més fina la regió òptima identificada
-(\textit{attention pooling}, $H \in \{2, 4\}$, $\lambda_{\text{wd}} = 10^{-3}$,
-$\text{lr} \in [10^{-4}, 3 \!\cdot\! 10^{-4}]$) per millorar la calibració del model
-i reduir la variabilitat entre folds.
-
-\textbf{Supervisió amb màscares d'anotació.} Les màscares de displàsia i infiltració
-anotades per la Dra.\ Musulén podrien fer-se servir per guiar els pesos d'atenció del
-GAT: les regions anotades haurien de rebre més atenció que les zones sanes. Tourniaire et
-al.~\cite{TOURNIAIRE2023102763} mostren que fins i tot amb un nombre limitat d'anotacions
-parcials es pot millorar la localització i la classificació del model.
-
-\textbf{Comparació de connectivitats.} En el marc del mateix projecte, un altre estudiant
-treballa en paral·lel en un model on la matriu d'adjacència es construeix a partir de la
-\textbf{distància entre les característiques} dels \textit{patches}, sense triangulació de
-Delaunay ni relacions espacials. Comparar els dos models sobre el mateix conjunt de dades
-permetrà valorar si la topologia espacial aporta avantatge real respecte d'una
-connectivitat basada en similitud de \textit{features}.
 
 \printbibliography
 
