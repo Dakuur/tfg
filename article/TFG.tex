@@ -17,7 +17,6 @@
 \usepackage{booktabs}
 \usepackage{subcaption}
 \usepackage{amsmath}
-\usepackage{tikz-cd}
 \usepackage{amssymb}
 \usepackage{xcolor}
 \usepackage{colortbl}
@@ -80,9 +79,10 @@ en càncer colorrectal pT1 a partir de \textit{Whole Slide Images}. El teixit es
 \textbf{graf espacial} construït per triangulació de Delaunay sobre les coordenades dels \textit{patches},
 de manera que es preserva la topologia real del teixit, a diferència d'enfocaments basats en similitud de
 característiques. Cada node és un \textit{patch} de 2048$\times$2048 px representat per l'embedding
-CLS (1.536 dim.) del model UNI2. Es comparen dues arquitectures: un GAT de referència
-amb \textit{readout} pla i un GAT amb \textbf{DiffPool jeràrquic} intercalat ($N\!\to\!K_1\!\to\!K_2$
-super-nodes) per obtenir representacions a múltiples escales. El diagnòstic per pacient s'obté per
+CLS (1.536 dim.) del model UNI2. Es comparen dues arquitectures configurables: un GAT de referència
+amb \textit{readout} pla (mean, max, mean\_max o attention) i un GAT amb \textbf{DiffPool jeràrquic}
+intercalat ($N \to \cdots \to K_L$ super-nodes, nombre de blocs $L_{\text{DP}}$ optimitzat) per
+obtenir representacions a múltiples escales. El diagnòstic per pacient s'obté per
 agregació MIL sobre les seccions. El millor model obté un AUC de test de $0{,}925$ amb sensibilitat
 i especificitat de $0{,}875$ (validació creuada 5-fold; AUC CV $= 0{,}860 \pm 0{,}061$; 367 pacients).
 \\
@@ -97,9 +97,9 @@ We present an N0/N1 classification system for lymph node metastasis prediction i
 cancer from Whole Slide Images. Tissue is represented as a \textbf{spatial graph} built by Delaunay
 triangulation over patch coordinates, preserving the real spatial topology of the tissue, unlike
 feature-similarity graph approaches. Each node is a 2048$\times$2048 px patch represented by a
-1,536-dimensional CLS embedding from the UNI2 model. Two architectures are compared: a
-\textbf{GAT baseline} with flat readout (mean/max) and a \textbf{GAT+DiffPool} model
-with pooling layers interleaved between GAT layers ($N\!\to\!K_1\!\to\!K_2$ super-nodes) for
+1,536-dimensional CLS embedding from the UNI2 model. Two configurable architectures are compared: a
+\textbf{GAT baseline} with flat readout (mean, max, mean\_max or attention) and a \textbf{GAT+DiffPool} model
+with $L_{\text{DP}}$ DiffPool blocks interleaved between GAT layers ($N \to \cdots \to K_L$ super-nodes) for
 multi-scale representations. Patient-level diagnosis is obtained via MIL aggregation over
 histological sections. The best model achieves a test AUC of $0.925$ with $0.875$
 sensitivity/specificity (5-fold cross-validation; CV AUC $= 0.860 \pm 0.061$; 367 patients).
@@ -268,13 +268,16 @@ El conjunt de dades efectiu comprèn \textbf{1.607 grafs} (un per secció histol
 \textbf{367 pacients} distribuits de forma desequilibrada entre les dues classes
 (Taula~\ref{tab:dataset}). D'un total de 606 pacients a la base de dades clínica, 236 es descarten
 per diagnòstic indeterminat (NX), i dels 370 restants amb diagnòstic vàlid, 3 no disposen
-d'embeddings UNI2 generats, deixant 367 pacients usables. Les mostres es divideixen en conjunts
-d'entrenament (70\%), validació (15\%) i test (15\%) estratificats a nivell de pacient.
+d'embeddings UNI2 generats, deixant 367 pacients usables. Les mostres es divideixen en un \textbf{pool d'entrenament+validació (85\%)} i un
+\textbf{conjunt de test fix (15\%)}, ambdós estratificats a nivell de pacient. Dins del pool s'aplica
+validació creuada 5-fold per a la cerca d'hiperparàmetres (Secció~\ref{sec:training-scheme}).
 
 \begin{table*}[t]
 \centering
 \caption{Composició del dataset efectiu per partició (26 hospitals).
-Els grafs corresponen a seccions histològiques individuals (un per secció).}
+Els grafs corresponen a seccions histològiques individuals (un per secció). El pool (85\%)
+s'utilitza per a la cerca d'hiperparàmetres amb validació creuada 5-fold; el test (15\%)
+es reserva per a l'avaluació final.}
 \label{tab:dataset}
 \small
 \begin{tabular}{lrrr|rrr}
@@ -282,9 +285,8 @@ Els grafs corresponen a seccions histològiques individuals (un per secció).}
  & \multicolumn{3}{c|}{\textbf{Pacients}} & \multicolumn{3}{c}{\textbf{Grafs (seccions)}} \\
 \textbf{Partició} & \textbf{N0} & \textbf{N1} & \textbf{Total} & \textbf{N0} & \textbf{N1} & \textbf{Total} \\
 \midrule
-Train & 184 &  72 & 256 &   897 & 185 & 1\,082 \\
-Val   &  40 &  15 &  55 &   236 &  34 &   270  \\
-Test  &  40 &  16 &  56 &   212 &  43 &   255  \\
+Pool (train+val CV) & 224 &  87 & 311 & 1\,133 & 219 & 1\,352 \\
+Test                &  40 &  16 &  56 &   212  &  43 &   255  \\
 \midrule
 Total & 264 & 103 & 367 & 1\,345 & 262 & 1\,607 \\
 \bottomrule
@@ -348,23 +350,21 @@ $\mathcal{G} = (\mathbf{X},\,\mathbf{A})$ on:
 Dues estratègies de \textit{pooling} transformen la seqüència de grafs en un vector global que
 alimenta el capçal MLP per produir $P(\text{N1})$:
 \begin{itemize}
-  \item \textbf{Pla (\textit{readout}).} \textit{Mean} o \textit{max} aplicats sobre les sortides de
-  la darrera capa GAT, reduint directament de $N$ nodes a $d_h$ dimensions.
-  \item \textbf{Jeràrquic (DiffPool intercalat).} Dues capes DiffPool s'insereixen entre les capes
-  GAT: la primera colapsa el graf de $N$ nodes a $K_1$ super-nodes, i la segona de $K_1$ a $K_2$.
-  Cada nivell aprèn una matriu d'assignació suau i produeix un nou graf de menor grandària sobre el
-  qual opera la capa GAT següent.
+  \item \textbf{Pla (\textit{readout}).} Operació global sobre les sortides de la darrera capa GAT,
+  sense reduir el graf: \textit{mean}, \textit{max}, \textit{sum}, \textit{mean\_max} (concatenació
+  de mean i max) o \textit{attention} (pes escalar aprenible per node). Estratègia configurable.
+  \item \textbf{Jeràrquic (DiffPool intercalat).} Un nombre configurable $L_{\text{DP}} \in \{1,2,3\}$
+  de blocs DiffPool s'intercalen entre capes GAT, col·lapsant progressivament el graf de $N$ nodes
+  fins a $K_{L_{\text{DP}}}$ super-nodes. Cada nivell aprèn una matriu d'assignació suau i produeix
+  un nou graf de menor grandària.
 \end{itemize}
 
-\textbf{Model 1 --- Múltiples grafs + agregació MIL.}
-Cada secció genera un graf independent; les $S$ seccions d'un pacient es processen per separat i les
-probabilitats $\{P(\text{N1}_i)\}_{i=1}^{S}$ s'agreguen a posteriori (Secció~\ref{sec:mil}).
-
-\textbf{Model 2 --- Un sol graf per pacient.}
-Com a alternativa, totes les seccions d'un pacient es concatenen en un únic mega-graf bloc-diagonal:
-les matrius de característiques s'apilen i les d'adjacència s'organitzen a la diagonal (sense
-arestes entre seccions). El GAT opera llavors sobre totes les seccions simultàniament i un únic
-\textit{pooling} global produeix el diagnòstic sense etapa MIL separada. 
+\textbf{Estratègia adoptada: un graf per secció.} Cada secció genera un graf independent;
+les $S$ seccions d'un pacient es processen per separat i les probabilitats
+$\{P(\text{N1}_i)\}_{i=1}^{S}$ s'agreguen via MIL (Secció~\ref{sec:mil}).
+Com a alternativa es va explorar un \textit{mega-graf} per pacient (bloc-diagonal de totes les seccions
+sense arestes entre elles), però va donar resultats inferiors (veure Secció~\ref{sec:main-effects}),
+probablement per forçar un únic \textit{pooling} global sobre teixits físicament inconnexos.
 \subsection{Connectivitat per triangulació de Delaunay}
 
 Una connectivitat fixa de reixeta no és adequada perquè la màscara exclou regions de fons i trenca la
@@ -383,7 +383,7 @@ d'una sola component, fet coherent amb aquesta definició.
 
 \begin{figure*}[h]
     \centering
-    \includegraphics[width=\textwidth]{img/preprocess.pdf}
+    \includegraphics[width=0.8\textwidth]{img/preprocess.pdf}
     \caption{Etapes del preprocessament per a la construcció del graf. D'esquerra a dreta:
     WSI original $\to$ extracció de \textit{patches} de $2048{\times}2048$ px per finestra lliscant + filtratge
     $\to$ extracció de l'embedding CLS de 1.536 dimensions per UNI2 (un vector per \textit{patch})
@@ -400,47 +400,55 @@ d'una sola component, fet coherent amb aquesta definició.
 \begin{figure*}[h]
 \centering
 \begin{tikzpicture}[
-  font=\sffamily\footnotesize,
+  font=\sffamily\scriptsize,
   block/.style={draw, rounded corners=2pt, align=center,
-                minimum width=2.05cm, minimum height=0.85cm, fill=blue!4},
+                minimum width=1.8cm, minimum height=0.8cm, fill=blue!4},
   hyper/.style={draw, dashed, rounded corners=2pt, align=center,
-                minimum width=2.05cm, minimum height=0.7cm, fill=red!4,
+                minimum width=1.8cm, minimum height=0.65cm, fill=red!4,
                 font=\sffamily\scriptsize},
-  ar/.style={-{Stealth[length=2.0mm]}, thick},
+  ar/.style={-{Stealth[length=1.8mm]}, thick},
 ]
-% Cadena principal: dades → graf → model → pacient → mètriques
-\node[block] (wsi)   {WSI \\ (\textit{mrxs})};
-\node[block, right=0.45cm of wsi]  (patch) {Extracció \\ \textit{patches}};
-\node[block, right=0.45cm of patch] (uni)   {UNI2 \\ CLS 1.536};
-\node[block, right=0.45cm of uni]   (graph) {Graf \\ Delaunay};
-\node[block, right=0.45cm of graph] (gat)   {GAT \\ ($L$ capes)};
-\node[block, right=0.45cm of gat]   (pool)  {\textit{Pooling} \\ intra-graf};
-\node[block, right=0.45cm of pool]  (mil)   {MIL \\ inter-secció};
-\node[block, right=0.45cm of mil]   (out)   {$P(\text{N1})$ \\ + llindar};
+%% Fila superior: preparació de dades (4 blocs)
+\node[block] (wsi)   {WSI\\(\textit{mrxs})};
+\node[block, right=0.5cm of wsi]   (patch) {Extracció\\\textit{patches}};
+\node[block, right=0.5cm of patch] (uni)   {UNI2\\CLS 1.536};
+\node[block, right=0.5cm of uni]   (graph) {Graf\\Delaunay};
+
+%% Fila inferior: model (4 blocs, alineats sota la fila superior)
+\node[block, below=1.6cm of wsi]   (gat)  {GAT\\($L$ capes)};
+\node[block, right=0.5cm of gat]   (pool) {\textit{Pooling}\\intra-graf};
+\node[block, right=0.5cm of pool]  (mil)  {MIL\\inter-secc.};
+\node[block, right=0.5cm of mil]   (out)  {$P(\text{N1})$\\+ llindar};
+
+%% Fletxes fila superior
 \draw[ar] (wsi)   -- (patch);
 \draw[ar] (patch) -- (uni);
 \draw[ar] (uni)   -- (graph);
-\draw[ar] (graph) -- (gat);
-\draw[ar] (gat)   -- (pool);
-\draw[ar] (pool)  -- (mil);
-\draw[ar] (mil)   -- (out);
-% Hiperparàmetres sota els blocs configurables
-\node[hyper, below=0.4cm of graph] (h-graph) {\textit{factor poda}};
-\node[hyper, below=0.4cm of gat]   (h-gat)   {$L,\,h,\,H,\,p_{\text{drop}}$};
-\node[hyper, below=0.4cm of pool]  (h-pool)  {Pooling, $L_{\text{DP}},\,K_\ell,\,\lambda_{\text{aux}}$};
-\node[hyper, below=0.4cm of mil]   (h-mil)   {mean / max / noisy-OR / attention};
-\node[hyper, below=0.4cm of out]   (h-thr)   {$t^* \in [0,1]$ (val.)};
-\draw[densely dotted] (graph) -- (h-graph);
-\draw[densely dotted] (gat)   -- (h-gat);
-\draw[densely dotted] (pool)  -- (h-pool);
-\draw[densely dotted] (mil)   -- (h-mil);
-\draw[densely dotted] (out)   -- (h-thr);
+
+%% Connexió graf -> gat: baixa de graph i va esquerra fins a gat
+\draw[ar] (graph.south) -- ++(0,-0.55) -| (gat.north);
+
+%% Fletxes fila inferior
+\draw[ar] (gat)  -- (pool);
+\draw[ar] (pool) -- (mil);
+\draw[ar] (mil)  -- (out);
+
+%% Hiperparàmetres sota els blocs de la fila inferior
+\node[hyper, below=0.35cm of gat]  (h-gat)  {$L,\,h,\,H,$\\\textit{dropout}};
+\node[hyper, below=0.35cm of pool] (h-pool) {\textit{pooling},\\$L_{\text{DP}},K_\ell,\lambda$};
+\node[hyper, below=0.35cm of mil]  (h-mil)  {mean/max/\\noisy-OR/attn};
+\node[hyper, below=0.35cm of out]  (h-thr)  {$t^*$ (val)};
+
+\draw[densely dotted] (gat)  -- (h-gat);
+\draw[densely dotted] (pool) -- (h-pool);
+\draw[densely dotted] (mil)  -- (h-mil);
+\draw[densely dotted] (out)  -- (h-thr);
 \end{tikzpicture}
-\caption{Pipeline general. Cada bloc representa un mòdul; els hiperparàmetres configurables
-optimitzats per cerca bayesiana apareixen a sota en línia discontínua. $L$: nombre de capes GAT;
-$h$: dim. oculta; $H$: nombre de caps d'atenció; $L_{\text{DP}}$: nombre de blocs DiffPool;
-$K_\ell$: super-nodes per nivell; $\lambda_{\text{aux}}$: pes del penalty de DiffPool; $t^*$:
-llindar de decisió derivat del \textit{validation set}.}
+\caption{Pipeline general en dues files. Fila superior: preparació de dades (WSI a graf Delaunay).
+Fila inferior: model i decisió; la fletxa en L connecta el graf de Delaunay amb la primera capa GAT.
+Els hiperparàmetres configurables apareixen a sota en línia discontínua.
+$L$: capes GAT; $h$: dim. oculta; $H$: caps d'atenció; $L_{\text{DP}}$: blocs DiffPool;
+$K_\ell$: super-nodes per nivell; $\lambda$: pes del penalty DiffPool; $t^*$: llindar de decisió.}
 \label{fig:pipeline}
 \end{figure*}
 
@@ -452,36 +460,28 @@ d'entrenament.
 
 El model implementat, \texttt{GATClassifier}, és un classificador de grafs que alterna capes
 \textbf{Graph Attention Network} (\texttt{GATConv}~\cite{veličković2018graphattentionnetworks,fey2019fastgraphrepresentationlearning})
-amb capes de \textit{pooling} jeràrquic per a la classificació binària N0/N1. L'arquitectura proposa
-intercalar operacions de reducció del graf \textit{entre} les capes de propagació de missatges, de
-manera que cada estadi treballa sobre una representació progressivament més compacta del teixit:
-
-\begin{displaymath}
-\shorthandoff{"}
-\begin{tikzcd}[column sep=large, row sep=large]
-  \underbrace{\mathbf{X}^{(0)},\,\mathbf{A}^{(0)}}_{N\text{ nodes}}
-  \arrow[d, "{\text{GAT}_1 \circ \text{Pool}_1}"] \\
-  \underbrace{\mathbf{X}^{(1)},\,\mathbf{A}^{(1)}}_{K_1\text{ nodes}}
-  \arrow[d, "{\text{GAT}_2 \circ \text{Pool}_2}"] \\
-  \underbrace{\mathbf{X}^{(2)},\,\mathbf{A}^{(2)}}_{K_2\text{ nodes}}
-  \arrow[d, "{\text{GAT}_3 \circ \text{readout}}"] \\
-  \mathbf{z}
-\end{tikzcd}
-\end{displaymath}
+amb capes de \textit{pooling} jeràrquic per a la classificació binària N0/N1. L'arquitectura és
+completament parametritzable: el nombre de capes GAT, el nombre de blocs DiffPool intercalats i la
+dimensió oculta es trien com a hiperparàmetres. Quan s'utilitza DiffPool, cada bloc inserit entre
+capes GAT redueix el graf de $N_\ell$ nodes a $K_\ell$ super-nodes:
+$(\mathbf{X}^{(0)}, \mathbf{A}^{(0)}) \xrightarrow{\text{GAT+Pool}} \cdots \xrightarrow{\text{GAT+readout}} \mathbf{z}$.
+Tot el model s'entrena de forma \textbf{end-to-end}: un únic pas de retropropagació propaga els
+gradients des del capçal MLP fins a les primeres capes GAT. La Figura~\ref{fig-diffpool} mostra
+la comparació visual de les dues arquitectures.
 
 \textbf{Mecanisme d'atenció.} A diferència de les xarxes convolucionals clàssiques sobre grafs que tracten
 tots els veïns d'un node de forma uniforme, GAT aprèn a assignar pesos d'importància diferenciats a cada
-veí. Donada la representació $\mathbf{h}_i \in \mathbb{R}^{F}$ del node $i$, per a cada parella de nodes
-veïns $(i, j)$ es calcula un coeficient d'atenció no normalitzat:
+veí. Donada la representació $\mathbf{h}_i$ del node $i$, per a cada parella de nodes
+veïns $(i, j)$ es calcula un coeficient d'atenció:
 \begin{equation*}
-  e_{ij} = \text{LeakyReLU}\!\left(\mathbf{a}^{\top}\!\left[\mathbf{W}\mathbf{h}_i \;\|\; \mathbf{W}\mathbf{h}_j\right]\right)
+  e_{ij} = \text{LeakyReLU}\!\left(\mathbf{a}^{\top}[\mathbf{W}\mathbf{h}_i \,\|\, \mathbf{W}\mathbf{h}_j]\right)
 \end{equation*}
 on $\mathbf{W}$ és una transformació lineal aprenible, $\|$ la concatenació i $\mathbf{a}$ un vector
-d'atenció aprenible. Els coeficients es normalitzen amb \textit{softmax} sobre tots els veïns del node $i$:
+aprenible. Els coeficients es normalitzen amb \textit{softmax} sobre tots els veïns:
 \begin{equation*}
-  \alpha_{ij} = \frac{\exp(e_{ij})}{\displaystyle\sum_{k \in \mathcal{N}(i)} \exp(e_{ik})}
+  \alpha_{ij} = \frac{\exp(e_{ij})}{\sum_{k \in \mathcal{N}(i)} \exp(e_{ik})}
 \end{equation*}
-i la nova representació del node s'obté com la suma ponderada dels veïns:
+i la nova representació del node s'obté com la suma ponderada:
 \begin{equation*}
   \mathbf{h}'_i = \sum_{j \in \mathcal{N}(i)} \alpha_{ij}\,\mathbf{W}\mathbf{h}_j
 \end{equation*}
@@ -533,12 +533,10 @@ $L_{\text{DP}}+1$ capes GAT). Els $K_\ell$ es defineixen per nivell; el \textit{
 sobre els $K_{L_{\text{DP}}}$ super-nodes és també configurable (mean, max, sum, mean\_max o
 attention), de manera anàloga al model \textit{baseline}.
 
-\textbf{Pèrdua auxiliar.} Per cada bloc DiffPool s'afegeixen dos termes que regularitzen
-$\mathbf{S}^{(\ell)}$: $\mathcal{L}_{\text{LP}} = \|\mathbf{A}^{(\ell)} - \mathbf{S}\mathbf{S}^{\top}\|_F / N_\ell$
-(\textit{link prediction}, empeny a col·lapsar veïns junts) i
-$\mathcal{L}_{\text{E}} = -\langle \mathbf{S}, \log \mathbf{S}\rangle / N_\ell$ (entropia, prioritza
-assignacions \textit{sharp}). La pèrdua total és
-$\mathcal{L} = \mathcal{L}_{\text{CE}} + \lambda_{\text{aux}} \sum_\ell (\mathcal{L}_{\text{LP}}^{(\ell)} + \mathcal{L}_{\text{E}}^{(\ell)})$,
+\textbf{Pèrdua auxiliar.} Per cada bloc DiffPool s'afegeixen dos termes de regularització sobre
+$\mathbf{S}^{(\ell)}$: un terme de \textit{link prediction} (empeny a col·lapsar veïns junts) i un
+terme d'entropia (prioritza assignacions precises). La pèrdua total és la \textit{cross-entropy}
+de classificació més $\lambda_{\text{aux}}$ vegades la suma d'aquests termes sobre tots els blocs,
 amb $\lambda_{\text{aux}}$ com a eix d'optimització.
 
 \textbf{Detall d'implementació.} Com que $\mathbf{S}^{(\ell)\top}\mathbf{A}^{(\ell)}\mathbf{S}^{(\ell)}$
@@ -546,17 +544,16 @@ amb $\lambda_{\text{aux}}$ com a eix d'optimització.
 graf complet $K_\ell \times K_\ell$ (sense \textit{self-loops}): és barat ($K_\ell \le 50$) i la
 GAT posterior aprèn les atencions rellevants.
 
-\begin{figure}[h]
+\begin{figure*}[h]
     \centering
-    \includegraphics[width=0.48\textwidth]{img/baseline_vs_diffpool.pdf}
-    \caption{Comparació visual de les dues arquitectures.
-    \textbf{Dalt}: GAT Baseline, on les capes d'atenció operen sobre els $N$ nodes originals i un
-    \textit{readout} global produeix l'embedding final.
-    \textbf{Baix}: GAT+DiffPool, on cada capa GAT va seguida d'un bloc DiffPool que col·lapsa
-    progressivament el graf fins als $K_{L_{\text{DP}}}$ super-nodes finals, sobre els quals s'aplica
-    un \textit{readout} global.}
+    \includegraphics[width=0.8\textwidth]{img/baseline_vs_diffpool.pdf}
+    \caption{Comparació visual de les dues arquitectures configurables.
+    \textbf{Dalt}: GAT Baseline, on $L \in \{2,3,4\}$ capes d'atenció operen sobre els $N$ nodes
+    originals i un \textit{readout} global (mean, max, mean\_max o attention) produeix l'embedding final.
+    \textbf{Baix}: GAT+DiffPool, on cada capa GAT va seguida d'un bloc DiffPool ($L_{\text{DP}} \in \{1,2,3\}$
+    blocs) que col·lapsa progressivament el graf fins als $K_{L_{\text{DP}}}$ super-nodes finals.}
     \label{fig-diffpool}
-\end{figure}
+\end{figure*}
 
 Com a alternativa, SAGPool~\cite{lee2019selfattentiongraphpooling} selecciona els $K$ nodes més
 rellevants via puntuacions d'auto-atenció (selecció discreta, no assignació suau); s'ha preferit
@@ -644,10 +641,10 @@ sensibilitat és la més rellevant: un fals negatiu (no tractar un N1) és més 
 fals positiu.
 
 La cerca d'hiperparàmetres s'ha fet amb validació creuada 5-fold sobre el \textit{pool}
-d'entrenament/validació (Secció~\ref{sec:gridsearch}), variant arquitectura (GAT Baseline /
-GAT+DiffPool), tipus de graf (per secció / per pacient), \textit{pooling}, agregació MIL,
-\textit{learning rate}, dimensió oculta $h$, nombre de caps $H$, \textit{dropout} i
-regularització L2. En total s'han avaluat \textbf{255 configuracions}. La Taula~\ref{tab:grid}
+d'entrenament/validació (Secció~\ref{sec:training-scheme}), variant arquitectura (GAT Baseline /
+GAT+DiffPool), \textit{pooling}, agregació MIL, \textit{learning rate}, dimensió oculta $h$,
+nombre de caps $H$, \textit{dropout} i regularització L2. En total s'han avaluat
+\textbf{255 configuracions}. La Taula~\ref{tab:grid}
 mostra les 5 millors per AUC CV, i el text justifica la selecció del model final.
 
 \begin{table*}[t]
@@ -696,13 +693,13 @@ factors: tres decisions arquitectòniques (arquitectura, tipus de graf, agregaci
 hiperparàmetres d'optimització i regularització. La taula completa es presenta a l'Apèndix
 (Taula~\ref{tab:main-effects}); els resultats es resumeixen aquí.
 
-\textbf{Decisions arquitectòniques.} Les tres tenen impacte de primer ordre:
+\textbf{Decisions arquitectòniques.} Dues decisions amb impacte de primer ordre:
 \begin{itemize}\itemsep0pt
   \item L'\textbf{agregació MIL} és el factor més influent (rang $0{,}206$): \textit{mean}
-  i \textit{attention} superen \textit{noisy-OR}.
-  \item El \textbf{tipus de graf} (rang $0{,}143$): un graf per secció supera el mega-graf
-  per pacient. Aquest darrer força una única passada de \textit{pooling} sobre teixits
-  físicament inconnexos, perdent l'estructura per secció.
+  i \textit{attention} superen \textit{noisy-OR}. La variant mega-graf per pacient
+  (un sol graf bloc-diagonal sense etapa MIL) va donar resultats inferiors (rang $0{,}143$
+  respecte de grafs per secció), probablement per forçar un \textit{pooling} global sobre
+  teixits físicament inconnexos; s'ha descartat.
   \item L'\textbf{arquitectura} (rang $0{,}097$): GAT Baseline supera GAT+DiffPool. Amb
   seccions de pocs centenars de \textit{patches}, la reducció a super-nodes elimina més
   informació útil que la que sintetitza.
@@ -1034,12 +1031,12 @@ per obtenir el diagnòstic per pacient, que es compara amb el diagnòstic real d
 \label{app:main-effects}
 
 La Taula~\ref{tab:main-effects} mostra l'efecte de cada factor sobre l'AUC, ordenat per rang
-d'influència. Les tres primeres files corresponen a decisions arquitectòniques avaluades sobre
-la cerca exploratòria inicial ($n = 48$ configuracions, AUC de validació), on aquests eixos
-sí que es van variar conjuntament. Les sis darreres corresponen al subgrup de configuracions
-amb la millor base (GAT Baseline + grafs per secció + agregació \textit{mean}; $n = 248$),
-avaluat amb validació creuada 5-fold (AUC CV mitjana). El \textit{rang} és la diferència entre
-el millor i el pitjor nivell de cada factor.
+d'influència. Les dues primeres files corresponen a decisions arquitectòniques avaluades sobre
+la cerca exploratòria inicial ($n = 48$ configuracions, AUC de validació). Les sis darreres
+corresponen al subgrup de configuracions amb la millor base (GAT Baseline + grafs per secció
++ agregació \textit{mean}; $n = 248$), avaluat amb validació creuada 5-fold (AUC CV mitjana).
+El \textit{rang} és la diferència entre el millor i el pitjor nivell de cada factor.
+La variant mega-graf per pacient va resultar inferior (rang $0{,}143$) i no s'inclou a la taula.
 
 \begin{table}[H]
 \centering
@@ -1058,10 +1055,6 @@ decreixent dins de cada bloc.}
   & \textit{attention}    &  12 & $0{,}834 \pm 0{,}060$ & \multirow{3}{*}{\textbf{0,206}} \\
   & \textit{mean}         &  24 & $0{,}702 \pm 0{,}177$ & \\
   & \textit{noisy-OR}     &  12 & $0{,}628 \pm 0{,}142$ & \\
-\midrule
-\multirow{2}{*}{Tipus de graf}
-  & per secció            &  36 & $0{,}752 \pm 0{,}147$ & \multirow{2}{*}{\textbf{0,143}} \\
-  & mega (per pacient)    &  12 & $0{,}609 \pm 0{,}167$ & \\
 \midrule
 \multirow{2}{*}{Arquitectura}
   & GAT Baseline          &  32 & $0{,}749 \pm 0{,}158$ & \multirow{2}{*}{\textbf{0,097}} \\
@@ -1106,15 +1099,15 @@ decreixent dins de cada bloc.}
 
 La Taula~\ref{tab:sweep-config} llista els eixos d'optimització, els seus rangs i la branca
 d'arquitectura on s'apliquen. La cerca es fa amb \textit{TPE} (Optuna); cada \textit{trial} avalua
-una configuració amb 5-\textit{fold} CV sobre el \textit{pool} train+val. Els eixos marcats com
-\textit{només GAT-baseline} o \textit{només GAT+DiffPool} es mostregen condicionalment dins de
-l'arquitectura corresponent (mostreig jeràrquic). La millor configuració trobada es marcaria en
-negreta al final de la cerca.
+una configuració amb 5-\textit{fold} CV sobre el \textit{pool} train+val. Les dues arquitectures
+s'optimitzen en \textbf{estudis Optuna aïllats} (SQLite separats): els eixos específics de cada
+arquitectura no es barregen, i els eixos comuns s'optimitzen de forma independent per a cada branca.
+La millor configuració trobada es marcaria en negreta al final de la cerca.
 
 \begin{table}[H]
 \centering
-\caption{Eixos del \textit{sweep} bayesià. Total de \textit{trials} esperat $\sim$200; estimació
-de temps en una NVIDIA L40s (46\,GB VRAM): 5--10\,h amb \textit{early stopping} i \textit{pruner}.}
+\caption{Eixos del \textit{sweep} bayesià (dos estudis Optuna aïllats, un per arquitectura).
+Estimació de temps en una NVIDIA L40s: 60--150\,h per 1000 \textit{trials} totals.}
 \label{tab:sweep-config}
 \small
 \renewcommand{\arraystretch}{1.05}
@@ -1123,44 +1116,42 @@ de temps en una NVIDIA L40s (46\,GB VRAM): 5--10\,h amb \textit{early stopping} 
 \textbf{Eix} & \textbf{Branca} & \textbf{Valors / rang} & \textbf{Tipus mostreig} \\
 \midrule
 \multicolumn{4}{l}{\textit{Arquitectura del model}} \\[2pt]
-Arquitectura            & --                 & GAT-baseline, GAT+DiffPool                      & categòric \\
 \textit{Pooling}        & només baseline     & mean, max, mean\_max, attention                 & categòric \\
 $L$ (capes GAT)         & només baseline     & 2, 3, 4                                         & enter \\
 $L_{\text{DP}}$ (blocs DiffPool) & només DiffPool & 1, 2, 3                                  & enter \\
-$K_\ell$ (super-nodes) & només DiffPool     & 10, 25, 50 (escalat geomètric)                  & categòric \\
-$\lambda_{\text{aux}}$ (pes aux. DiffPool) & només DiffPool & $[0{,}1,\,10]$                  & log-uniforme \\
+$K_{\text{top}}$ (super-nodes 1r nivell) & només DiffPool & 10, 25, 50               & categòric \\
+$K_{\text{bot}}$ (super-nodes últim nivell) & només DiffPool & 3, 5, 10             & categòric \\
+\multicolumn{4}{l}{\quad\footnotesize(Nivells intermedis: $K = \lfloor\sqrt{K_{\text{top}} \cdot K_{\text{bot}}}\rfloor$; amb clamp $K_{\text{bot}} < K_{\text{top}}$)} \\[2pt]
+$\lambda_{\text{aux}}$ (pes aux. DiffPool) & només DiffPool & $[0{,}1,\,10]$         & log-uniforme \\
 \textit{Diff. readout}  & només DiffPool     & mean, max, mean\_max, attention                 & categòric \\
-$h$ (dimensió oculta)   & ambdues            & 64, 128, 256                                    & categòric \\
-$H$ (caps d'atenció)    & ambdues            & 2, 4                                            & categòric \\
-\textit{Dropout}        & ambdues            & $[0{,}05,\,0{,}5]$                              & uniforme \\
+$h$ (dimensió oculta)   & ambdues (indep.)   & 64, 128, 256                                    & categòric \\
+$H$ (caps d'atenció)    & ambdues (indep.)   & 2, 4                                            & categòric \\
+\textit{Dropout}        & ambdues (indep.)   & $[0{,}05,\,0{,}5]$                              & uniforme \\
 \midrule
 \multicolumn{4}{l}{\textit{Agregació a nivell de pacient (MIL)}} \\[2pt]
-Agregació MIL           & ambdues            & mean, max, noisy-OR, attention                  & categòric \\
+Agregació MIL           & ambdues (indep.)   & mean, max, noisy-OR, attention                  & categòric \\
 \midrule
 \multicolumn{4}{l}{\textit{Optimitzador i regularització}} \\[2pt]
-\textit{Optimizer}      & ambdues            & Adam, AdamW                                     & categòric \\
-\textit{Scheduler}      & ambdues            & ReduceLROnPlateau, CosineAnnealingLR           & categòric \\
-Taxa d'aprenentatge ($\eta$) & ambdues       & $[5\!\cdot\!10^{-5},\,5\!\cdot\!10^{-3}]$       & log-uniforme \\
-\textit{Weight decay}   & ambdues            & $[10^{-5},\,10^{-2}]$                           & log-uniforme \\
-\textit{Grad. clipping} & ambdues            & 0, 1, 5                                         & categòric \\
+\textit{Optimizer}      & ambdues (indep.)   & Adam, AdamW                                     & categòric \\
+\textit{Scheduler}      & ambdues (indep.)   & ReduceLROnPlateau, CosineAnnealingLR            & categòric \\
+Taxa aprenentatge       & ambdues (indep.)   & $[5\cdot10^{-5},\,5\cdot10^{-3}]$              & log-uniforme \\
+\textit{Weight decay}   & ambdues (indep.)   & $[10^{-5},\,10^{-2}]$                           & log-uniforme \\
+\textit{Grad. clipping} & ambdues (indep.)   & 0, 1, 5                                         & categòric \\
 \midrule
 \multicolumn{4}{l}{\textit{Tractament del desbalanceig}} \\[2pt]
-Pes de la classe N1 ($w_+$) & ambdues        & $[1{,}5,\,8]$                                   & uniforme \\
+Pes de la classe N1 ($w_+$) & ambdues (indep.) & $[1{,}5,\,8]$                               & uniforme \\
 Llindar $t^*$           & post-CV            & sobre la corba ROC del val, condició TPR$=1$    & determinista \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \textbf{Objectiu del sweep:}
-\begin{equation*}
-  \text{objective} \;=\; \overline{\text{spec}}_{\text{CV}} \;-\; 10 \cdot \max\!\big(0,\; 1 - \overline{\text{sens}}_{\text{CV}}\big)
-\end{equation*}
+$\text{objective} = \overline{\text{spec}}_{\text{CV}} - 10 \cdot \max(0,\; 1 - \overline{\text{sens}}_{\text{CV}})$,
 on $\overline{\text{spec}}_{\text{CV}}$ i $\overline{\text{sens}}_{\text{CV}}$ són les mitjanes
 sobre els 5 \textit{val sets}, calculades amb el llindar $t^*$ derivat de cada \textit{fold}
-(threshold més alt amb TPR$=1$). Aquesta és l'\textbf{única} mètrica que el TPE veu per decidir
-els paràmetres del següent \textit{trial}; la resta de mètriques (AUC, threshold, mètriques per
-\textit{fold}) es desen per a anàlisi posterior, però no influeixen en la cerca. La penalització
-$\times 10$ garanteix que el TPE prioritzi sensibilitat $\approx 100\%$, però accepta una pèrdua
-moderada (sens $\geq 95\%$) si s'aconsegueix un guany substancial d'especificitat ($> 5$ punts).
+(llindar més alt amb TPR$=1$). Aquesta és l'\textbf{única} mètrica que el TPE veu per decidir
+els paràmetres del següent \textit{trial}. La penalització $\times 10$ fa que el TPE prioritzi
+sensibilitat $\approx 100\%$, però accepta una pèrdua moderada (sens $\geq 95\%$) si s'aconsegueix
+un guany substancial d'especificitat ($> 5$ punts).
 
 \end{document}
