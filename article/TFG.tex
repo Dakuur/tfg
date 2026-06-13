@@ -1041,7 +1041,7 @@ d'optimització configurables.
                 draw=orange!60!black, fill=yellow!10,
                 minimum width=8.2cm, minimum height=0.6cm,
                 align=center, font=\small},
-    out/.style={rectangle, rounded corners=3pt,
+    outbox/.style={rectangle, rounded corners=3pt,
                 draw=red!60!black, fill=red!8,
                 minimum width=8.2cm, minimum height=0.6cm,
                 align=center, font=\small},
@@ -1105,21 +1105,21 @@ d'optimització configurables.
 
 %% ─── Merge ───────────────────────────────────────────────────────────────────
 \coordinate (bot_d) at ($(d_ro_opt.south)+(0,-0.65)$);
-\node[mid] (emb) at (0 |- bot_d)
+\node[mid] (emb) at (0,0 |- bot_d)
     {$\mathbf{h}_s \in \mathbb{R}^{d}$\quad embedding per secció $s$};
 
 %% ─── Fork MIL: A = sobre probabilitats / B = sobre vectors ──────────────────
 \coordinate (emb_fk) at ($(emb.south)+(0,-0.5)$);
 
 %% Branca A (x = −2.5): MLP per secció → agrega P(N1) escalars
-\node[bblue, minimum width=3.9cm] (mil_mlp) at (-2.5 |- emb_fk)
+\node[bblue, minimum width=3.9cm] (mil_mlp) at (-2.5,0 |- emb_fk)
     {MLP $\to P(\text{N1})_s$\\per secció};
 
 \node[opt, minimum width=3.9cm, below=0.35cm of mil_mlp] (mil_scalar_opts)
     {mean $\cdot$ max\\noisy-OR $\cdot$ lse};
 
 %% Branca B (x = +2.5): agrega vectors h_s amb atenció → MLP una vegada
-\node[bblue, minimum width=3.9cm] (mil_att) at (2.5 |- emb_fk)
+\node[bblue, minimum width=3.9cm] (mil_att) at (2.5,0 |- emb_fk)
     {Gated attention\\sobre $\mathbf{h}_s$ (vectors)};
 
 \node[bblue, minimum width=3.9cm, below=0.35cm of mil_att] (mil_att_mlp)
@@ -1133,8 +1133,8 @@ d'optimització configurables.
 
 %% ─── Sortida ─────────────────────────────────────────────────────────────────
 \coordinate (conv_y) at ($(mil_scalar_opts.south)+(0,-0.65)$);
-\coordinate (conv)   at (0 |- conv_y);
-\node[out, minimum width=8.2cm] (out) at ($(conv)+(0,-0.9)$)
+\coordinate (conv)   at (0,0 |- conv_y);
+\node[outbox, minimum width=8.2cm] (outbox) at ($(conv)+(0,-0.9)$)
     {$P(\text{N1})$ per pacient\quad
      $\xrightarrow{\;t^*\;}$\quad \textbf{N0}\;\big/\;\textbf{N1}};
 
@@ -1169,7 +1169,7 @@ d'optimització configurables.
 %% ─── Convergència MIL → sortida ──────────────────────────────────────────────
 \draw[arr] (mil_scalar_opts.south) |- (conv);
 \draw[arr] (mil_att_mlp.south)     |- (conv);
-\draw[arr] (conv) -- (out.north);
+\draw[arr] (conv) -- (outbox.north);
 
 \end{tikzpicture}
 \caption{Variants d'arquitectura del \texttt{GATClassifier}: el mateix graf
