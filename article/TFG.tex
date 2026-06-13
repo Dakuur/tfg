@@ -1014,6 +1014,182 @@ llindar de decisió derivat del val set.}
 
 \newpage
 
+\subsection{Variants d'arquitectura del \textit{GATClassifier}}
+\label{app:model-variants}
+
+El diagrama~\ref{fig:gat-variants} mostra com un \textbf{mateix graf d'entrada}
+pot ser processat de maneres molt diverses depenent de la configuració: les
+caixes blaves representen capes apreses i les taronges discontínues els eixos
+d'optimització configurables.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    bblue/.style={rectangle, rounded corners=3pt,
+                  draw=blue!65!black, line width=1.2pt, fill=blue!7,
+                  minimum width=3.9cm, minimum height=0.6cm,
+                  align=center, font=\small},
+    opt/.style={rectangle, rounded corners=2pt,
+                draw=orange!70!black, dashed, fill=orange!5,
+                minimum width=3.9cm,
+                align=center, font=\sffamily\scriptsize},
+    inp/.style={rectangle, rounded corners=3pt,
+                draw=green!60!black, fill=green!8,
+                minimum width=8.2cm, minimum height=0.6cm,
+                align=center, font=\small},
+    mid/.style={rectangle, rounded corners=3pt,
+                draw=orange!60!black, fill=yellow!10,
+                minimum width=8.2cm, minimum height=0.6cm,
+                align=center, font=\small},
+    out/.style={rectangle, rounded corners=3pt,
+                draw=red!60!black, fill=red!8,
+                minimum width=8.2cm, minimum height=0.6cm,
+                align=center, font=\small},
+    arr/.style={->, >=stealth, thick},
+]
+
+%% ─── Input ──────────────────────────────────────────────────────────────────
+\node[inp] (in) at (0,0)
+    {\textbf{Graf} $\mathcal{G}=(\mathbf{X},\mathbf{A})$
+     \;—\; $N$ nodes $\times$ 1\,536 feat.};
+
+%% ─── BASELINE (left) ────────────────────────────────────────────────────────
+\node[font=\small\bfseries\sffamily, text=blue!70!black]
+     at (-4.4,-1.3) {\footnotesize\textsc{Baseline}};
+
+\node[bblue] (b_gat) at (-4.4,-2.0)
+    {GAT$_1 \to \cdots \to$ GAT$_L$};
+
+\node[opt, below=0.35cm of b_gat] (b_gat_opt)
+    {$L\!\in\!\{2,3,4\}$;\quad$h\!\in\!\{64,128,256\}$\\
+     $H\!\in\!\{2,4\}$;\quad drop.$\,\in[0{,}05,\,0{,}5]$};
+
+\node[bblue, below=0.35cm of b_gat_opt] (b_ro)
+    {\textit{Readout} global};
+
+\node[opt, below=0.35cm of b_ro] (b_ro_opt)
+    {mean $\cdot$ max $\cdot$ sum\\
+     mean\_max $\cdot$ attention};
+
+%% ─── DIFFPOOL (right) ───────────────────────────────────────────────────────
+\node[font=\small\bfseries\sffamily, text=blue!70!black]
+     at (4.4,-1.3) {\footnotesize\textsc{DiffPool}};
+
+\node[bblue] (d_gat1) at (4.4,-2.0)
+    {GAT$_1$};
+
+\node[bblue, below=0.35cm of d_gat1] (d_dp1)
+    {DiffPool$_1$:\;\;$N\!\to\!K_1$};
+
+\node[font=\scriptsize, below=0.15cm of d_dp1] (d_vdots)
+    {$\vdots$\quad($L_{\text{DP}}$ blocs)};
+
+\node[bblue, below=0.15cm of d_vdots] (d_dpn)
+    {DiffPool$_{L_{\text{DP}}}$:\;\;$\cdots\!\to\!K_{L_{\text{DP}}}$};
+
+\node[bblue, below=0.35cm of d_dpn] (d_gatn)
+    {GAT$_{L_{\text{DP}}+1}$};
+
+\node[opt, below=0.35cm of d_gatn] (d_dp_opt)
+    {$L_{\text{DP}}\!\in\!\{1,2,3\}$;\;
+     $K_{\text{top}}\!\in\!\{10,25,50\}$\\
+     $K_{\text{bot}}\!\in\!\{3,5,10\}$;\;
+     $\lambda_{\text{aux}}\!\in\![0{,}1,10]$};
+
+\node[bblue, below=0.35cm of d_dp_opt] (d_ro)
+    {\textit{Diff readout} final};
+
+\node[opt, below=0.35cm of d_ro] (d_ro_opt)
+    {mean $\cdot$ max $\cdot$ sum\\
+     mean\_max $\cdot$ attention};
+
+%% ─── Merge ───────────────────────────────────────────────────────────────────
+\coordinate (bot_d) at ($(d_ro_opt.south)+(0,-0.65)$);
+\node[mid] (emb) at (0 |- bot_d)
+    {$\mathbf{h}_s \in \mathbb{R}^{d}$\quad embedding per secció $s$};
+
+%% ─── Fork MIL: A = sobre probabilitats / B = sobre vectors ──────────────────
+\coordinate (emb_fk) at ($(emb.south)+(0,-0.5)$);
+
+%% Branca A (x = −2.5): MLP per secció → agrega P(N1) escalars
+\node[bblue, minimum width=3.9cm] (mil_mlp) at (-2.5 |- emb_fk)
+    {MLP $\to P(\text{N1})_s$\\per secció};
+
+\node[opt, minimum width=3.9cm, below=0.35cm of mil_mlp] (mil_scalar_opts)
+    {mean $\cdot$ max\\noisy-OR $\cdot$ lse};
+
+%% Branca B (x = +2.5): agrega vectors h_s amb atenció → MLP una vegada
+\node[bblue, minimum width=3.9cm] (mil_att) at (2.5 |- emb_fk)
+    {Gated attention\\sobre $\mathbf{h}_s$ (vectors)};
+
+\node[bblue, minimum width=3.9cm, below=0.35cm of mil_att] (mil_att_mlp)
+    {MLP $\times$1};
+
+%% Etiquetes de branca MIL
+\node[font=\sffamily\tiny\itshape, text=gray!55,
+      above=0.03cm of mil_mlp, anchor=south] {agrega probabilitats};
+\node[font=\sffamily\tiny\itshape, text=gray!55,
+      above=0.03cm of mil_att, anchor=south] {agrega vectors};
+
+%% ─── Sortida ─────────────────────────────────────────────────────────────────
+\coordinate (conv_y) at ($(mil_scalar_opts.south)+(0,-0.65)$);
+\coordinate (conv)   at (0 |- conv_y);
+\node[out, minimum width=8.2cm] (out) at ($(conv)+(0,-0.9)$)
+    {$P(\text{N1})$ per pacient\quad
+     $\xrightarrow{\;t^*\;}$\quad \textbf{N0}\;\big/\;\textbf{N1}};
+
+%% ─── Fork des de l'input ─────────────────────────────────────────────────────
+\draw[arr] (in.south) -- ++(0,-0.35) -| (b_gat.north);
+\draw[arr] (in.south) -- ++(0,-0.35) -| (d_gat1.north);
+
+%% ─── Baseline ────────────────────────────────────────────────────────────────
+\draw[arr] (b_gat)     -- (b_gat_opt);
+\draw[arr] (b_gat_opt) -- (b_ro);
+\draw[arr] (b_ro)      -- (b_ro_opt);
+
+%% ─── DiffPool ────────────────────────────────────────────────────────────────
+\draw[arr] (d_gat1)   -- (d_dp1);
+\draw[arr] (d_dp1)    -- (d_vdots);
+\draw[arr] (d_vdots)  -- (d_dpn);
+\draw[arr] (d_dpn)    -- (d_gatn);
+\draw[arr] (d_gatn)   -- (d_dp_opt);
+\draw[arr] (d_dp_opt) -- (d_ro);
+\draw[arr] (d_ro)     -- (d_ro_opt);
+
+%% ─── Convergència arquitectures → embedding ──────────────────────────────────
+\draw[arr] (b_ro_opt.south) |- (emb.west);
+\draw[arr] (d_ro_opt.south) |- (emb.east);
+
+%% ─── Fork MIL ────────────────────────────────────────────────────────────────
+\draw[arr] (emb.south) -- ++(0,-0.1) -| (mil_mlp.north);
+\draw[arr] (emb.south) -- ++(0,-0.1) -| (mil_att.north);
+\draw[arr] (mil_mlp)   -- (mil_scalar_opts);
+\draw[arr] (mil_att)   -- (mil_att_mlp);
+
+%% ─── Convergència MIL → sortida ──────────────────────────────────────────────
+\draw[arr] (mil_scalar_opts.south) |- (conv);
+\draw[arr] (mil_att_mlp.south)     |- (conv);
+\draw[arr] (conv) -- (out.north);
+
+\end{tikzpicture}
+\caption{Variants d'arquitectura del \texttt{GATClassifier}: el mateix graf
+$\mathcal{G}$ es pot processar per dues branques configurables
+(\textsc{Baseline} o \textsc{DiffPool}), cadascuna amb la seva pròpia
+estratègia de \textit{readout} intra-secció (caixes taronges discontínues).
+Totes dues convergeixen en un embedding $\mathbf{h}_s$ per secció.
+L'agregació MIL bifurca de nou: \textbf{mean/max/noisy-OR/lse} apliquen el MLP
+per secció per obtenir $P(\text{N1})_s$ i n'agreguen els \emph{escalars};
+\textbf{attention (gated)} agrega primer els \emph{vectors} $\mathbf{h}_s$
+(amb pesos d'atenció apresos) i aplica el MLP \emph{una sola vegada}.
+$L$: capes GAT; $h$: dim.\ oculta; $H$: caps d'atenció;
+$L_{\text{DP}}$: blocs DiffPool; $K_\ell$: super-nodes per nivell;
+$\lambda_{\text{aux}}$: pes de la pèrdua auxiliar de DiffPool;
+$t^*$: llindar derivat del val set (Secció~\ref{sec:training-scheme}).}
+\label{fig:gat-variants}
+\end{figure}
+
+\newpage
+
 \subsection{Importància dels hiperparàmetres per arquitectura}
 \label{app:main-effects}
 
