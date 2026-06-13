@@ -361,7 +361,7 @@ Dues estratègies de \textit{pooling} transformen la seqüència de grafs en un 
 alimenta el capçal MLP per produir $P(\text{N1})$:
 \begin{itemize}
   \item \textbf{Pla (\textit{readout}).} Operació global sobre les sortides de la darrera capa GAT,
-  sense reduir el graf: \textit{mean}, \textit{max}, \textit{sum}, \textit{mean\_max} (concatenació
+  sense reduir el graf: \textit{mean}, \textit{max}, \textit{mean\_max} (concatenació
   de mean i max) o \textit{attention} (pes escalar aprenible per node). Estratègia configurable.
   \item \textbf{Jeràrquic (DiffPool intercalat).} Un nombre configurable $L_{\text{DP}} \in \{1,2,3\}$
   de blocs DiffPool s'intercalen entre capes GAT, col·lapsant progressivament el graf de $N$ nodes
@@ -467,10 +467,10 @@ representació global del graf en els logits N0/N1.
 
 Quan no s'utilitza pooling jeràrquic, les representacions dels nodes de la darrera capa GAT
 s'agreguen directament amb una operació de \textit{readout} global, sense reduir el graf:
-\textit{mean}, \textit{max} o \textit{sum} sobre els $N$ embeddings; \texttt{mean\_max} en concatena
-els dos primers; i \textit{attention} aprèn un pes escalar per node via una capa lineal seguida de
-\textit{softmax}, i agrega per suma ponderada. Tot i la seva eficiència, aquestes estratègies
-ignoren la topologia del graf i col·lapsen tota la informació espacial en un sol pas.
+\textit{mean}, \textit{max} o \textit{mean\_max} (concatenació d'ambdues); i \textit{attention},
+que aprèn un pes escalar per node via una capa lineal seguida de \textit{softmax} i agrega per
+suma ponderada. Tot i la seva eficiència, aquestes estratègies ignoren la topologia del graf
+i col·lapsen tota la informació espacial en un sol pas.
 
 \subsection{Pooling Jeràrquic: DiffPool entre Capes GAT}
 
@@ -493,7 +493,7 @@ $\mathbf{S}^{(\ell)}$ s'obté com la sortida d'un MLP per nodes amb \textit{soft
 \textbf{Profunditat configurable.} El nombre de blocs DiffPool intercalats és un eix d'optimització,
 $L_{\text{DP}} \in \{1, 2, 3\}$, amb una capa GAT abans, entre i després de cada un (total
 $L_{\text{DP}}+1$ capes GAT). Els $K_\ell$ es defineixen per nivell; el \textit{readout} final
-sobre els $K_{L_{\text{DP}}}$ super-nodes és també configurable (mean, max, sum, mean\_max o
+sobre els $K_{L_{\text{DP}}}$ super-nodes és també configurable (mean, max, mean\_max o
 attention), de manera anàloga al model \textit{baseline}.
 
 \textbf{Pèrdua auxiliar.} Per cada bloc DiffPool s'afegeixen dos termes de regularització sobre
@@ -1050,8 +1050,8 @@ d'optimització configurables.
 
 %% ─── Input ──────────────────────────────────────────────────────────────────
 \node[inp] (in) at (0,0)
-    {\textbf{Graf} $\mathcal{G}=(\mathbf{X},\mathbf{A})$
-     \;—\; $N$ nodes $\times$ 1\,536 feat.};
+    {\textbf{Graf} $\mathcal{G}=(\mathbf{X},\mathbf{A})$,
+     $N$ nodes $\times$ 1\,536 feat.};
 
 %% ─── BASELINE (left) ────────────────────────────────────────────────────────
 \node[font=\small\bfseries\sffamily, text=blue!70!black]
@@ -1068,8 +1068,7 @@ d'optimització configurables.
     {\textit{Readout} global};
 
 \node[opt, below=0.35cm of b_ro] (b_ro_opt)
-    {mean $\cdot$ max $\cdot$ sum\\
-     mean\_max $\cdot$ attention};
+    {mean $\cdot$ max $\cdot$ mean\_max $\cdot$ attention};
 
 %% ─── DIFFPOOL (right) ───────────────────────────────────────────────────────
 \node[font=\small\bfseries\sffamily, text=blue!70!black]
@@ -1100,8 +1099,7 @@ d'optimització configurables.
     {\textit{Diff readout} final};
 
 \node[opt, below=0.35cm of d_ro] (d_ro_opt)
-    {mean $\cdot$ max $\cdot$ sum\\
-     mean\_max $\cdot$ attention};
+    {mean $\cdot$ max $\cdot$ mean\_max $\cdot$ attention};
 
 %% ─── Merge ───────────────────────────────────────────────────────────────────
 \coordinate (bot_d) at ($(d_ro_opt.south)+(0,-0.65)$);
@@ -1116,7 +1114,7 @@ d'optimització configurables.
     {MLP $\to P(\text{N1})_s$\\per secció};
 
 \node[opt, minimum width=3.9cm, below=0.35cm of mil_mlp] (mil_scalar_opts)
-    {mean $\cdot$ max\\noisy-OR $\cdot$ lse};
+    {mean $\cdot$ max $\cdot$ noisy-OR};
 
 %% Branca B (x = +2.5): agrega vectors h_s amb atenció → MLP una vegada
 \node[bblue, minimum width=3.9cm] (mil_att) at (2.5,0 |- emb_fk)
@@ -1177,7 +1175,7 @@ $\mathcal{G}$ es pot processar per dues branques configurables
 (\textsc{Baseline} o \textsc{DiffPool}), cadascuna amb la seva pròpia
 estratègia de \textit{readout} intra-secció (caixes taronges discontínues).
 Totes dues convergeixen en un embedding $\mathbf{h}_s$ per secció.
-L'agregació MIL bifurca de nou: \textbf{mean/max/noisy-OR/lse} apliquen el MLP
+L'agregació MIL bifurca de nou: \textbf{mean/max/noisy-OR} apliquen el MLP
 per secció per obtenir $P(\text{N1})_s$ i n'agreguen els \emph{escalars};
 \textbf{attention (gated)} agrega primer els \emph{vectors} $\mathbf{h}_s$
 (amb pesos d'atenció apresos) i aplica el MLP \emph{una sola vegada}.
@@ -1197,8 +1195,7 @@ La Taula~\ref{tab:main-effects} mostra la \textbf{importància fANOVA} de cada e
 d'optimització, calculada de manera independent per a cada estudi Optuna (Baseline i
 DiffPool). La importància és una descomposició funcional de la variància de l'objectiu CV
 explicada per cada hiperparàmetre, en el rang $[0, 1]$. Eixos específics d'una branca
-apareixen com a \texttt{---} a l'altra columna. Tots els valors s'omplen a partir del
-\texttt{report.md} generat per \texttt{python -m sweep --report} després del sweep.
+apareixen com a \texttt{---} a l'altra columna. Tots els valors provenen de l'anàlisi fANOVA calculada per Optuna sobre els \textit{trials} complets de cada estudi.
 
 \begin{table}[H]
 \centering
