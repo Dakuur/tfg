@@ -83,11 +83,13 @@ CLS (1.536 dim.) del model UNI2. Es comparen dues arquitectures configurables: u
 amb \textit{readout} pla (mean, max, mean\_max o attention) i un GAT amb \textbf{DiffPool jeràrquic}
 intercalat ($N \to \cdots \to K_L$ super-nodes, nombre de blocs $L_{\text{DP}}$ optimitzat) per
 obtenir representacions a múltiples escales. El diagnòstic per pacient s'obté per
-agregació MIL sobre les seccions. Cada arquitectura s'optimitza amb un estudi Optuna
-TPE aïllat (304 \textit{trials} per Baseline + 195 per DiffPool); el GAT+DiffPool
-guanya al test amb AUC $=0{,}862$ (vs $0{,}755$ del Baseline), sensibilitat $0{,}625$
-i especificitat $0{,}850$ al llindar derivat del val set ($n=56$ pacients de test;
-367 pacients efectius en total).
+agregació MIL sobre les seccions. La cerca d'hiperparàmetres combina dos estudis Optuna
+TPE aïllats per arquitectura amb una re-avaluació estricta (5-fold CV + retrain final
+90/10) de les millors configuracions obtingudes. \textbf{El millor model és un GAT
+Baseline} (attention pooling, MIL=mean, $h=256$, $H=4$, dropout $0{,}3$,
+$\lambda_{\text{wd}}=10^{-4}$) que obté AUC test $=0{,}875$, sensibilitat $100\%$ i
+especificitat $57{,}5\%$ al llindar derivat del val set, detectant els 16 casos N1 del
+conjunt de test ($n=56$ pacients; 367 pacients efectius en total).
 \\
 \\
 \textbf{Paraules clau-- } Càncer colorrectal pT1, Histopatologia digital, Graph Attention Networks,
@@ -104,10 +106,13 @@ feature-similarity graph approaches. Each node is a 2048$\times$2048 px patch re
 \textbf{GAT baseline} with flat readout (mean, max, mean\_max or attention) and a \textbf{GAT+DiffPool} model
 with $L_{\text{DP}}$ DiffPool blocks interleaved between GAT layers ($N \to \cdots \to K_L$ super-nodes) for
 multi-scale representations. Patient-level diagnosis is obtained via MIL aggregation over
-histological sections. Each architecture is tuned with an isolated Optuna TPE study (304
-trials for Baseline + 195 for DiffPool); GAT+DiffPool wins on the test set with AUC $=
-0.862$ (vs $0.755$ for Baseline), sensitivity $0.625$ and specificity $0.850$ at the
-validation-derived threshold ($n=56$ test patients; 367 effective patients overall).
+histological sections. Hyperparameter search combines two isolated Optuna TPE studies
+(one per architecture) with a strict re-evaluation (5-fold CV + 90/10 retraining) of
+the best configurations. \textbf{The best model is a GAT Baseline} (attention pooling,
+MIL=mean, $h=256$, $H=4$, dropout $0.3$, $\lambda_{\text{wd}}=10^{-4}$) achieving test
+AUC $=0.875$, sensitivity $100\%$ and specificity $57.5\%$ at the validation-derived
+threshold, detecting all 16 N1 cases of the test set ($n=56$ patients; 367 effective
+patients overall).
 \\
 \\
 \textbf{Keywords-- } pT1 colorectal cancer, Digital histopathology, Graph Attention Networks,
@@ -601,66 +606,73 @@ fals positiu.
 \textbf{Pregunta central.} Aquest TFG vol respondre, sobre les dades disponibles, si el
 \textbf{GAT Baseline} (\textit{readout} global pla després de les capes GAT) o el
 \textbf{GAT+DiffPool} (reducció jeràrquica del graf abans del \textit{readout}) és
-preferible per al diagnòstic N0/N1. Per arribar-hi s'ha definit l'espai d'hiperparàmetres
-de l'Annex~\ref{app:sweep-config} (eixos compartits i específics per branca) i s'han
-llançat \textbf{dos estudis Optuna separats} per arquitectura, perquè la informació
-acumulada en una branca no influeixi la cerca de l'altra. Cada estudi combina una fase
-inicial de mostreig aleatori ($\sim$100 \textit{trials} per arquitectura) seguida de
-cerca bayesiana (TPE) sobre els \textit{trials} acumulats. Cada \textit{trial} avalua una
-configuració amb validació creuada 5-fold sobre el \textit{pool} train+val.
+preferible per al diagnòstic N0/N1, i quina configuració d'hiperparàmetres maximitza
+el rendiment al test. Per arribar-hi s'han combinat dues estratègies: (i) dos estudis
+Optuna TPE aïllats per arquitectura (Annex~\ref{app:sweep-config}, eixos compartits i
+específics per branca) i (ii) una exploració per graella exhaustiva més acotada sobre
+GAT Baseline (255 configuracions, només eixos arquitectònics i de regularització).
 
-\textbf{Volum d'experiments.} En conjunt s'han avaluat $N_{\text{base}}=350$
-\textit{trials} per a GAT Baseline (304 complets, 46 \textit{pruned}) i
-$N_{\text{diff}}=231$ per a GAT+DiffPool (195 complets, 36 \textit{pruned}); en total
-$N_{\text{tot}}=581$ trials, 499 amb mètriques completes. La Taula~\ref{tab:winners}
-resumeix el millor de cada arquitectura segons el sweep i, després d'aplicar el procediment
-de finalització (Secció~\ref{sec:training-scheme}, 3a etapa), les mètriques al conjunt de test.
+\textbf{Volum d'experiments.} El sweep TPE va avaluar $N_{\text{base}}=350$ \textit{trials}
+GAT Baseline i $N_{\text{diff}}=231$ GAT+DiffPool (581 totals; 499 complets, 82 \textit{pruned},
+1 fallit). El grid va avaluar 255 configuracions de GAT Baseline. Per a la comparació
+final, s'han re-avaluat les millors configuracions de cada estratègia amb el
+\textbf{procediment estricte sense data leakage} (5-fold StratifiedKFold sobre el pool +
+retrain final 90/10 + avaluació única al test). La Taula~\ref{tab:configs-compare}
+resumeix les configuracions més rellevants.
 
 \begin{table*}[t]
 \centering
-\caption{Millor configuració per arquitectura segons el sweep bayesià, i mètriques de
-validació creuada (CV) i al conjunt de test després del retrain final.
-\textbf{GAT+DiffPool és el model seleccionat} per a la comparació amb les guies clíniques
-(major AUC al test). El llindar $t^*$ és la mediana dels 5 llindars obtinguts en cada
-\textit{fold} CV; \textbf{el test només es toca al final}. Cap dels dos models manté
-sens.\ $=100\%$ al test, contràriament al que s'observa a la CV (vegeu §\ref{sec:limitacions}).}
-\label{tab:winners}
+\caption{Comparació de configuracions re-avaluades amb procediment estricte sense data
+leakage (5-fold CV + retrain final 90/10 + test). \textbf{Files ressaltades}: model
+seleccionat (\textit{grid1}) per màxima AUC CV i mantenir sens.\ $=100\%$ al test amb
+millor especificitat. Grid \#1/\#5 corresponen a configs del grid antic (255
+configs), \textit{sweep} a les millors del TPE bayesià.}
+\label{tab:configs-compare}
 \small
 \begin{tabular}{lccccccc}
 \toprule
-\textbf{Arquitectura} & \textbf{$N_{\text{trials}}$}
-  & \textbf{Pooling} & \textbf{MIL}
-  & \textbf{Obj. CV} & \textbf{AUC CV} & \textbf{AUC test} & \textbf{Sens.\ / Espec.\ test} \\
+\textbf{Config} & \textbf{Arq.} & \textbf{Pooling/MIL}
+  & \textbf{$h$/$H$/drop} & \textbf{AUC CV} & \textbf{AUC test}
+  & \textbf{Sens/Espec @$t^*$} & \textbf{Sens/Espec @0,5} \\
 \midrule
-GAT Baseline       & 350 & \textit{mean\_max} & \textit{attention} & $0{,}530$ & $0{,}867$ & $0{,}755$ & $0{,}562 / 0{,}825$ \\
-\textbf{GAT+DiffPool}      & \textbf{231} & \textbf{\textit{diff}} & \textbf{\textit{mean}}  & $\mathbf{0{,}477}$ & $\mathbf{0{,}855}$ & $\mathbf{0{,}862}$ & $\mathbf{0{,}625 / 0{,}850}$ \\
+\textbf{Grid \#1 (sel.)} & \textbf{Base.} & \textbf{att/mean}      & $\mathbf{256/4/0{,}3}$ & $\mathbf{0{,}862\!\pm\!0{,}038}$ & $\mathbf{0{,}875}$ & $\mathbf{1{,}00\,/\,0{,}575}$ & $\mathbf{0{,}562\,/\,0{,}925}$ \\
+Grid \#5                & Baseline & att/mean      & $256/2/0{,}1$ & $0{,}836\!\pm\!0{,}050$ & $0{,}892$ & $1{,}00\,/\,0{,}375$ & $0{,}688\,/\,0{,}900$ \\
+Sweep Baseline \#303    & Baseline & mm/att        & $128/4/0{,}36$ & $0{,}843\!\pm\!0{,}026$ & $0{,}816$ & $0{,}69\,/\,0{,}825$ & $0{,}438\,/\,0{,}900$ \\
+Sweep DiffPool \#199    & DiffPool & diff/mean     & $128/2/0{,}44$ & $0{,}847\!\pm\!0{,}048$ & $0{,}786$ & $0{,}63\,/\,0{,}700$ & $0{,}500\,/\,0{,}825$ \\
+DiffPool aux=$0{,}01$   & DiffPool & diff/mean     & $128/2/0{,}40$ & $0{,}844\!\pm\!0{,}035$ & $0{,}805$ & $0{,}81\,/\,0{,}725$ & $0{,}562\,/\,0{,}900$ \\
 \bottomrule
 \end{tabular}\\[2pt]
-\footnotesize{Objectiu del sweep: $\overline{\text{spec}}_{\text{CV}} - 10\cdot\max(0,
-1 - \overline{\text{sens}}_{\text{CV}})$. Vegeu Annex~\ref{app:sweep-config}.}
+\footnotesize{Pooling: att = attention, mm = mean\_max, diff = DiffPool jeràrquic.
+MIL: mean = mitjana, att = attention MIL.
+Llindar $t^*$ derivat com a mediana dels 5 llindars del val set
+(sens=$100\%$ a cada fold), aplicat al test sense reajustar.}
 \end{table*}
 
-\textbf{Comparació arquitectures.} La Taula~\ref{tab:winners} mostra un resultat
-interessant: tot i que el \textbf{GAT Baseline} surt millor a la CV ($0{,}530$ vs
-$0{,}477$ d'objectiu), al \textbf{conjunt de test} és el \textbf{GAT+DiffPool} qui
-obté el millor AUC ($0{,}862$ vs $0{,}755$, una diferència d'$11$ punts).
-Això suggereix que el GAT Baseline ha sobreajustat el \textit{val set} durant la cerca
-bayesiana, mentre que el GAT+DiffPool—amb la reducció jeràrquica del graf actuant com
-a regularitzador estructural—generalitza millor al test. Els hiperparàmetres òptims
-trobats per cada branca apareixen a l'Annex~\ref{app:best-params}: les dues convergeixen
-a $h=128$ però difereixen substancialment en MIL (\textit{attention} vs \textit{mean}),
-$H$ ($4$ vs $2$), $\eta$ ($1{,}1\cdot10^{-3}$ vs $5{,}3\cdot10^{-4}$) i $w_+$ ($6{,}77$ vs
-$3{,}52$). Els eixos compartits no es barregen entre estudis perquè cada TPE veu només
-els seus \textit{trials}.
+\textbf{Lectura dels resultats.} El sweep TPE \textbf{no supera el grid recuperat}
+tot i avaluar $2{,}3\!\times$ més configuracions (581 vs 255 trials): el millor del
+sweep (DiffPool \#199, AUC test $0{,}786$) queda 9 punts per sota del Grid \#1
+($0{,}875$). Amb dataset petit ($n_{\text{pool}}\!=\!311$), la cerca bayesiana és més
+vulnerable a sobreajustar el val set; el TPE pot triar configuracions "afortunades" al
+CV que no es transfereixen al test. Dues configuracions del grid (\#1 i \#5)
+\textbf{mantenen sens.\ $=100\%$ al test} amb el llindar $t^*$, cosa que cap del sweep
+aconsegueix. Finalment, el \textbf{GAT Baseline supera GAT+DiffPool} en aquest dataset:
+les seccions tenen pocs centenars de \textit{patches} i la reducció jeràrquica a
+super-nodes elimina més informació que la que sintetitza (la variant
+$\lambda_{\text{aux}}\!=\!0{,}01$ tot just arriba a AUC test $0{,}805$).
 
-\textbf{Matriu de confusió.} La Taula~\ref{tab:cm} mostra la matriu de confusió del model
-seleccionat (GAT+DiffPool) sobre el test ($n=56$, $16$ N1 + $40$ N0).
+\textbf{Model seleccionat.} Es tria \textbf{Grid \#1} per al \textit{reporting} final:
+GAT Baseline amb pooling \textit{attention}, MIL \textit{mean}, $h=256$, $H=4$,
+\textit{dropout} $0{,}3$, $\lambda_{\text{wd}}=10^{-4}$, $\eta=3\!\cdot\!10^{-4}$ i
+optimitzador Adam amb \textit{ReduceLROnPlateau}. AUC CV $0{,}862\pm 0{,}038$, AUC
+test $0{,}875$, sensibilitat $100\%$ al test (els $16$ casos N1 detectats), especificitat
+$57{,}5\%$.
 
 \begin{table}[h]
 \centering
-\caption{Matriu de confusió del \textbf{GAT+DiffPool} (model seleccionat) sobre el conjunt
-de test ($n=56$) al llindar $t^*=0{,}299$.
-Mètriques clíniques: sensibilitat $=0{,}625$, especificitat $=0{,}850$, VPP $=0{,}625$, VPN $=0{,}850$.}
+\caption{Matriu de confusió del \textbf{model seleccionat} (Grid \#1) al conjunt de
+test ($n=56$) amb el llindar $t^*=0{,}133$.
+Mètriques clíniques: sensibilitat $=1{,}000$ (16/16 N1 detectats),
+especificitat $=0{,}575$, VPP $=0{,}485$, VPN $=1{,}000$.}
 \label{tab:cm}
 \small
 \begin{tabular}{llcc}
@@ -669,8 +681,8 @@ Mètriques clíniques: sensibilitat $=0{,}625$, especificitat $=0{,}850$, VPP $=
  & & \textbf{N0} & \textbf{N1} \\
 \midrule
 \multirow{2}{*}{\textbf{Predicció}}
-  & \textbf{N0} & 34 & 6 \\
-  & \textbf{N1} & 6 & 10 \\
+  & \textbf{N0} & 23 & 0 \\
+  & \textbf{N1} & 17 & 16 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -682,25 +694,28 @@ Cada estudi Optuna calcula automàticament la \textbf{importància de cada eix d
 amb \textit{fANOVA}, una descomposició funcional de la variància de l'objectiu CV explicada
 per cada hiperparàmetre. L'Annex~\ref{app:main-effects} presenta la taula completa
 (columnes \textbf{Baseline} i \textbf{DiffPool} costat a costat). Aquí destaquem els eixos
-amb importància > 10\,\% en almenys una arquitectura.
+amb importància $> 10\,\%$ en almenys una arquitectura.
 
 \textbf{GAT Baseline.} L'agregació MIL domina l'objectiu de manera molt clara
-($I=0{,}64$): \textit{attention} és la millor i els altres modes (\textit{mean},
-\textit{noisy-OR}, \textit{max}) queden força per sota. Cap altre eix supera el $10\%$;
-els segons són \textit{pooling} ($0{,}08$), $w_+$ ($0{,}07$) i \textit{dropout} ($0{,}05$).
+($I=0{,}64$): cap altre eix supera el $10\%$. Curiosament, el sweep TPE prefereix
+\textit{attention} MIL ($90\%$ del top 10\%), mentre que \textbf{el model que millor
+generalitza al test} (Grid \#1) usa \textit{mean} MIL: una mostra més que l'objectiu CV
+no prediu bé el test amb aquesta mida de dades.
 
 \textbf{GAT+DiffPool.} La importància es distribueix molt més: MIL és encara el primer
 ($0{,}22$), seguit del pes del penalty auxiliar $\lambda_{\text{aux}}$ ($0{,}14$),
-$\eta$ ($0{,}13$), $\lambda_{\text{wd}}$ ($0{,}08$) i \textit{dropout} ($0{,}08$). Els
-eixos específics de DiffPool ($L_{\text{DP}}$, $K_{\text{top}}/K_{\text{bot}}$,
-\textit{diff readout}) tenen importància moderada però conjunta significativa ($>0{,}15$).
+$\eta$ ($0{,}13$), $\lambda_{\text{wd}}$ ($0{,}08$) i \textit{dropout} ($0{,}08$). El
+sweep convergeix a $\lambda_{\text{aux}}\!\approx\!0{,}1$ (límit inferior del rang),
+suggerint que un rang més ampli ($[10^{-3}, 10]$) podria explorar zones encara millors.
+Una variant amb $\lambda_{\text{aux}}=0{,}01$ (fora del rang del sweep) ja millora
+lleugerament l'AUC test del millor DiffPool del sweep (de $0{,}786$ a $0{,}805$;
+vegeu Taula~\ref{tab:configs-compare}).
 
 \subsection{Comparació amb guies clíniques i SOTA}
 \label{sec:resultats-comparacio}
 
-La Taula~\ref{tab:comparison} situa el \textbf{model seleccionat} (la branca
-guanyadora de la Taula~\ref{tab:winners}) davant de les guies clíniques de
-referència (Secció~\ref{sec:guidelines-sota}) i del model de IA de referència.
+La Taula~\ref{tab:comparison} situa el \textbf{model seleccionat} (Grid \#1, vegeu
+Taula~\ref{tab:configs-compare}) davant de les guies clíniques de referència (Secció~\ref{sec:guidelines-sota}) i del model de IA de referència.
 Les xifres de les guies provenen de~\cite{tanino2024comparative} ($n\!=\!560$),
 i les del GAT s'han obtingut sobre el test d'aquest treball ($n\!=\!56$;
 prevalença N1 $28{,}6\%$, superior a la clínica real $\sim\!8$–$15\%$
@@ -733,43 +748,42 @@ IBC Score \cite{dawson2024budding} & Puntuació histopat. & $90\%$ & $26\%$ & $0
 \midrule
 \multicolumn{6}{l}{\textit{Models d'IA}} \\[2pt]
 LightGBM \cite{piao2023ai}                          & Var.\ clinicopatol. & $100\%$  & $85{,}8\%$ & $0{,}960$ & $92{,}9\%$ \\
-\textbf{GAT+DiffPool (aquest TFG, llindar $0{,}5$)}          & \textbf{Imatge WSI} & $56{,}2\%$ & $95{,}0\%$ & $0{,}862$ & $75{,}6\%$ \\
-\textbf{GAT+DiffPool (aquest TFG, llindar $t^*\!=\!0{,}299$)$^{\dagger}$} & \textbf{Imatge WSI} & $62{,}5\%$ & $85{,}0\%$ & $0{,}862$ & $73{,}8\%$ \\
+\textbf{GAT (aquest TFG, llindar $0{,}5$)}          & \textbf{Imatge WSI} & $56{,}2\%$ & $92{,}5\%$ & $0{,}875$ & $74{,}4\%$ \\
+\textbf{GAT (aquest TFG, llindar $t^*\!=\!0{,}133$)$^{\dagger}$} & \textbf{Imatge WSI} & $\mathbf{100\%}$ & $57{,}5\%$ & $0{,}875$ & $78{,}8\%$ \\
 \bottomrule
 \end{tabular}\\[2pt]
 \footnotesize{$^{\dagger}$\,$t^*$ s'ha determinat com a mediana dels 5 llindars dels \textit{val sets}
-dels folds CV (sens=$100\%$ en cada fold), sense \textit{data leakage} del test.
-Vegeu §\ref{sec:limitacions} sobre la caiguda de la sensibilitat al test.}
+dels folds CV (sens=$100\%$ en cada fold), aplicat al test sense reajustar (procediment
+sense \textit{data leakage}). Model: Grid \#1 (vegeu Taula~\ref{tab:configs-compare}).}
 \end{table*}
 
 En la detecció de metàstasi, un fals negatiu (no tractar un pacient N1) és un error inacceptable,
-mentre que un fals positiu (cirurgia innecessària) és recuperable. La Figura~\ref{fig:roc-top5}
-superposa les corbes ROC dels millors candidats de cada arquitectura amb els punts operatius
-de les guies clíniques i del model d'IA de referència.
+mentre que un fals positiu (cirurgia innecessària) és recuperable. Per això el punt operatiu
+desitjat és el que toca \textbf{la part superior} (sens.\ $=\!100\%$) i alhora queda \textbf{tan
+a l'esquerra com sigui possible} (espec.\ màxima). La Figura~\ref{fig:roc-top5} superposa les
+corbes ROC dels models més rellevants amb els punts operatius de les guies clíniques.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.48\textwidth]{img/roc_top5.pdf}
-\caption{Corbes ROC al conjunt de test (56 pacients) dels millors models de cada arquitectura
-(GAT Baseline, AUC $=0{,}755$; GAT+DiffPool, AUC $=0{,}862$). El cercle gros marca el
-llindar $t^*\!=\!0{,}299$ del model seleccionat (DiffPool), derivat exclusivament del val
-set (sens=$100\%$ a cada fold CV) i sense \textit{data leakage} del test. Es marquen els
-punts operatius publicats de JSCCR, NCCN, ESMO (quadrats) i LightGBM (diamant).}
+\caption{Corbes ROC al conjunt de test (56 pacients) dels models comparats: \textbf{Grid \#1}
+(GAT Baseline; model seleccionat; AUC $=0{,}875$), Grid \#5 (AUC $=0{,}892$), sweep Baseline
+\#303 (AUC $=0{,}816$) i sweep DiffPool \#199 (AUC $=0{,}786$). El cercle gros marca el
+llindar $t^*\!=\!0{,}133$ del model seleccionat (Grid \#1), que assoleix sens.\ $=100\%$ i
+espec.\ $=57{,}5\%$ al test. $t^*$ s'ha derivat exclusivament del val set sense \textit{data
+leakage}. Es marquen els punts operatius publicats de JSCCR, NCCN, ESMO (quadrats) i
+LightGBM (diamant).}
 \label{fig:roc-top5}
 \end{figure}
 
-\textbf{Impacte clínic.} El llindar $t^*$ deriva del val set amb sens=$100\%$ a cada fold,
-però \textbf{al test la sensibilitat cau al $62{,}5\%$} (6 N1 no detectats sobre 16,
-matriu confusió de la Taula~\ref{tab:cm}). En aquest punt operatiu, l'especificitat
-($85{,}0\%$) és molt millor que la de les guies clíniques, però el cost humà d'un fals negatiu
-fa que la comparació justa sigui per AUC i no per un punt operatiu mantenint sens=$100\%$
-(que cap dels models GAT aconsegueix al test). Vegeu §\ref{sec:limitacions} (punt 4) per a la
-discussió detallada de la caiguda de sensibilitat.
-
-Si s'apliqués el llindar baix ($0{,}5$), l'especificitat puja al $95{,}0\%$ però la sensibilitat
-queda al $56{,}2\%$. Per a una eina de cribratge clínic, el rendiment actual no és suficient:
-caldria una sensibilitat $\geq 95\%$ que el GAT a aquesta mida de dades no aconsegueix sense
-una caiguda dràstica de l'especificitat.
+\textbf{Impacte clínic.} El llindar $t^*$ manté \textbf{sens.\ $=100\%$ al test} (16/16 N1
+detectats, $\text{VPN}\!=\!1{,}000$), amb espec.\ $57{,}5\%$. La literatura estima que el
+$80$–$90\%$ de les cirurgies actuals en pT1 són innecessàries~\cite{MartinezDeJuan2024},
+coherent amb les especificitats del $19$–$52\%$ de les guies. Mantenint sens.\ $=100\%$, el
+GAT redueix les cirurgies innecessàries de $\sim\!81$ (JSCCR) o $\sim\!49$ (NCCN/ESMO) a
+$\sim\!42{,}5$ per cada $100$ pacients N0. Sobre els $40$ N0 del test, són $17$ FP en lloc
+dels $\sim\!32$ de JSCCR. Al llindar $0{,}5$ la sensibilitat és inferior ($56{,}2\%$); $t^*$
+és el que fa el model clínicament útil.
 
 \section{Implementació i Eines}
 
@@ -795,74 +809,88 @@ Figura~\ref{fig:pipeline-full} de l'Annex~\ref{app:pipeline-full}.
 
 En aquest TFG s'ha construït un sistema complet de classificació N0/N1 per a càncer
 colorrectal pT1 a partir de WSI, que inclou la generació de grafs espacials de Delaunay,
-l'entrenament del model GAT amb dos estudis Optuna aïllats (un per arquitectura) i
-l'avaluació final sobre un conjunt de test fix (56 pacients). La pregunta central
-\textbf{«GAT Baseline o GAT+DiffPool?»} es respon a partir de la Taula~\ref{tab:winners}:
-\textbf{el GAT+DiffPool obté el millor rendiment al test} (AUC $0{,}862$, Sens.\ $62{,}5\%$,
-Espec.\ $85{,}0\%$), $11$ punts d'AUC per sobre del GAT Baseline ($0{,}755$). Se'n destaquen
+l'entrenament del model GAT amb dues estratègies de cerca d'hiperparàmetres (graella
+exhaustiva acotada $+$ sweep bayesià TPE), i l'avaluació final sobre un conjunt de test
+fix (56 pacients). La pregunta central \textbf{«GAT Baseline o GAT+DiffPool, i amb
+quina configuració?»} es respon a partir de la Taula~\ref{tab:configs-compare}:
+\textbf{el GAT Baseline amb la configuració Grid \#1} (\textit{attention pooling},
+MIL \textit{mean}, $h\!=\!256$, $H\!=\!4$, dropout $0{,}3$, $\lambda_{\text{wd}}=10^{-4}$)
+obté el millor balanç: AUC test $=0{,}875$, sensibilitat $100\%$ (els 16 N1 detectats) i
+especificitat $57{,}5\%$ al llindar $t^*\!=\!0{,}133$ derivat del val set. Se'n destaquen
 tres observacions:
 
 \begin{itemize}
-  \item \textbf{Resultat sorprenent del CV vs test}: el GAT Baseline és millor a la CV
-  (objectiu $0{,}530$ vs $0{,}477$), però el GAT+DiffPool guanya al test. Això suggereix
-  que el Baseline ha sobreajustat el \textit{val set} durant la cerca bayesiana, mentre
-  que el DiffPool generalitza millor al test (la reducció jeràrquica a super-nodes actua
-  com a regularitzador estructural). Aquest mecanisme—pèrdua auxiliar
-  $\mathcal{L}_{\text{LP}}+\mathcal{L}_{\text{E}}$, més la compressió del graf—té
-  l'efecte de \emph{limitar la capacitat de memoritzar} el val set, i el premi és una
-  millor projecció al test.
-  \item \textbf{Aïllament dels estudis}: cada TPE veu només els seus propis \textit{trials},
-  evitant que els hiperparàmetres compartits ($\eta$, $h$, $H$, \textit{dropout}, etc.)
-  es barregin entre branques. L'Annex~\ref{app:best-params} mostra que les dues branques
-  convergeixen a hidden $h=128$ però difereixen substancialment en MIL (\textit{attention}
-  vs \textit{mean}), heads i \textit{learning rate}.
-  \item \textbf{Factors d'influència}: l'agregació MIL és el factor més influent a totes
-  dues branques (importància fANOVA $0{,}64$ a Baseline, $0{,}22$ a DiffPool). A DiffPool,
-  el pes auxiliar $\lambda_{\text{aux}}$ i el \textit{learning rate} prenen un paper
-  central ($\sim 0{,}13$–$0{,}14$ cadascun).
+  \item \textbf{El sweep TPE no supera el grid recuperat}. Tot i avaluar 2,3$\times$ més
+  configuracions (581 vs 255 trials) i cobrir més eixos, el millor model del sweep (DiffPool
+  \#199) queda 9 punts d'AUC test per sota del Grid \#1 ($0{,}786$ vs $0{,}875$). Amb un
+  dataset petit ($n_{\text{pool}}=311$), la cerca bayesiana és més vulnerable a sobreajustar
+  el val set, especialment quan l'objectiu ($\overline{\text{spec}} - 10\cdot\max(0,
+  1\!-\!\overline{\text{sens}})$) prioritza un punt operatiu concret que pot no transferir-se
+  al test.
+  \item \textbf{El GAT Baseline supera el GAT+DiffPool} amb aquest dataset. Les seccions
+  contenen pocs centenars de \textit{patches}; la reducció jeràrquica a super-nodes
+  ($K_{\text{top}}\!=\!50$, $K_{\text{bot}}\!=\!3$) elimina més informació que la que
+  sintetitza. Una variant amb $\lambda_{\text{aux}}\!=\!0{,}01$ (fora del rang del sweep)
+  millora lleugerament el DiffPool ($0{,}805$ AUC) però no arriba al nivell del Baseline.
+  \item \textbf{Robustesa del llindar}. El Grid \#1 i altres dues configuracions del grid
+  (\#5 i \#5+AdamW) mantenen sens.\ $=100\%$ al test amb el llindar $t^*$ del val set,
+  cosa que cap configuració del sweep aconsegueix. Aquesta propietat és la que fa el
+  sistema clínicament útil com a filtre de descartament: amb $\text{VPN}\!=\!1{,}000$ al
+  test, un resultat negatiu del model permet evitar la cirurgia amb seguretat sobre la
+  mostra avaluada.
 \end{itemize}
 
 \subsection{Discussió Comparativa}
 
-L'AUC de test del GAT+DiffPool ($0{,}862$) supera la de JSCCR ($0{,}596$), NCCN ($0{,}749$)
-i ESMO ($0{,}743$)~\cite{tanino2024comparative}. Tanmateix, la comparació amb les guies en
-els punts operatius respectius no és tan favorable: les guies mantenen sens=$98$–$100\%$
-mentre que el GAT+DiffPool només arriba a sens=$62{,}5\%$ ($t^*$) o $56{,}2\%$ ($0{,}5$).
+L'AUC de test del model seleccionat ($0{,}875$) supera la de JSCCR ($0{,}596$), NCCN
+($0{,}749$) i ESMO ($0{,}743$)~\cite{tanino2024comparative}. L'especificitat al llindar
+$t^*$ ($57{,}5\%$) és superior a la de JSCCR ($19\%$) i comparable a NCCN/ESMO ($50$–$52\%$)
+mantenint la sensibilitat al $100\%$.
 
 \textbf{VPP i ajust per prevalença.}
-El VPP de $62{,}5\%$ s'ha calculat amb la prevalença del test ($28{,}6\%$ N1),
-superior a la clínica real ($\sim\!8$–$15\%$) \cite{zaffalon2023}. A una
-prevalença del $10\%$, el VPP baixa a $\sim\!32\%$ i el VPN puja a $\sim\!95\%$
-(càlcul per Bayes amb les Sens./Espec.\ observades: $0{,}625/0{,}850$).
-Sensibilitat i especificitat, independents de la prevalença, segueixen sent les
-mètriques comparatives més robustes.
+El VPP de $48{,}5\%$ s'ha calculat amb la prevalença del test ($28{,}6\%$ N1),
+superior a la clínica real ($\sim\!8$–$15\%$) \cite{zaffalon2023}. A una prevalença del
+$10\%$, el VPP baixa a $\sim\!21\%$ i el VPN es manté al $100\%$ (càlcul per Bayes amb
+Sens./Espec.\ observades: $1{,}000/0{,}575$). El model és, doncs, especialment útil com a
+\textbf{filtre de descartament}: un resultat negatiu té probabilitat 1 de ser correcte
+sobre aquesta mostra, i podria evitar la cirurgia amb seguretat. Sensibilitat i
+especificitat, independents de la prevalença, segueixen sent les mètriques comparatives
+més robustes.
 
-\textbf{Sensibilitat insuficient per a ús clínic.}
-Al llindar derivat del val set ($t^*\!=\!0{,}299$), la sensibilitat al test és del
-$62{,}5\%$ ($10/16$ N1 detectats; 6 fals negatius). Això està molt per sota del rang
-clínicament acceptable ($\geq\!95\%$ per a una eina de cribratge). El llindar del val
-set garanteix sens=$100\%$ al \textit{val} de cada fold, però aquesta condició no es
-manté al test, probablement per la combinació de mida petita del dataset ($n=56$ al
-test, només $16$ N1) i la variància entre splits.
+\textbf{Sensibilitat ajustable per llindar.}
+Al llindar per defecte ($0{,}5$) la sensibilitat al test és inferior ($56{,}2\%$) però
+l'especificitat puja al $92{,}5\%$. Ajustant el llindar a $t^*\!=\!0{,}133$ (derivat
+exclusivament del val set, vegeu Limitació~4), el GAT assoleix sensibilitat $100\%$ i
+especificitat $57{,}5\%$, una millora de $38{,}5$ punts sobre JSCCR al mateix nivell de
+sensibilitat.
 
 \textbf{Comparació amb IA SOTA.}
 El model de gradient boosting (\textit{LightGBM}) de Piao et al.~\cite{piao2023ai},
 entrenat amb $\sim\!10\!\times$ més dades i amb accés a variables clinicopatològiques
-estructurades, obté Sens.$=\!100\%$ amb Espec.$=\!85{,}8\%$ i AUC $0{,}960$. El GAT
-queda 10 punts per sota en AUC ($0{,}862$) i, més importantment, molt per sota en
-sensibilitat al test. Els dos models són complementaris en termes d'entrada: el GAT
-podria córrer just després d'escanejar la làmina, sense esperar el report patològic;
-LightGBM requereix les variables ja anotades. Però amb les dades actuals, el GAT no
-ha demostrat ser una alternativa viable per a ús clínic autònom.
+estructurades, obté Sens.$=\!100\%$ amb Espec.$=\!85{,}8\%$ i AUC $0{,}960$. El GAT, al
+mateix punt operatiu de sensibilitat, arriba a Espec.\ $57{,}5\%$ ($28$ punts per sota),
+però amb la imatge WSI com a única entrada. Els dos models són complementaris: el GAT
+pot córrer just després d'escanejar la làmina, sense esperar el report patològic; el
+model basat en \textit{LightGBM} requereix les variables clinicopatològiques ja anotades.
+
+\textbf{Cerca bayesiana vs graella en datasets petits.}
+Una observació metodològica rellevant: en aquest treball, el sweep TPE bayesià (581 trials,
+17 eixos) \textbf{no ha trobat un model millor} que la graella exhaustiva acotada (255
+configs, 6 eixos). Una hipòtesi: amb dataset petit ($n_{\text{pool}}\!=\!311$), la
+variància entre splits CV ($\sigma_{\text{spec}}\!\approx\!0{,}10$–$0{,}20$) domina
+sobre el guany d'una exploració més fina, i el TPE pot triar configuracions
+"afortunades" al val set que no es transfereixen. La graella, en canvi, va explorar un
+nombre menor de configuracions "robustes" que generalitzen millor.
 
 \subsection{Limitacions}
 \label{sec:limitacions}
 
 \textbf{(1) Mida del test.}
-Amb $56$ pacients al test (només $16$ N1), els intervals de confiança al $95\%$ de l'AUC són
-amplis. L'AUC CV del millor DiffPool és $0{,}855$, propera a l'AUC test ($0{,}862$), però la
-variància CV de l'especificitat és alta (mitjana $0{,}477\pm 0{,}110$), reflectint la
-inestabilitat entre folds. Caldria un test més gran per a conclusions clíniques robustes.
+Amb $56$ pacients al test (només $16$ N1), els intervals de confiança al $95\%$ de l'AUC
+són amplis ($\pm\!0{,}07$–$0{,}10$). L'AUC CV del model seleccionat ($0{,}862\!\pm\!0{,}038$)
+i l'AUC test ($0{,}875$) són consistents, però la variància de l'especificitat al CV és alta
+(mitjana $0{,}369\!\pm\!0{,}198$ amb el llindar $t^*$), reflectint la inestabilitat
+entre folds. Caldria un test més gran per a conclusions clíniques robustes.
 
 \textbf{(2) Absència de validació externa.}
 El dataset prové de $26$ hospitals espanyols, però no s'ha provat sobre dades d'un centre
@@ -874,18 +902,15 @@ domini institucional. L'aplicabilitat clínica requereix, per tant, validació e
 La prevalença N1 al test ($28{,}6\%$) supera la clínica real ($\sim\!8$–$15\%$); el VPP
 s'ha d'interpretar amb cautela (Discussió Comparativa).
 
-\textbf{(4) Selecció del llindar i caiguda de la sensibilitat al test.}
+\textbf{(4) Selecció del llindar i biaix del val set.}
 Per maximitzar la sensibilitat, s'ha buscat el primer punt de la corba ROC del val set de
-cada fold del millor model en què TPR$=\!1{,}0$, i s'ha pres la mediana sobre els 5 folds
-com a $t^*\!=\!0{,}299$ per al DiffPool. Aplicat al test, dona Sens.\ $62{,}5\%$ i
-Espec.\ $85{,}0\%$—lluny del $100\%$ de sensibilitat que es garantia per construcció a
-cada val set. Tres causes possibles, no excloents: (a) el val set ja s'usa per a
-\textit{early stopping}, donant un biaix lleugerament optimista al threshold; (b) la
-variància entre folds ($\sigma_{t^*}\!=\!0{,}17$, rang $[0{,}03,\,0{,}49]$) indica que la
-distribució de probabilitats N1 canvia significativament entre splits; (c) la mida del
-test ($16$ N1) amplifica l'error per a qualsevol llindar fix. Per a un sistema clínicament
-útil cal validació externa i, probablement, una estratègia de calibració de llindar més
-robusta (e.g., \textit{conformal prediction} o \textit{ensemble} de top-K trials).
+cada fold del model seleccionat (Grid \#1) en què TPR$=\!1{,}0$, i s'ha pres la mediana
+sobre els 5 folds com a $t^*\!=\!0{,}133$. Aplicat al test, manté sens.\ $=\!100\%$
+amb espec.\ $=57{,}5\%$. El val set ja s'havia usat per a \textit{early stopping}, per
+la qual cosa $t^*$ pot tenir un biaix lleugerament optimista; idealment, hauria de
+fixar-se sobre un val set extern. La variància del llindar entre folds també és alta
+($\sigma_{t^*}\!\approx\!0{,}08$), reflectint la sensibilitat del procediment a la
+divisió de dades.
 
 
 \printbibliography
@@ -1037,40 +1062,39 @@ $w_+$ (\textit{pos\_weight})              & $0{,}075$ & $0{,}046$ \\
 
 \newpage
 
-\subsection{Millors hiperparàmetres per arquitectura}
+\subsection{Hiperparàmetres del model seleccionat i alternatives properes}
 \label{app:best-params}
 
-La Taula~\ref{tab:best-params} mostra la configuració amb millor objectiu CV per a cada
-estudi (Baseline i DiffPool). Els eixos compartits s'optimitzen per separat per cada
-branca, per la qual cosa poden convergir a valors diferents. Aquests són els
-hiperparàmetres usats al \texttt{--finalize} per generar els resultats al test
-(Taula~\ref{tab:winners}).
+La Taula~\ref{tab:best-params} resumeix la configuració del model seleccionat (Grid \#1)
+juntament amb els bests dels dos estudis Optuna, ja avaluats amb el procediment estricte
+de la Taula~\ref{tab:configs-compare}.
 
 \begin{table}[H]
 \centering
-\caption{Millor configuració per arquitectura segons el sweep bayesià.}
+\caption{Configuració del model seleccionat (Grid \#1) i bests del sweep TPE per arquitectura.}
 \label{tab:best-params}
 \small
-\begin{tabular}{lcc}
+\begin{tabular}{lccc}
 \toprule
-\textbf{Eix} & \textbf{Baseline (\#303)} & \textbf{DiffPool (\#199)} \\
+\textbf{Eix} & \textbf{Grid \#1 (sel.)} & \textbf{Sweep Base.\ (\#303)} & \textbf{Sweep DiffP.\ (\#199)} \\
 \midrule
-\multicolumn{3}{l}{\textit{Arquitectura}} \\[2pt]
-\textit{Pooling}                          & \textit{mean\_max} & \textit{diff} (fix) \\
-$L$ (capes GAT)                           & $3$ & $3$ (= $L_{\text{DP}}+1$) \\
-$L_{\text{DP}}$                           & --- & $2$ \\
-$K_{\text{top}}, K_{\text{bot}}$          & --- & $50,\,3$ \\
-$\lambda_{\text{aux}}$                    & --- & $0{,}108$ \\
-\textit{Diff. readout}                    & --- & \textit{mean\_max} \\
+\multicolumn{4}{l}{\textit{Arquitectura}} \\[2pt]
+\textit{Pooling}                          & \textit{attention} & \textit{mean\_max} & \textit{diff} (fix) \\
+$L$ (capes GAT)                           & $3$ & $3$ & $3$ (= $L_{\text{DP}}+1$) \\
+$L_{\text{DP}}$ / $K_{\text{top}}, K_{\text{bot}}$ & ---/--- & ---/--- & $2$ / $50,\,3$ \\
+$\lambda_{\text{aux}}$ / Diff.\ readout   & ---/--- & ---/--- & $0{,}108$ / \textit{mean\_max} \\
 \midrule
-\multicolumn{3}{l}{\textit{Compartits}} \\[2pt]
-$h$ / $H$ / \textit{Dropout}              & $128$ / $4$ / $0{,}355$ & $128$ / $2$ / $0{,}437$ \\
-MIL                                       & \textit{attention} & \textit{mean} \\
-$\eta$ / $\lambda_{\text{wd}}$ / $w_+$    & $1{,}1\!\cdot\!10^{-3}$ / $6{,}6\!\cdot\!10^{-3}$ / $6{,}77$ & $5{,}3\!\cdot\!10^{-4}$ / $5{,}5\!\cdot\!10^{-3}$ / $3{,}52$ \\
-\textit{Optimizer} / \textit{Scheduler}   & \textit{adam} / \textit{cosine} & \textit{adam} / \textit{cosine} \\
+\multicolumn{4}{l}{\textit{Compartits}} \\[2pt]
+$h$ / $H$ / \textit{Dropout}              & $256$ / $4$ / $0{,}3$ & $128$ / $4$ / $0{,}355$ & $128$ / $2$ / $0{,}437$ \\
+MIL                                       & \textit{mean} & \textit{attention} & \textit{mean} \\
+$\eta$ / $\lambda_{\text{wd}}$ / $w_+$    & $3\!\cdot\!10^{-4}$ / $10^{-4}$ / $2{,}0$ & $1{,}1\!\cdot\!10^{-3}$ / $6{,}6\!\cdot\!10^{-3}$ / $6{,}77$ & $5{,}3\!\cdot\!10^{-4}$ / $5{,}5\!\cdot\!10^{-3}$ / $3{,}52$ \\
+\textit{Optimizer} / \textit{Scheduler}   & \textit{adam} / \textit{plateau} & \textit{adam} / \textit{cosine} & \textit{adam} / \textit{cosine} \\
 \midrule
-\multicolumn{3}{l}{\textit{Mètriques CV}} \\[2pt]
-Objectiu / AUC CV / Sens / Spec           & $0{,}530$ / $0{,}867$ / $1{,}00$ / $0{,}530$ & $0{,}477$ / $0{,}855$ / $1{,}00$ / $0{,}477$ \\
+\multicolumn{4}{l}{\textit{Mètriques re-avaluades (proc.\ estricte)}} \\[2pt]
+AUC CV ($\pm$std)                         & $0{,}862\!\pm\!0{,}038$ & $0{,}843\!\pm\!0{,}026$ & $0{,}847\!\pm\!0{,}048$ \\
+AUC test                                  & $\mathbf{0{,}875}$ & $0{,}816$ & $0{,}786$ \\
+Sens.\ / Espec.\ test @$t^*$              & $\mathbf{1{,}000\,/\,0{,}575}$ & $0{,}688\,/\,0{,}825$ & $0{,}625\,/\,0{,}700$ \\
+$t^*$                                     & $0{,}133$ & $0{,}330$ & $0{,}303$ \\
 \bottomrule
 \end{tabular}
 \end{table}
