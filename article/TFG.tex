@@ -928,6 +928,28 @@ divisió de dades.
 
 \setcounter{section}{1}
 
+\subsection{Distribució dels grafs del dataset}
+\label{app:hist-nodes}
+
+La Figura~\ref{fig:hist-nodes} mostra la distribució del nombre de nodes (patches) per
+secció histològica als 1.607 grafs del dataset, separada per classe N0/N1. La mediana
+és de 385 nodes per a les seccions N0 i de 378 per a les N1;
+el percentil 95 és de 1.277 nodes i el màxim absolut de 2.939.
+La distribució és asimètrica cap a la dreta: la majoria de seccions
+tenen menys de 700 nodes, però existeix una cua llarga de seccions grans.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{img/hist_nodes.pdf}
+\caption{Distribució del nombre de nodes per secció histològica (1.607 grafs totals),
+separada per classe N0 ($n\!=\!1345$ seccions) i N1 ($n\!=\!262$ seccions).
+Les línies discontínues marquen la mediana de cada classe.
+Un node correspon a un \textit{patch} de $2048\!\times\!2048$ px.}
+\label{fig:hist-nodes}
+\end{figure}
+
+\newpage
+
 \subsection{Diagrama de flux detallat del \textit{pipeline}}
 \label{app:pipeline-full}
 
