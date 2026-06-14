@@ -124,14 +124,14 @@ def main():
                    edgecolors="black", linewidths=1.1,
                    label=p["label"])
 
-    ax.set_xlabel("1 $-$ Especificitat (FPR)", fontsize=13)
-    ax.set_ylabel("Sensibilitat (TPR)", fontsize=13)
+    ax.set_xlabel("1 $-$ Especificitat (FPR)", fontsize=15)
+    ax.set_ylabel("Sensibilitat (TPR)", fontsize=15)
     ax.set_xlim(-0.02, 1.02)
     ax.set_ylim(-0.02, 1.05)
-    ax.legend(loc="lower right", fontsize=10, framealpha=0.92,
+    ax.legend(loc="lower right", fontsize=12, framealpha=0.92,
               edgecolor="gray", ncol=1)
     ax.grid(alpha=0.22)
-    ax.tick_params(labelsize=11)
+    ax.tick_params(labelsize=13)
 
     plt.tight_layout()
     args.out.parent.mkdir(parents=True, exist_ok=True)
