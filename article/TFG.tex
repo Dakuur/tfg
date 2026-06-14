@@ -81,14 +81,13 @@ de manera que es preserva la topologia real del teixit.
 Cada node és un \textit{patch} de 2048$\times$2048 px representat per l'embedding
 CLS (vector de forma $[1, 1536]$) del model UNI2. Es comparen dues arquitectures configurables: un GAT de referència
 amb \textit{readout} pla (mean, max, mean\_max o attention) i un GAT amb \textbf{DiffPool jeràrquic}
-intercalat ($N \to \cdots \to K_{L_{\text{DP}}}$ super-nodes) per
-obtenir representacions a múltiples escales. El diagnòstic per pacient s'obté per
-agregació MIL sobre les seccions. La cerca d'hiperparàmetres combina dos estudis Optuna
-TPE aïllats per arquitectura (5-fold CV + retrain
-90/10 de les millors configuracions obtingudes). El millor model és un \textbf{GAT
+intercalat per obtenir representacions a múltiples escales.
+El diagnòstic per pacient s'obté per agregació MIL sobre les seccions histològiques.
+La cerca d'hiperparàmetres combina dos estudis Optuna
+(5-fold CV + retrain 90/10 de les millors configuracions obtingudes).
+El millor model és un \textbf{GAT
 Baseline}, que obté AUC test $=0{,}875$, sensibilitat $100\%$ i
-especificitat $57{,}5\%$ al llindar derivat del val set, detectant els 16 casos N1 del
-conjunt de test ($n=56$ pacients; 367 pacients efectius en total).
+especificitat $57{,}5\%$.
 \\
 \\
 \textbf{Paraules clau-- } Càncer colorrectal pT1, Histopatologia digital, Graph Attention Networks,
@@ -103,14 +102,12 @@ preserving the real spatial topology of the tissue.
 Each node is a 2048$\times$2048 px patch represented by a
 CLS embedding of shape $[1, 1536]$ from the UNI2 model. Two configurable architectures are compared: a
 \textbf{GAT baseline} with flat readout (mean, max, mean\_max or attention) and a \textbf{GAT+DiffPool} model
-with $L_{\text{DP}}$ DiffPool blocks interleaved between GAT layers ($N \to \cdots \to K_{L_{\text{DP}}}$ super-nodes) for
+with $L_{\text{DP}}$ DiffPool blocks interleaved between GAT layers for
 multi-scale representations. Patient-level diagnosis is obtained via MIL aggregation over
-histological sections. Hyperparameter search combines two isolated Optuna TPE studies
-(one per architecture) (5-fold CV + 90/10 retraining of
-the best configurations). The best model is a \textbf{GAT Baseline}, achieving test
-AUC $=0.875$, sensitivity $100\%$ and specificity $57.5\%$ at the validation-derived
-threshold, detecting all 16 N1 cases of the test set ($n=56$ patients; 367 effective
-patients overall).
+histological sections. Hyperparameter search combines two Optuna studies
+(5-fold CV + 90/10 retraining of the best configurations).
+The best model is a \textbf{GAT Baseline}, achieving test
+AUC $=0.875$, sensitivity $100\%$ and specificity $57.5\%$.
 \\
 \\
 \textbf{Keywords-- } pT1 colorectal cancer, Digital histopathology, Graph Attention Networks,
@@ -436,7 +433,7 @@ i la nova representació del node s'obté com la suma ponderada:
 \textbf{Multi-cap i no-linealitat.} Per incrementar la capacitat expressiva, cada capa usa $H$ caps
 d'atenció independents (\textit{heads}), parametritzats per $\mathbf{W}^{(h)}$ i $\mathbf{a}^{(h)}$.
 Les sortides es concatenen a les capes intermèdies i es promitgen a la darrera. La capa
-\texttt{GATConv} no aplica activació final dins de la pròpia capa; la no-linealitat es fa per fora
+\textit{GATConv} no aplica activació final dins de la pròpia capa; la no-linealitat es fa per fora
 com \textit{BatchNorm}~$\to$~ELU~$\to$~\textit{Dropout}. L'única no-linealitat \textit{interna} és
 la \textit{LeakyReLU} del càlcul de $e_{ij}$.
 
@@ -571,7 +568,7 @@ L'avaluació segueix un esquema en tres etapes que aïlla completament el conjun
 \textbf{Cerca bayesiana.} S'utilitza el \textit{Tree-structured Parzen Estimator}~(TPE) sobre
 $\sim$15 eixos. Els \textbf{200 primers trials} ($\sim$10$\times$ dimensions) són mostreig uniforme
 aleatori (exploració); després el TPE explota l'historial. Tots els mostratges, \textit{folds} CV i
-inicialització de pesos usen \textit{seed} fixa. L'estudi és persistent (\texttt{SQLite}) i reprenible;
+inicialització de pesos usen \textit{seed} fixa. L'estudi és persistent (\textit{SQLite}) i reprenible;
 l'espai complet es recull a l'Annex \ref{app:sweep-config}.
 
 \section{Resultats}
@@ -741,15 +738,18 @@ detectats, $\text{VPN}\!=\!1{,}000$), amb espec.\ $57{,}5\%$. La literatura esti
 $80$–$90\%$ de les cirurgies actuals en pT1 són innecessàries~\cite{MartinezDeJuan2024},
 coherent amb les especificitats del $19$–$52\%$ de les guies. Mantenint sens.\ $=100\%$, el
 GAT redueix les cirurgies innecessàries de $\sim\!81$ (JSCCR) o $\sim\!49$ (NCCN/ESMO) a
-$\sim\!42{,}5$ per cada $100$ pacients N0. Sobre els $40$ N0 del test, són $17$ FP en lloc
-dels $\sim\!32$ de JSCCR. Al llindar $0{,}5$ la sensibilitat és inferior ($56{,}2\%$); $t^*$
-és el que fa el model clínicament útil.
+$\sim\!42{,}5$ per cada $100$ pacients N0. En concret, si s'apliqués aquest model per
+decidir la cirurgia sobre els $40$ pacients N0 del test, se n'operarien innecessàriament
+$17$ enlloc dels $\sim\!32$ que indicaria JSCCR: és a dir, \textbf{un $\sim\!47\%$ menys de
+cirurgies innecessàries} respecte a JSCCR (i un $\sim\!13\%$ menys respecte a NCCN/ESMO),
+\textbf{sense deixar cap pacient N1 sense tractar} (sens.\ $=100\%$). Al llindar $0{,}5$ la
+sensibilitat és inferior ($56{,}2\%$); $t^*$ és el que fa el model clínicament útil.
 
 \section{Implementació i Eines}
 
 La implementació segueix un disseny modular: la construcció de grafs, el model, el codi
 d'entrenament i el \textit{sweep} bayesià estan desacoblats. La configuració es gestiona via YAML i,
-per a la cerca, via \texttt{Optuna} amb \textit{storage} \texttt{SQLite} reprenible. Codi accessible
+per a la cerca, via \textit{Optuna} amb \textit{storage} \textit{SQLite} reprenible. Codi accessible
 a~\cite{morillo2026codi}.
 
 \textbf{Frontend web.} S'ha desenvolupat una interfície que
@@ -793,8 +793,8 @@ derivat del val set. Se'n destaquen tres observacions:
 
 L'AUC de test del model ($0{,}875$) supera la de JSCCR ($0{,}596$), NCCN ($0{,}749$) i
 ESMO ($0{,}743$)~\cite{tanino2024comparative}. Al llindar $t^*\!=\!0{,}133$ assoleix
-sensibilitat $100\%$ amb especificitat $57{,}5\%$ ---una millora de $38{,}5$ punts
-d'especificitat sobre JSCCR al mateix nivell de sensibilitat---; al llindar per defecte
+sensibilitat $100\%$ amb especificitat $57{,}5\%$ (una millora de $38{,}5$ punts
+d'especificitat sobre JSCCR al mateix nivell de sensibilitat); al llindar per defecte
 ($0{,}5$) la sensibilitat baixa a $56{,}2\%$ però l'especificitat puja al $92{,}5\%$.
 
 \textbf{VPP i prevalença.} El VPP de $48{,}5\%$ s'ha calculat amb la prevalença del test
@@ -811,7 +811,7 @@ anotades per un patòleg}; el nostre GAT usa només la imatge WSI i pot córrer 
 l'escaneig. La comparació més justa, a la \textbf{mateixa modalitat}, és la de Song et
 al.~\cite{song2024lnm} (MIL d'atenció sobre WSI, sense variables clíniques): sobre $1\,281$
 pacients obté AUC $0{,}781$ i, a una especificitat pràcticament idèntica ($57{,}6\%$ vs
-$57{,}5\%$), sens.\ $92{,}9\%$ ---per sota del $100\%$ del nostre model---, tot i que la seva
+$57{,}5\%$), sens.\ $92{,}9\%$, per sota del $100\%$ del nostre model, tot i que la seva
 avaluació és molt més robusta ($1\,281$ vs $56$ pacients). Representar la secció com a graf
 espacial és, doncs, com a mínim competitiu amb l'MIL pla sobre \textit{patches}.
 
@@ -1122,7 +1122,7 @@ d'optimització configurables.
 \draw[arr] (conv) -- (outbox.north);
 
 \end{tikzpicture}
-\caption{Variants d'arquitectura del \texttt{GATClassifier}: el mateix graf
+\caption{Variants d'arquitectura del \textit{GATClassifier}: el mateix graf
 $\mathcal{G}$ es pot processar per dues branques configurables
 (\textsc{Baseline} o \textsc{DiffPool}), cadascuna amb la seva pròpia
 estratègia de \textit{readout} intra-secció (caixes taronges discontínues).
@@ -1146,15 +1146,15 @@ $t^*$: llindar derivat del val set (Secció~\ref{sec:training-scheme}).}
 La Taula~\ref{tab:main-effects} mostra la \textbf{importància fANOVA} de cada eix
 d'optimització, calculada de manera independent per a cada estudi Optuna (Baseline i
 DiffPool). La importància és una descomposició funcional de la variància de l'objectiu CV
-explicada per cada hiperparàmetre, en el rang $[0, 1]$. Eixos específics d'una branca
-apareixen com a \texttt{---} a l'altra columna. Tots els valors provenen de l'anàlisi fANOVA calculada per Optuna sobre els \textit{trials} complets de cada estudi.
+explicada per cada hiperparàmetre, en el rang $[0, 1]$. Els eixos específics d'una branca
+apareixen buits a l'altra columna. Tots els valors provenen de l'anàlisi fANOVA calculada per Optuna sobre els \textit{trials} complets de cada estudi.
 
 \begin{table}[H]
 \centering
 \caption{Importància fANOVA per arquitectura. \textbf{Baseline}: 304 \textit{trials}
 complets. \textbf{DiffPool}: 195 \textit{trials} complets. Valors entre 0 (cap
-influència) i 1 (l'eix explica tota la variància). \texttt{---}: eix no aplicable a
-aquella branca.}
+influència) i 1 (l'eix explica tota la variància). Les cel·les buides indiquen que l'eix
+no és aplicable a aquella branca.}
 \label{tab:main-effects}
 \small
 \begin{tabular}{lcc}
