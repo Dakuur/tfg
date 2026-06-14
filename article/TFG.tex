@@ -1207,7 +1207,7 @@ Taula~\ref{tab:configs-compare}.
 \textbf{Eix} & \textbf{Baseline (sel.)} & \textbf{DiffPool (millor)} \\
 \midrule
 \multicolumn{3}{l}{\textit{Arquitectura}} \\[2pt]
-\textit{Pooling}                          & \textit{attention} & \textit{diff} (fix) \\
+\textit{Pooling}                          & \textit{attention} & --- \\
 $L$ (capes GAT)                           & $3$ & $3$ (= $L_{\text{DP}}+1$) \\
 $L_{\text{DP}}$ / $K_{\text{top}}, K_{\text{bot}}$ & ---/--- & $2$ / $50,\,3$ \\
 $\lambda_{\text{aux}}$ / Diff.\ readout   & ---/--- & $0{,}108$ / \textit{mean\_max} \\
@@ -1275,16 +1275,16 @@ Taxa aprenentatge       & ambdues (indep.)   & $[5\cdot10^{-5},\,5\cdot10^{-3}]$
 \midrule
 \multicolumn{4}{l}{\textit{Tractament del desbalanceig}} \\[2pt]
 Pes de la classe N1 ($w_+$) & ambdues (indep.) & $[1{,}5,\,8]$                               & uniforme \\
-Llindar $t^*$           & post-CV            & sobre la corba ROC del val, condició TPR$=1$    & determinista \\
+Llindar $t^*$           & post-CV            & sobre la corba ROC del val, condició TPR$\geq 0{,}95$    & determinista \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \textbf{Objectiu del sweep:}
-$\text{objective} = \overline{\text{spec}}_{\text{CV}} - 10 \cdot \max(0,\; 1 - \overline{\text{sens}}_{\text{CV}})$,
+$\text{objective} = \overline{\text{spec}}_{\text{CV}} - 10 \cdot \max(0,\; 0{,}95 - \overline{\text{sens}}_{\text{CV}})$,
 on $\overline{\text{spec}}_{\text{CV}}$ i $\overline{\text{sens}}_{\text{CV}}$ són les mitjanes
 sobre els 5 \textit{val sets}, calculades amb el llindar $t^*$ derivat de cada \textit{fold}
-(llindar més alt amb TPR$=1$). Aquesta és l'\textbf{única} mètrica que el TPE veu per decidir
+(llindar més alt amb TPR$\geq 0{,}95$). Aquesta és l'\textbf{única} mètrica que el TPE veu per decidir
 els paràmetres del següent \textit{trial}. La penalització $\times 10$ fa que el TPE prioritzi
 sensibilitat $\approx 100\%$, però accepta una pèrdua moderada (sens $\geq 95\%$) si s'aconsegueix
 un guany substancial d'especificitat ($> 5$ punts).
