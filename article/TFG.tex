@@ -281,7 +281,8 @@ requereixen tractament previ.
 
 El conjunt de dades efectiu comprèn \textbf{1.607 grafs} (un per secció histològica), provinents de
 \textbf{367 pacients} distribuits de forma desequilibrada entre les dues classes
-(Taula~\ref{tab:dataset}). D'un total de 606 pacients a la base de dades clínica, 236 es descarten
+(Taula~\ref{tab:dataset}; la distribució del nombre de nodes per secció es detalla a
+l'Annex~\ref{app:hist-nodes}). D'un total de 606 pacients a la base de dades clínica, 236 es descarten
 per diagnòstic indeterminat (NX), i dels 370 restants amb diagnòstic vàlid, 3 no disposen
 d'embeddings UNI2 generats, deixant 367 pacients usables. Les mostres es divideixen en un pool d'entrenament+validació (85\%) i un
 conjunt de test fix (15\%), ambdós estratificats a nivell de pacient. Dins del pool s'aplica
@@ -411,7 +412,8 @@ capes GAT redueix el graf de $N_\ell$ nodes a $K_\ell$ super-nodes:
 $(\mathbf{X}^{(0)}, \mathbf{A}^{(0)}) \xrightarrow{\text{GAT+Pool}} \cdots \xrightarrow{\text{GAT+readout}} \mathbf{h}_s$.
 Tot el model s'entrena de forma \textbf{end-to-end}: un únic pas de retropropagació propaga els
 gradients des del capçal MLP fins a les primeres capes GAT. La Figura~\ref{fig-diffpool} mostra
-la comparació visual de les dues arquitectures.
+la comparació visual de les dues arquitectures, i l'Annex~\ref{app:model-variants} en presenta
+un diagrama detallat amb tots els eixos configurables.
 
 \textbf{Mecanisme d'atenció.} A diferència de les xarxes convolucionals clàssiques sobre grafs que tracten
 tots els veïns d'un node de forma uniforme, GAT aprèn a assignar pesos d'importància diferenciats a cada
@@ -439,7 +441,8 @@ la \textit{LeakyReLU} del càlcul de $e_{ij}$.
 
 \textbf{Profunditat de la xarxa.} El nombre de capes GAT, $L$, és un eix d'optimització: $L \in \{2,3,4\}$
 per al model \textit{baseline}; per a la variant amb DiffPool, $L$ ve determinat per
-$L = L_{\text{DP}} + 1$, intercalant cada GAT amb un pas de \textit{pooling} (vegeu §6.3).
+$L = L_{\text{DP}} + 1$, intercalant cada GAT amb un pas de \textit{pooling}
+(vegeu la Secció~\ref{subsec:diffpool}).
 
 El capçal MLP (\textit{Linear}~$\to$~ReLU~$\to$~\textit{Dropout}~$\to$~\textit{Linear}) transforma la
 representació global del graf en els logits N0/N1.
@@ -460,6 +463,7 @@ suma ponderada. Tot i la seva eficiència, aquestes estratègies ignoren la topo
 i col·lapsen tota la informació espacial en un sol pas.
 
 \subsection{Pooling Jeràrquic: DiffPool entre Capes GAT}
+\label{subsec:diffpool}
 
 Per superar les limitacions del \textit{readout} pla, s'implementa \textbf{DiffPool}
 \cite{ying2019hierarchicalgraphrepresentationlearning} com a operació intermèdia entre les capes
