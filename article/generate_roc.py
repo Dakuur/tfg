@@ -30,7 +30,6 @@ GAT_MODELS = [
         "config": "grid1",
         "label":  "GAT Baseline",
         "color":  "tab:blue",
-        "t_star": 0.133,
         "lw":     2.2,
         "ls":     "-",
         "zorder": 4,
@@ -39,7 +38,6 @@ GAT_MODELS = [
         "config": "sweep_diffpool199",
         "label":  "GAT+DiffPool",
         "color":  "tab:orange",
-        "t_star": 0.303,
         "lw":     1.8,
         "ls":     "--",
         "zorder": 3,
@@ -60,14 +58,21 @@ REFERENCE_POINTS = [
 
 
 def load_roc(configs_dir: Path, config_name: str):
-    """Carrega probs i labels de test d'un config i retorna (fpr, tpr, auc)."""
+    """Carrega probs, labels, t* i punt operatiu real d'un config."""
+    import json
     from sklearn.metrics import roc_auc_score
     d = configs_dir / f"config_{config_name}"
     probs  = np.load(d / "test_probs.npy").astype(np.float64)
     labels = np.load(d / "test_labels.npy").astype(np.int64)
     fpr, tpr, _ = roc_curve(labels, probs)
     auc = float(roc_auc_score(labels, probs))
-    return fpr, tpr, auc, probs, labels
+    results = json.loads((d / "final_results.json").read_text())
+    t_star = float(results["threshold_final"])
+    # Sens/spec al t* real — llegits del JSON, no interpolats sobre la corba
+    at_thr = results["test"]["at_threshold"]
+    op_fpr = 1.0 - float(at_thr["spec"])
+    op_tpr = float(at_thr["sens"])
+    return fpr, tpr, auc, t_star, op_fpr, op_tpr
 
 
 def main():
@@ -94,7 +99,7 @@ def main():
     # ── Corbes ROC dels models GAT ──────────────────────────────────────────
     for m in GAT_MODELS:
         try:
-            fpr, tpr, auc, probs, labels = load_roc(configs_dir, m["config"])
+            fpr, tpr, auc, t_star, op_fpr, op_tpr = load_roc(configs_dir, m["config"])
         except FileNotFoundError:
             print(f"  [!] Probs no trobats per a config '{m['config']}' — saltant")
             continue
@@ -103,12 +108,10 @@ def main():
                 color=m["color"], lw=m["lw"], ls=m["ls"], zorder=m["zorder"],
                 label=f"{m['label']}  (AUC = {auc:.3f})")
 
-        # Punt operatiu al llindar t*
-        from sklearn.metrics import roc_curve as _rc
-        fpr_all, tpr_all, thr_all = _rc(labels, probs)
-        # El punt més proper al t* a la corba ROC
-        idx = np.argmin(np.abs(thr_all - m["t_star"]))
-        ax.scatter(fpr_all[idx], tpr_all[idx],
+        # Punt operatiu exacte llegit del JSON (sens/spec a t*)
+        print(f"  {m['config']}: t*={t_star:.4f} → "
+              f"sens={op_tpr:.3f}, spec={1-op_fpr:.3f}")
+        ax.scatter(op_fpr, op_tpr,
                    color=m["color"], s=120, zorder=6,
                    edgecolors="black", linewidths=1.2)
 
