@@ -937,10 +937,7 @@ Un node correspon a un \textit{patch} de $2048\!\times\!2048$ px.}
 \node[draw, dashed, rounded corners=2pt, fill=red!4, font=\sffamily\scriptsize, align=left,
       right=0.7cm of diag, minimum width=3.2cm]
       (h-diag) {Llindar $t^*$\\$\in [0,1]$ (val.)};
-\node[draw, dashed, rounded corners=2pt, fill=red!4, font=\sffamily\scriptsize, align=left,
-      right=0.7cm of pru, minimum width=3.2cm]
-      (h-pru) {\textit{factor poda}};
-\foreach \a/\b in {mod/h-mod, agg/h-agg, diag/h-diag, pru/h-pru}
+\foreach \a/\b in {mod/h-mod, agg/h-agg, diag/h-diag}
   \draw[densely dotted] (\a) -- (\b);
 
 %% Ground truth
@@ -1207,10 +1204,10 @@ Taula~\ref{tab:configs-compare}.
 \textbf{Eix} & \textbf{Baseline (sel.)} & \textbf{DiffPool (millor)} \\
 \midrule
 \multicolumn{3}{l}{\textit{Arquitectura}} \\[2pt]
-\textit{Pooling}                          & \textit{attention} & --- \\
+\textit{Pooling}                          & \textit{attention} & \textit{mean\_max} \\
 $L$ (capes GAT)                           & $3$ & $3$ (= $L_{\text{DP}}+1$) \\
 $L_{\text{DP}}$ / $K_{\text{top}}, K_{\text{bot}}$ & ---/--- & $2$ / $50,\,3$ \\
-$\lambda_{\text{aux}}$ / Diff.\ readout   & ---/--- & $0{,}108$ / \textit{mean\_max} \\
+$\lambda_{\text{aux}}$                    & --- & $0{,}108$ \\
 \midrule
 \multicolumn{3}{l}{\textit{Compartits}} \\[2pt]
 $h$ / $H$ / \textit{Dropout}              & $256$ / $4$ / $0{,}3$ & $128$ / $2$ / $0{,}437$ \\

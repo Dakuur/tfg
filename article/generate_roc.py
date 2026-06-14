@@ -88,7 +88,7 @@ def main():
     if not configs_dir.exists():
         raise FileNotFoundError(f"No s'ha trobat {configs_dir}")
 
-    fig, ax = plt.subplots(figsize=(5.8, 5.5))
+    fig, ax = plt.subplots(figsize=(6.5, 6.2))
 
     # Diagonal
     ax.plot([0, 1], [0, 1], "k--", alpha=0.3, lw=1, zorder=1)
@@ -112,7 +112,7 @@ def main():
         print(f"  {m['config']}: t*={t_star:.4f} → "
               f"sens={op_tpr:.3f}, spec={1-op_fpr:.3f}")
         ax.scatter(op_fpr, op_tpr,
-                   color=m["color"], s=120, zorder=6,
+                   color=m["color"], s=140, zorder=6,
                    edgecolors="black", linewidths=1.2)
 
     # ── Punts de referència ─────────────────────────────────────────────────
@@ -124,14 +124,14 @@ def main():
                    edgecolors="black", linewidths=1.1,
                    label=p["label"])
 
-    ax.set_xlabel("1 $-$ Especificitat (FPR)", fontsize=10)
-    ax.set_ylabel("Sensibilitat (TPR)", fontsize=10)
+    ax.set_xlabel("1 $-$ Especificitat (FPR)", fontsize=13)
+    ax.set_ylabel("Sensibilitat (TPR)", fontsize=13)
     ax.set_xlim(-0.02, 1.02)
     ax.set_ylim(-0.02, 1.05)
-    ax.legend(loc="lower right", fontsize=7.5, framealpha=0.92,
+    ax.legend(loc="lower right", fontsize=10, framealpha=0.92,
               edgecolor="gray", ncol=1)
     ax.grid(alpha=0.22)
-    ax.tick_params(labelsize=8.5)
+    ax.tick_params(labelsize=11)
 
     plt.tight_layout()
     args.out.parent.mkdir(parents=True, exist_ok=True)
