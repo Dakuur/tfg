@@ -760,13 +760,14 @@ corbes ROC dels models més rellevants amb els punts operatius de les guies clí
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.48\textwidth]{img/roc_top5.pdf}
-\caption{Corbes ROC al conjunt de test (56 pacients) dels models comparats: \textbf{Grid \#1}
-(GAT Baseline; model seleccionat; AUC $=0{,}875$), Grid \#5 (AUC $=0{,}892$), sweep Baseline
-\#303 (AUC $=0{,}816$) i sweep DiffPool \#199 (AUC $=0{,}786$). El cercle gros marca el
-llindar $t^*\!=\!0{,}133$ del model seleccionat (Grid \#1), que assoleix sens.\ $=100\%$ i
-espec.\ $=57{,}5\%$ al test. $t^*$ s'ha derivat exclusivament del val set sense \textit{data
-leakage}. Es marquen els punts operatius publicats de JSCCR, NCCN, ESMO (quadrats) i
-LightGBM (diamant).}
+\caption{Corbes ROC al conjunt de test ($n\!=\!56$) del \textbf{GAT Baseline} (model
+seleccionat; AUC $=0{,}875$) i del \textbf{GAT+DiffPool} (millor configuració; AUC
+$=0{,}786$). Els cercles marquen els llindars $t^*$ de cada model (derivats del val
+set sense \textit{data leakage}): $t^*\!=\!0{,}133$ per al Baseline
+(sens.~$=\!100\%$, espec.~$=\!57{,}5\%$) i $t^*\!=\!0{,}303$ per al DiffPool
+(sens.~$=\!62{,}5\%$, espec.~$=\!70{,}0\%$). Es superposen els punts operatius de
+JSCCR, NCCN i ESMO (quadrats), \textit{LightGBM}~\cite{piao2023ai} (diamant)
+i Song et al.~\cite{song2024lnm} (triangle).}
 \label{fig:roc-top5}
 \end{figure}
 
