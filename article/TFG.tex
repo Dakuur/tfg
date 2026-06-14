@@ -948,7 +948,7 @@ Un node correspon a un \textit{patch} de $2048\!\times\!2048$ px.}
 \node[lbl, above=0.55cm of wsi] {\footnotesize Preparació\\de dades};
 \node[lbl, above=0.55cm of coo] {\footnotesize Construcció\\del graf};
 \node[lbl, above=0.55cm of mod] {\footnotesize Model};
-\node[lbl, above=0.55cm of h-mod] {\footnotesize Hiperparàm.};
+\node[lbl, above=0.55cm of h-mod] {\footnotesize Hiperparàmetres};
 \node[lbl, left=0.35cm of exc.west, anchor=east] {\footnotesize Ground\\truth};
 
 \end{tikzpicture}
@@ -1059,7 +1059,7 @@ d'optimització configurables.
     {$\mathbf{h}_s \in \mathbb{R}^{d}$\quad embedding per secció $s$};
 
 %% ─── Fork MIL: A = sobre probabilitats / B = sobre vectors ──────────────────
-\coordinate (emb_fk) at ($(emb.south)+(0,-0.5)$);
+\coordinate (emb_fk) at ($(emb.south)+(0,-1.05)$);
 
 %% Branca A (x = −2.5): MLP per secció → agrega P(N1) escalars
 \node[bblue, minimum width=3.9cm] (mil_mlp) at (-2.5,0 |- emb_fk)
@@ -1184,8 +1184,6 @@ $w_+$ (\textit{pos\_weight})              & $0{,}075$ & $0{,}046$ \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\newpage
 
 \subsection{Hiperparàmetres del model seleccionat i del millor DiffPool}
 \label{app:best-params}
