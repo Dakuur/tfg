@@ -48,7 +48,9 @@ def main():
             ax.plot(x_grid, kde(x_grid), color=color, lw=2.0)
 
     ax.axvline(t_star, color="black", linestyle="--", lw=1.5,
-               label=f"$t^*={t_star}$")
+               label=f"$t^*={t_star}$ (T2, TPR$=1$)")
+    ax.axvline(0.5, color="gray", linestyle=":", lw=1.3,
+               label="$t=0{,}5$ (T1/T3, Youden)")
 
     ax.set_xlabel("$P(\\mathrm{N1})$", fontsize=13)
     ax.set_ylabel("Densitat", fontsize=13)

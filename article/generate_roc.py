@@ -108,12 +108,30 @@ def main():
                 color=m["color"], lw=m["lw"], ls=m["ls"], zorder=m["zorder"],
                 label=f"{m['label']}  (AUC = {auc:.3f})")
 
-        # Punt operatiu exacte llegit del JSON (sens/spec a t*)
+        # Punt operatiu T2 exacte llegit del JSON (sens/spec a t*)
         print(f"  {m['config']}: t*={t_star:.4f} → "
               f"sens={op_tpr:.3f}, spec={1-op_fpr:.3f}")
         ax.scatter(op_fpr, op_tpr,
                    color=m["color"], s=140, zorder=6,
-                   edgecolors="black", linewidths=1.2)
+                   edgecolors="black", linewidths=1.2,
+                   label=f"{m['label']} T2 ($t^*\\!=\\!{t_star:.3f}$, TPR$=1$)" if m["config"] == "grid1" else None)
+
+        # Punt operatiu T1/T3 (t=0.5 = Youden) — només per al Baseline
+        if m["config"] == "grid1":
+            probs_t  = np.load(configs_dir / f"config_{m['config']}/test_probs.npy").astype(np.float64)
+            labels_t = np.load(configs_dir / f"config_{m['config']}/test_labels.npy").astype(np.int64)
+            pred_t1  = (probs_t >= 0.5).astype(int)
+            tp_ = int(((pred_t1 == 1) & (labels_t == 1)).sum())
+            fp_ = int(((pred_t1 == 1) & (labels_t == 0)).sum())
+            fn_ = int(((pred_t1 == 0) & (labels_t == 1)).sum())
+            tn_ = int(((pred_t1 == 0) & (labels_t == 0)).sum())
+            sens_t1 = tp_ / (tp_ + fn_) if (tp_ + fn_) > 0 else 0.0
+            spec_t1 = tn_ / (tn_ + fp_) if (tn_ + fp_) > 0 else 0.0
+            print(f"  {m['config']}: T1/T3 t=0.5 → sens={sens_t1:.3f}, spec={spec_t1:.3f}")
+            ax.scatter(1 - spec_t1, sens_t1,
+                       color=m["color"], s=120, zorder=7,
+                       marker="^", edgecolors="black", linewidths=1.2,
+                       label=f"{m['label']} T1/T3 ($t\\!=\\!0{{,}}5$, Youden)")
 
     # ── Punts de referència ─────────────────────────────────────────────────
     for p in REFERENCE_POINTS:

@@ -591,9 +591,15 @@ sense perdre cap N1. S'apliquen tres mecanismes complementaris:
   \item \textbf{Partició estratificada} per pacient (manté la proporció N0/N1 a cada subconjunt).
   \item \textbf{Pesos a la \textit{cross-entropy}} amb pes positiu $w_+$ (multiplicador del
         gradient per a la classe N1) com a eix d'optimització, $w_+ \in [1{,}5,\,8]$.
-  \item \textbf{Llindar operatiu derivat del val} ($t^*$): es selecciona el llindar més alt
-        sobre la corba ROC del \textit{validation set} de cada \textit{fold} que manté
-        TPR$=1$; la mediana entre \textit{folds} és el llindar final aplicat al test.
+  \item \textbf{Llindar operatiu derivat del val} ($t^*$): s'han avaluat tres criteris de
+        derivació del llindar a partir dels \textit{val sets} del 5-\textit{fold} CV:
+        (T1) llindar fix $t\!=\!0{,}5$;
+        (T2) llindar màxim de la corba ROC del val que manté TPR$\!=\!1$
+        (zero falsos negatius en validació);
+        (T3) llindar al punt de la corba ROC més proper a $(0,1)$
+        (màxim índex de Youden, $\text{sens}+\text{spec}-1$).
+        Per a T2 i T3, es calcula el llindar a cada \textit{fold} i se n'aplica la
+        mediana al test; per a T1, s'usa directament $t\!=\!0{,}5$.
 \end{itemize}
 
 \subsection{Mètriques d'avaluació}
@@ -725,19 +731,26 @@ IBC Score \cite{dawson2024budding} & Puntuació histopat. & $90\%$ & $26\%$ & $0
 \multicolumn{6}{l}{\textit{Models d'IA}} \\[2pt]
 LightGBM \cite{piao2023ai}                          & Var.\ clinicopatol. & $100\%$  & $85{,}8\%$ & $0{,}960$ & $92{,}9\%$ \\
 Song et al.\ \cite{song2024lnm}                     & Imatge WSI & $92{,}9\%$ & $57{,}6\%$ & $0{,}781$ & $75{,}3\%$ \\
-\textbf{GAT (aquest TFG, llindar $0{,}5$)}          & \textbf{Imatge WSI} & $56{,}2\%$ & $92{,}5\%$ & $0{,}875$ & $74{,}4\%$ \\
-\textbf{GAT (aquest TFG, llindar $t^*\!=\!0{,}133$)$^{\dagger}$} & \textbf{Imatge WSI} & $\mathbf{100\%}$ & $57{,}5\%$ & $0{,}875$ & $78{,}8\%$ \\
+\textbf{GAT (T1: $t\!=\!0{,}5$)}                                & \textbf{Imatge WSI} & $56{,}2\%$ & $92{,}5\%$ & $0{,}875$ & $74{,}4\%$ \\
+\textbf{GAT (T2: $t^*\!=\!0{,}133$, TPR$=1$)$^{\dagger}$}      & \textbf{Imatge WSI} & $\mathbf{100\%}$ & $57{,}5\%$ & $0{,}875$ & $78{,}8\%$ \\
+\textbf{GAT (T3: $t^*\!=\!0{,}523$, dist-ROC)$^{\ddagger}$}    & \textbf{Imatge WSI} & $56{,}2\%$ & $92{,}5\%$ & $0{,}875$ & $74{,}4\%$ \\
 \bottomrule
 \end{tabular}\\[2pt]
-\footnotesize{$^{\dagger}$\,$t^*$ s'ha determinat com a mediana dels 5 llindars dels \textit{val sets}
-dels folds CV (sens=$100\%$ en cada fold), aplicat al test sense reajustar.}
+\footnotesize{$^{\dagger}$\,T2: $t^*$ és la mediana dels llindars màxims amb TPR$=1$ als 5 \textit{val sets}.
+$^{\ddagger}$\,T3: $t^*$ és la mediana dels llindars al punt ROC de mínima dist.\ a $(0,1)$ (màx.\ Youden).
+T1 i T3 coincideixen en aquest model (el punt Youden òptim cau a $t\!\approx\!0{,}5$, llindar natural de la sigmoid).}
 \end{table*}
 
-En la detecció de metàstasi, un fals negatiu (no tractar un pacient N1) és un error inacceptable,
-mentre que un fals positiu (cirurgia innecessària) és recuperable. Per això el punt operatiu
-desitjat és el que toca \textbf{la part superior} (sens.\ $=\!100\%$) i alhora queda \textbf{tan
-a l'esquerra com sigui possible} (espec.\ màxima). La Figura~\ref{fig:roc-top5} superposa les
-corbes ROC dels models més rellevants amb els punts operatius de les guies clíniques.
+La comparació dels tres criteris de llindar mostra que \textbf{T2 és l'única opció clínicament
+acceptable}: T1 ($t\!=\!0{,}5$) i T3 (màx.\ Youden) coincideixen en aquest model i deixen $7$ de
+$16$ pacients N1 sense detectar (\textbf{FN$=7$}), la qual cosa és inacceptable en un context
+d'oncologia. T2 ($t^*\!=\!0{,}133$, TPR$=1$) garanteix zero falsos negatius
+(\textbf{sens.$=100\%$}, \textbf{VPN$=1{,}000$}): qualsevol pacient classificat com a N0 no té
+metàstasi. L'especificitat resultant ($57{,}5\%$) supera la guia JSCCR ($19\%$) i l'IBC Score
+($26\%$), i és comparable a NCCN ($52\%$) i ESMO ($50\%$). El fet que T3 coincideixi amb T1
+indica que el punt òptim de Youden d'aquest model recau al voltant de $t\!=\!0{,}5$: el model
+discrimina bé però sense biaix sistemàtic cap a cap classe al llindar neutre de la sigmoid.
+La Figura~\ref{fig:roc-top5} superposa les corbes ROC amb els punts operatius de cada llindar i les guies clíniques.
 
 \begin{figure}[h]
 \centering
@@ -825,14 +838,14 @@ La prevalença N1 al test ($28{,}6\%$) supera la clínica real ($\sim\!8$–$15\
 s'ha d'interpretar amb cautela (vegeu la Discussió).
 
 \textbf{(4) Selecció del llindar i biaix del val set.}
-Per maximitzar la sensibilitat, s'ha buscat el primer punt de la corba ROC del val set de
-cada fold del model seleccionat en què TPR$=\!1{,}0$, i s'ha pres la mediana
-sobre els 5 folds com a $t^*\!=\!0{,}133$. Aplicat al test, manté sens.\ $=\!100\%$
-amb espec.\ $=57{,}5\%$. El val set ja s'havia usat per a \textit{early stopping}, per
-la qual cosa $t^*$ pot tenir un biaix lleugerament optimista; idealment, hauria de
-fixar-se sobre un val set extern. La variància del llindar entre folds també és alta
-($\sigma_{t^*}\!\approx\!0{,}08$), reflectint la sensibilitat del procediment a la
-divisió de dades.
+S'han comparat tres criteris de llindar derivats del val set (T1: fix $0{,}5$; T2: màx.\ TPR$=1$;
+T3: mínima dist.\ ROC a $(0,1)$). El criteri T2 ($t^*\!=\!0{,}133$) és l'únic que garanteix
+sens.\ $=\!100\%$ al test. T1 i T3 donen resultats idèntics ($t\!\approx\!0{,}5$, FN$=7$),
+inacceptables en cribratge oncològic. El val set s'havia usat per a \textit{early stopping},
+per la qual cosa $t^*$ pot tenir un biaix lleugerament optimista; idealment, hauria de
+fixar-se sobre un val set extern. La variància del llindar entre folds és alta
+($\sigma_{t^*}\!\approx\!0{,}08$, folds: $0{,}03$--$0{,}29$), reflectint la sensibilitat
+del procediment a la divisió de dades.
 
 \subsection{Conclusions}
 
