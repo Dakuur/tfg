@@ -1027,12 +1027,6 @@ d'optimització configurables.
     {$L\!\in\!\{2,3,4\}$;\quad$h\!\in\!\{64,128,256\}$\\
      $H\!\in\!\{2,4\}$;\quad drop.$\,\in[0{,}05,\,0{,}5]$};
 
-\node[bblue, below=0.35cm of b_gat_opt] (b_ro)
-    {\textit{Readout} global};
-
-\node[opt, below=0.35cm of b_ro] (b_ro_opt)
-    {mean $\cdot$ max $\cdot$ mean\_max $\cdot$ attention};
-
 %% ─── DIFFPOOL (right) ───────────────────────────────────────────────────────
 \node[font=\small\bfseries\sffamily, text=blue!70!black]
      at (4.4,-1.3) {\footnotesize\textsc{DiffPool}};
@@ -1052,22 +1046,25 @@ d'optimització configurables.
 \node[bblue, below=0.35cm of d_dpn] (d_gatn)
     {GAT$_{L_{\text{DP}}+1}$};
 
-\node[opt, below=0.35cm of d_gatn] (d_dp_opt)
+\node[opt, below=0.35cm of d_gatn, minimum width=4.2cm] (d_dp_opt)
     {$L_{\text{DP}}\!\in\!\{1,2,3\}$;\;
      $K_{\text{top}}\!\in\!\{10,25,50\}$\\
      $K_{\text{bot}}\!\in\!\{3,5,10\}$;\;
-     $\lambda_{\text{aux}}\!\in\![0{,}1,10]$};
+     $\lambda_{\text{aux}}\!\in\![0{,}1,10]$\\
+     $h\!\in\!\{64,128,256\}$;\;
+     $H\!\in\!\{2,4\}$;\; drop.$\,\in[0{,}05,\,0{,}5]$};
 
-\node[bblue, below=0.35cm of d_dp_opt] (d_ro)
-    {\textit{Diff readout} final};
+%% ─── Readout unificat ────────────────────────────────────────────────────────
+\coordinate (ro_y) at ($(d_dp_opt.south)+(0,-0.65)$);
+\node[bblue, minimum width=8.2cm] (ro_block) at (0,0 |- ro_y)
+    {\textit{Readout}: embedding per secció};
+\node[opt, minimum width=8.2cm, below=0.35cm of ro_block] (ro_opt)
+    {mean $\cdot$ max $\cdot$ mean\_max $\cdot$ attention
+     \quad{\footnotesize(optimitzat per separat a cada branca)}};
 
-\node[opt, below=0.35cm of d_ro] (d_ro_opt)
-    {mean $\cdot$ max $\cdot$ mean\_max $\cdot$ attention};
-
-%% ─── Merge ───────────────────────────────────────────────────────────────────
-\coordinate (bot_d) at ($(d_ro_opt.south)+(0,-0.65)$);
-\node[mid] (emb) at (0,0 |- bot_d)
-    {$\mathbf{h}_s \in \mathbb{R}^{d}$\quad embedding per secció $s$};
+%% ─── Embedding ───────────────────────────────────────────────────────────────
+\node[mid, below=0.5cm of ro_opt] (emb)
+    {$\mathbf{h}_s \in \mathbb{R}^{h}$\quad embedding per secció $s$};
 
 %% ─── Fork MIL: A = sobre probabilitats / B = sobre vectors ──────────────────
 \coordinate (emb_fk) at ($(emb.south)+(0,-1.05)$);
@@ -1104,9 +1101,7 @@ d'optimització configurables.
 \draw[arr] (in.south) -- ++(0,-0.35) -| (d_gat1.north);
 
 %% ─── Baseline ────────────────────────────────────────────────────────────────
-\draw[arr] (b_gat)     -- (b_gat_opt);
-\draw[arr] (b_gat_opt) -- (b_ro);
-\draw[arr] (b_ro)      -- (b_ro_opt);
+\draw[arr] (b_gat) -- (b_gat_opt);
 
 %% ─── DiffPool ────────────────────────────────────────────────────────────────
 \draw[arr] (d_gat1)   -- (d_dp1);
@@ -1114,12 +1109,12 @@ d'optimització configurables.
 \draw[arr] (d_vdots)  -- (d_dpn);
 \draw[arr] (d_dpn)    -- (d_gatn);
 \draw[arr] (d_gatn)   -- (d_dp_opt);
-\draw[arr] (d_dp_opt) -- (d_ro);
-\draw[arr] (d_ro)     -- (d_ro_opt);
 
-%% ─── Convergència arquitectures → embedding ──────────────────────────────────
-\draw[arr] (b_ro_opt.south) |- (emb.west);
-\draw[arr] (d_ro_opt.south) |- (emb.east);
+%% ─── Convergència arquitectures → readout unificat ───────────────────────────
+\draw[arr] (b_gat_opt.south) to[out=-90, in=180] (ro_block.west);
+\draw[arr] (d_dp_opt.south)  to[out=-90, in=0]   (ro_block.east);
+\draw[arr] (ro_block) -- (ro_opt);
+\draw[arr] (ro_opt)   -- (emb);
 
 %% ─── Fork MIL ────────────────────────────────────────────────────────────────
 \draw[arr] (emb.south) -- ++(0,-0.1) -| (mil_mlp.north);
@@ -1135,16 +1130,18 @@ d'optimització configurables.
 \end{tikzpicture}
 \caption{Variants d'arquitectura del \textit{GATClassifier}: el mateix graf
 $\mathcal{G}$ es pot processar per dues branques configurables
-(\textsc{Baseline} o \textsc{DiffPool}), cadascuna amb la seva pròpia
-estratègia de \textit{readout} intra-secció (caixes taronges discontínues).
-Totes dues convergeixen en un embedding $\mathbf{h}_s$ per secció.
+(\textsc{Baseline} o \textsc{DiffPool}). Totes dues convergeixen en un
+\textit{readout} unificat (caixes portocalles) que produeix l'embedding
+$\mathbf{h}_s \in \mathbb{R}^{h}$ per secció; l'opció de \textit{readout}
+s'optimitza de forma independent per a cada branca.
 L'agregació MIL bifurca de nou: \textbf{mean/max/noisy-OR} apliquen el MLP
-per secció per obtenir $P(\text{N1})_s$ i n'agreguen els \emph{escalars};
-\textbf{attention (gated)} agrega primer els \emph{vectors} $\mathbf{h}_s$
-(amb pesos d'atenció apresos) i aplica el MLP \emph{una sola vegada}.
+per secció i n'agreguen els \emph{escalars}; \textbf{attention (gated)} agrega
+primer els \emph{vectors} $\mathbf{h}_s$ amb pesos d'atenció \textbf{apresos}
+(matrius $\mathbf{V},\mathbf{U}$ i vector $\mathbf{w}$~\cite{ilse2018attentionbaseddeepmultipleinstance})
+i aplica el MLP \emph{una sola vegada} sobre l'embedding agregat.
 $L$: capes GAT; $h$: dim.\ oculta; $H$: caps d'atenció;
 $L_{\text{DP}}$: blocs DiffPool; $K_\ell$: super-nodes per nivell;
-$\lambda_{\text{aux}}$: pes de la pèrdua auxiliar de DiffPool;
+$\lambda_{\text{aux}}$: pes pèrdua auxiliar DiffPool;
 $t^*$: llindar derivat del val set (Secció~\ref{sec:training-scheme}).}
 \label{fig:gat-variants}
 \end{figure}
@@ -1211,23 +1208,28 @@ Taula~\ref{tab:configs-compare}.
 \toprule
 \textbf{Eix} & \textbf{Baseline (sel.)} & \textbf{DiffPool (millor)} \\
 \midrule
-\multicolumn{3}{l}{\textit{Arquitectura}} \\[2pt]
-$L$ (capes GAT)                           & $3$ & $3$ (= $L_{\text{DP}}+1$) \\
-$L_{\text{DP}}$ / $K_{\text{top}}, K_{\text{bot}}$ & ---/--- & $2$ / $50,\,3$ \\
-$\lambda_{\text{aux}}$                    & --- & $0{,}108$ \\
+\multicolumn{3}{l}{\textit{Arquitectura --- Baseline}} \\[2pt]
+$L$ (capes GAT)                          & $3$                      & --- \\
+$h$ / $H$ / \textit{Dropout}             & $256$ / $4$ / $0{,}3$    & --- \\
+\textit{Readout}                         & \textit{attention}       & --- \\
 \midrule
-\multicolumn{3}{l}{\textit{Compartits}} \\[2pt]
-\textit{Readout} (final del graf)         & \textit{attention} & \textit{mean\_max} \\
-$h$ / $H$ / \textit{Dropout}              & $256$ / $4$ / $0{,}3$ & $128$ / $2$ / $0{,}437$ \\
-MIL                                       & \textit{mean} & \textit{mean} \\
-$\eta$ / $\lambda_{\text{wd}}$ / $w_+$    & $3\!\cdot\!10^{-4}$ / $10^{-4}$ / $2{,}0$ & $5{,}3\!\cdot\!10^{-4}$ / $5{,}5\!\cdot\!10^{-3}$ / $3{,}52$ \\
-\textit{Optimizer} / \textit{Scheduler}   & \textit{adam} / \textit{plateau} & \textit{adam} / \textit{cosine} \\
+\multicolumn{3}{l}{\textit{Arquitectura --- DiffPool}} \\[2pt]
+$L$ (= $L_{\text{DP}}+1$)               & ---                      & $3$ \\
+$L_{\text{DP}}$ / $K_{\text{top}},K_{\text{bot}}$ & ---           & $2$ / $50,\,3$ \\
+$h$ / $H$ / \textit{Dropout}             & ---                      & $128$ / $2$ / $0{,}437$ \\
+$\lambda_{\text{aux}}$                   & ---                      & $0{,}108$ \\
+\textit{Readout}                         & ---                      & \textit{mean\_max} \\
+\midrule
+\multicolumn{3}{l}{\textit{Entrenament i regularització}} \\[2pt]
+MIL                                      & \textit{mean}            & \textit{mean} \\
+$\eta$ / $\lambda_{\text{wd}}$ / $w_+$   & $3\!\cdot\!10^{-4}$ / $10^{-4}$ / $2{,}0$ & $5{,}3\!\cdot\!10^{-4}$ / $5{,}5\!\cdot\!10^{-3}$ / $3{,}52$ \\
+\textit{Optimizer} / \textit{Scheduler}  & \textit{adam} / \textit{plateau} & \textit{adam} / \textit{cosine} \\
 \midrule
 \multicolumn{3}{l}{\textit{Mètriques re-avaluades al test}} \\[2pt]
-AUC CV ($\pm$std)                         & $0{,}862\!\pm\!0{,}038$ & $0{,}847\!\pm\!0{,}048$ \\
-AUC test                                  & $\mathbf{0{,}875}$ & $0{,}786$ \\
-Sens.\ / Espec.\ test @$t^*$              & $\mathbf{1{,}000\,/\,0{,}575}$ & $0{,}625\,/\,0{,}700$ \\
-$t^*$                                     & $0{,}133$ & $0{,}303$ \\
+AUC CV ($\pm$std)                        & $0{,}862\!\pm\!0{,}038$  & $0{,}847\!\pm\!0{,}048$ \\
+AUC test                                 & $\mathbf{0{,}875}$       & $0{,}786$ \\
+Sens.\ / Espec.\ test @$t^*$             & $\mathbf{1{,}000\,/\,0{,}575}$ & $0{,}625\,/\,0{,}700$ \\
+$t^*$                                    & $0{,}133$                & $0{,}303$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1262,7 +1264,8 @@ d'arquitectura on s'apliquen. La cerca es fa amb \textit{TPE} (Optuna); cada \te
 una configuració amb 5-\textit{fold} CV sobre el \textit{pool} train+val. Les dues arquitectures
 s'optimitzen en \textbf{estudis Optuna aïllats} (SQLite separats): els eixos específics de cada
 arquitectura no es barregen, i els eixos comuns s'optimitzen de forma independent per a cada branca.
-La millor configuració trobada es marcaria en negreta al final de la cerca.
+El llindar operatiu $t^*$ \textbf{no és un hiperparàmetre optimitzat}: es calcula de forma
+determinista sobre cada \textit{val set} (llindar màxim amb TPR$=1$) i no forma part de l'espai de cerca.
 
 \begin{table}[H]
 \centering
@@ -1298,8 +1301,7 @@ Taxa aprenentatge       & ambdues (indep.)   & $[5\cdot10^{-5},\,5\cdot10^{-3}]$
 \textit{Grad. clipping} & ambdues (indep.)   & 0, 1, 5                                         & categòric \\
 \midrule
 \multicolumn{4}{l}{\textit{Tractament del desbalanceig}} \\[2pt]
-Pes de la classe N1 ($w_+$) & ambdues (indep.) & $[1{,}5,\,8]$                               & uniforme \\
-Llindar $t^*$           & post-CV            & sobre la corba ROC del val, condició TPR$=1$    & determinista \\
+Pes de la classe N1 ($w_+$) & ambdues (indep.) & $[1{,}5,\,8{,}0]$ (continu)                & uniforme \\
 \bottomrule
 \end{tabular}
 \end{table}
