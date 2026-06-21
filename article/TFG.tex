@@ -1264,8 +1264,6 @@ d'arquitectura on s'apliquen. La cerca es fa amb \textit{TPE} (Optuna); cada \te
 una configuració amb 5-\textit{fold} CV sobre el \textit{pool} train+val. Les dues arquitectures
 s'optimitzen en \textbf{estudis Optuna aïllats} (SQLite separats): els eixos específics de cada
 arquitectura no es barregen, i els eixos comuns s'optimitzen de forma independent per a cada branca.
-El llindar operatiu $t^*$ \textbf{no és un hiperparàmetre optimitzat}: es calcula de forma
-determinista sobre cada \textit{val set} (llindar màxim amb TPR$=1$) i no forma part de l'espai de cerca.
 
 \begin{table}[H]
 \centering
