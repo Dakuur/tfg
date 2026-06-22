@@ -450,8 +450,8 @@ Sobre la base de capes GAT descrita abans es comparen dues arquitectures que es 
 mostra una instància de cadascuna, i l'Annex~\ref{app:model-variants} en presenta un diagrama
 detallat amb tots els eixos configurables.
 
-\textbf{GAT Baseline (plana).} Apila $L$ capes GAT consecutives ($L \in \{2,3,4\}$, eix
-d'optimització) que operen sempre sobre els $N$ nodes originals del graf, sense reduir-lo. Tota la
+\textbf{GAT Baseline (plana).} Apila $L$ capes GAT consecutives ($L$ optimitzable)
+que operen sempre sobre els $N$ nodes originals del graf, sense reduir-lo. Tota la
 informació espacial es manté fins al \textit{readout} final.
 
 \textbf{GAT+DiffPool (jeràrquica).} Intercala blocs \textbf{DiffPool}
@@ -464,7 +464,7 @@ que sumen 1 (la sortida d'un petit MLP per node seguida de \textit{softmax}). A 
 assignació, les \textit{features} dels nodes s'agreguen com a mitjana ponderada per formar les dels
 super-nodes, i les arestes originals es projecten al nou graf, de manera que el graf passa de $N$ a
 $K \ll N$ nodes conservant una versió comprimida de la seva estructura. El nombre de blocs intercalats
-és un eix d'optimització, $L_{\text{DP}} \in \{1, 2, 3\}$, amb una capa GAT abans, entre i després de
+és un eix d'optimització, $L_{\text{DP}}$, amb una capa GAT abans, entre i després de
 cada un (total $L_{\text{DP}}+1$ capes GAT).
 
 \textbf{Pèrdua auxiliar de DiffPool.} Per cada bloc s'afegeixen dos termes de regularització sobre
