@@ -370,16 +370,17 @@ superen el doble de la longitud mitjana, per evitar connexions massa llargues. E
 \subsection{Visió general del pipeline}
 \label{sec:pipeline-overview}
 
-A alt nivell, el sistema es pot resumir en quatre blocs encadenats
+A alt nivell, el sistema es pot resumir en cinc blocs encadenats
 (Figura~\ref{fig:pipeline-overview}): \textbf{(1) Preprocessament}, que converteix cada WSI en
 un graf espacial (extracció de \textit{patches} 2048$\times$2048, embedding CLS $[1, 1536]$ amb el
 model \textit{foundation} UNI2 i construcció del graf de Delaunay amb poda d'arestes);
 \textbf{(2) Arquitectura}, on les capes GAT propaguen la informació pel graf segons una de les
 dues variants comparades (\textit{baseline} plana o amb DiffPool jeràrquic);
 \textbf{(3) Readout}, la lectura final que col·lapsa el graf en un únic embedding (mean, max,
-mean\_max o attention), \textbf{idèntica per a totes dues arquitectures}; i \textbf{(4) MIL}, que
-agrega les prediccions de les seccions d'un pacient (mean, max, noisy-OR o attention) abans de la
-decisió final amb el llindar $t^*$ derivat del \textit{validation set}.
+mean\_max o attention), \textbf{idèntica per a totes dues arquitectures}; \textbf{(4) MIL}, que
+agrega les prediccions de les seccions d'un pacient (mean, max, noisy-OR o attention); i
+\textbf{(5) Decisió}, on s'aplica el llindar $t^*$ derivat del \textit{validation set} per
+obtenir la classificació binària N0/N1.
 
 \begin{figure}[h]
 \centering
@@ -392,12 +393,14 @@ decisió final amb el llindar $t^*$ derivat del \textit{validation set}.
 \node[block, fill=blue!6]  (pre)  {\textbf{1. Preprocessament}\\[1pt]\scriptsize\textit{patches} 2048$\times$2048 $\to$ embedding CLS $[1,1536]$ (UNI2) $\to$ graf de Delaunay};
 \node[block, fill=orange!8, below=of pre]  (arch) {\textbf{2. Arquitectura}\\[1pt]\scriptsize capes GAT: variant \textit{baseline} (plana) o amb DiffPool jeràrquic};
 \node[block, fill=green!8, below=of arch]  (read) {\textbf{3. Readout}\\[1pt]\scriptsize lectura final del graf (mean, max, mean\_max, attention), idèntica per a les dues variants};
-\node[block, fill=red!6, below=of read]    (mil)  {\textbf{4. MIL}\\[1pt]\scriptsize agregació per pacient (mean, max, noisy-OR, attention) $\to$ llindar $t^*$};
+\node[block, fill=red!6, below=of read]    (mil)  {\textbf{4. MIL}\\[1pt]\scriptsize agregació per pacient (mean, max, noisy-OR, attention) $\to$ $P(\text{N1})$};
+\node[block, fill=gray!8, below=of mil]    (thr)  {\textbf{5. Decisió}\\[1pt]\scriptsize llindar $t^*$ derivat del \textit{val} $\to$ classificació N0\,/\,N1};
 \draw[arr] (pre) -- (arch);
 \draw[arr] (arch) -- (read);
 \draw[arr] (read) -- (mil);
+\draw[arr] (mil) -- (thr);
 \end{tikzpicture}
-\caption{Visió general del \textit{pipeline} en quatre blocs.}
+\caption{Visió general del \textit{pipeline} en cinc blocs.}
 \label{fig:pipeline-overview}
 \end{figure}
 
@@ -512,19 +515,31 @@ Per evitar aquest problema, s'utilitza el paradigma d'\textbf{aprenentatge per m
 làmines comparteixen la mateixa etiqueta. El model aprèn a classificar el pacient a partir de les
 seves seccions, sense necessitat d'etiquetes individuals per làmina.
 
-Donades les probabilitats $\{p_i = P(\text{N1}_i)\}_{i=1}^{S}$ de les $S$ làmines d'un pacient,
-s'implementen quatre estratègies d'agregació:
+Depenent de l'estratègia MIL, el \textbf{capçal MLP}
+(\textit{Linear}($h$)~$\to$~ReLU~$\to$~\textit{Dropout}~$\to$~\textit{Linear}($2$)) s'aplica
+en moments diferents del flux, on $h$ és la dimensió oculta del sweep ($\in\{64,128,256\}$):
 
 \begin{itemize}
-    \item \textbf{Mean}: $P(\text{N1}_{p}) = \frac{1}{S}\sum_i p_i$. Mitjana aritmètica.
-    \item \textbf{Noisy-OR}: $P(\text{N1}_{p}) = 1 - \prod_{i=1}^{S}(1 - p_i)$. N'hi ha prou
-    amb una làmina amb metàstasi per marcar el pacient com N1.
-    \item \textbf{Max}: $P(\text{N1}_{p}) = \max_i\, p_i$. Conservadora, basada en l'evidència
-    màxima.
-    \item \textbf{Attention MIL}: pes d'atenció aprenent (\textit{gated attention} d'Ilse et
-    al.~\cite{ilse2018attentionbaseddeepmultipleinstance}) per a cada làmina a partir del seu
-    embedding GAT, i suma ponderada dels embeddings per obtenir la representació del pacient.
+    \item \textbf{Mean, Max, Noisy-OR}: el MLP s'aplica \textbf{per secció}, convertint
+    cada embedding $\mathbf{h}_s\in\mathbb{R}^{h}$ en $P(\text{N1})_s\in[0,1]$; les
+    probabilitats de les $S$ seccions s'agreguen a continuació com a escalars:
+    \begin{itemize}\itemsep0pt
+        \item \textbf{Mean}: $P(\text{N1}_{p}) = \frac{1}{S}\sum_i p_i$.
+        \item \textbf{Max}: $P(\text{N1}_{p}) = \max_i\,p_i$.
+        \item \textbf{Noisy-OR}: $P(\text{N1}_{p}) = 1 - \prod_{i}(1 - p_i)$.
+    \end{itemize}
+    \item \textbf{Attention MIL} (\textit{gated}, Ilse et al.~\cite{ilse2018attentionbaseddeepmultipleinstance}):
+    els embeddings $\{\mathbf{h}_s\}$ s'agreguen primer en un únic vector de pacient
+    $\mathbf{h}_p = \sum_i a_i\,\mathbf{h}_i$, on els pesos $a_i = \text{softmax}(\mathbf{w}^\top
+    (\tanh(\mathbf{V}\mathbf{h}_i)\odot\sigma(\mathbf{U}\mathbf{h}_i)))$; i el MLP
+    s'aplica \textbf{una sola vegada} sobre $\mathbf{h}_p$. Les matrius
+    $\mathbf{V},\mathbf{U}\in\mathbb{R}^{128\times h}$ i el vector $\mathbf{w}$
+    són paràmetres \textbf{apresos} conjuntament amb la resta del model (la dimensió
+    interna~128 és fixa, no és un eix del \textit{sweep}).
 \end{itemize}
+
+Els pesos del MLP (tots els casos) són \textbf{apresos per retropropagació}; la seva dimensió
+$h$ és un hiperparàmetre del \textit{sweep} (optimitzat per Optuna, valor seleccionat: $h=256$).
 
 \section{Disseny Experimental}
 
@@ -875,23 +890,18 @@ des del primer dia d'universitat fins al darrer.
 
 \clearpage
 \onecolumn
+\raggedbottom
 \appendix
-
-\section*{Apèndix}
-
 \setcounter{section}{1}
 
 \subsection{Exemple d'anotació i màscara de segmentació}
 \label{app:mask}
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1.0\textwidth]{img/mascara.png}
-    \caption{Exemple de WSI i la seva corresponent màscara de segmentació, amb les regions
-    anotades per la patòloga codificades per color (vermell: infiltració, blau: displàsia,
-    verd clar: combinada).}
-    \label{fig-mask}
-\end{figure}
+\noindent\includegraphics[width=1.0\textwidth]{img/mascara.png}
+\captionof{figure}{Exemple de WSI i la seva corresponent màscara de segmentació, amb les regions
+anotades per la patòloga codificades per color (vermell: infiltració, blau: displàsia,
+verd clar: combinada).}
+\label{fig-mask}
 
 \subsection{Diagrama de flux detallat del \textit{pipeline}}
 \label{app:pipeline-full}
