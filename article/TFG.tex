@@ -1059,8 +1059,7 @@ d'optimització configurables.
 \node[bblue, minimum width=8.2cm] (ro_block) at (0,0 |- ro_y)
     {\textit{Readout}: embedding per secció};
 \node[opt, minimum width=8.2cm, below=0.35cm of ro_block] (ro_opt)
-    {mean $\cdot$ max $\cdot$ mean\_max $\cdot$ attention
-     \quad{\footnotesize(optimitzat per separat a cada branca)}};
+    {mean $\cdot$ max $\cdot$ mean\_max $\cdot$ attention};
 
 %% ─── Embedding ───────────────────────────────────────────────────────────────
 \node[mid, below=0.5cm of ro_opt] (emb)
@@ -1137,7 +1136,6 @@ s'optimitza de forma independent per a cada branca.
 L'agregació MIL bifurca de nou: \textbf{mean/max/noisy-OR} apliquen el MLP
 per secció i n'agreguen els \emph{escalars}; \textbf{attention (gated)} agrega
 primer els \emph{vectors} $\mathbf{h}_s$ amb pesos d'atenció \textbf{apresos}
-(matrius $\mathbf{V},\mathbf{U}$ i vector $\mathbf{w}$~\cite{ilse2018attentionbaseddeepmultipleinstance})
 i aplica el MLP \emph{una sola vegada} sobre l'embedding agregat.
 $L$: capes GAT; $h$: dim.\ oculta; $H$: caps d'atenció;
 $L_{\text{DP}}$: blocs DiffPool; $K_\ell$: super-nodes per nivell;
