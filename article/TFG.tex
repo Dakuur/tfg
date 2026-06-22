@@ -517,7 +517,7 @@ seves seccions, sense necessitat d'etiquetes individuals per làmina.
 
 En tots els casos, el capçal \textbf{MLP} té la mateixa estructura:
 \textit{Linear}($h$)~$\to$~ReLU~$\to$~\textit{Dropout}~$\to$~\textit{Linear}($2$), on
-$h\in\{64,128,256\}$ és la dimensió oculta del sweep i la sortida és un parell de logits (N0/N1);
+$h$ és la dimensió oculta (hiperparàmetre del sweep) i la sortida és un parell de logits (N0/N1);
 els pesos s'aprenen per retropropagació. La diferència entre estratègies és \emph{quan} s'aplica:
 
 \begin{itemize}
