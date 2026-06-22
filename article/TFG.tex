@@ -645,13 +645,13 @@ test). La Taula~\ref{tab:configs-compare} en resumeix les més rellevants.
 5-\textit{fold}. \textbf{Fila ressaltada}: model seleccionat.}
 \label{tab:configs-compare}
 \small
-\begin{tabular}{lcccc}
+\begin{tabular}{lccc}
 \toprule
-\textbf{Config} & \textbf{Arq.} & \textbf{Readout/MIL}
+\textbf{Arquitectura} & \textbf{Readout/MIL}
   & \textbf{$h$/$H$/drop} & \textbf{AUC CV} \\
 \midrule
-\textbf{Baseline (sel.)} & \textbf{Base.} & \textbf{att/mean}      & $\mathbf{256/4/0{,}3}$ & $\mathbf{0{,}862\!\pm\!0{,}038}$ \\
-DiffPool (millor)       & DiffPool & mean\_max/mean & $128/2/0{,}44$ & $0{,}847\!\pm\!0{,}048$ \\
+\textbf{Baseline}  & \textbf{att/mean}      & $\mathbf{256/4/0{,}3}$ & $\mathbf{0{,}862\!\pm\!0{,}038}$ \\
+DiffPool           & mean\_max/mean         & $128/2/0{,}44$         & $0{,}847\!\pm\!0{,}048$ \\
 \bottomrule
 \end{tabular}\\[2pt]
 \footnotesize{Readout: att = attention; mean\_max = mitjana+màxim. MIL: mean = mitjana.}
