@@ -523,7 +523,12 @@ els pesos s'aprenen per retropropagació. La diferència entre estratègies és 
 \begin{itemize}
     \item \textbf{Mean, Max, Noisy-OR}: el MLP s'aplica \textbf{per secció}, produint
     $P(\text{N1})_s$ per a cada una de les $S$ seccions del pacient; les probabilitats
-    s'agreguen com a escalars ($\text{mean}$, $\max_i p_i$, $1-\prod_i(1-p_i)$).
+    s'agreguen com a escalars:
+    \begin{itemize}\itemsep0pt
+        \item \textbf{Mean}: $P(\text{N1}_{p}) = \frac{1}{S}\sum_i p_i$.
+        \item \textbf{Max}: $P(\text{N1}_{p}) = \max_i\,p_i$.
+        \item \textbf{Noisy-OR}: $P(\text{N1}_{p}) = 1 - \prod_{i}(1 - p_i)$.
+    \end{itemize}
     \item \textbf{Attention MIL} (\textit{gated attention},
     Ilse et al.~\cite{ilse2018attentionbaseddeepmultipleinstance}): els embeddings de les
     $S$ seccions ($\mathbb{R}^{h}$ cadascun) s'agreguen primer en un únic vector de pacient
