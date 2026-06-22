@@ -667,18 +667,7 @@ només el Baseline manté sens.\ $=100\%$ al test amb el llindar $t^*$ derivat d
 \textit{attention}, MIL \textit{mean}, $h=256$, $H=4$, \textit{dropout} $0{,}3$,
 $\lambda_{\text{wd}}=10^{-4}$, $\eta=3\!\cdot\!10^{-4}$ i Adam amb \textit{ReduceLROnPlateau}.
 Obté AUC CV $0{,}862\pm 0{,}038$, AUC test $0{,}875$, sensibilitat $100\%$ (16/16 N1) i
-especificitat $57{,}5\%$ al llindar $t^*\!=\!0{,}133$.
-La Figura~\ref{fig:prob-dist} mostra la distribució de $P(\mathrm{N1})$ al test per a cada
-classe real: tots els N1 cauen per sobre de $t^*$ i 23 dels 40 N0 per sota.
-
-\begin{figure}[h]
-\centering
-\includegraphics[width=0.48\textwidth]{img/prob_dist.pdf}
-\caption{Distribució de $P(\mathrm{N1})$ al test ($n\!=\!56$) per al GAT Baseline
-seleccionat. Blau: N0 ($n\!=\!40$); vermell: N1 ($n\!=\!16$). Línia discontínua negra:
-llindar $t^*\!=\!0{,}133$ (T2, TPR$=1$); línia puntejada grisa: $t\!=\!0{,}5$ (T1).}
-\label{fig:prob-dist}
-\end{figure}
+especificitat $57{,}5\%$ al llindar $t^*\!=\!0{,}133$ (Taula~\ref{tab:cm}).
 
 \subsection{Importància dels hiperparàmetres}
 \label{sec:main-effects}
@@ -1243,15 +1232,32 @@ $t^*$                                    & $0{,}133$                & $0{,}303$ 
 \end{tabular}
 \end{table}
 
-\subsection{Distribució de $P(\mathrm{N1})$ del model seleccionat}
+\subsection{Matriu de confusió i distribució de $P(\mathrm{N1})$}
 \label{app:prob-dist}
 
-La Figura~\ref{fig:prob-dist} mostra la distribució de la probabilitat $P(\mathrm{N1})$
-que el model seleccionat (Grid~\#1) assigna a cada pacient del \textit{test set},
-separada per etiqueta real (N0 / N1). La línia discontínua marca el llindar operatiu
-$t^*=0{,}133$ derivat del \textit{val set}. Els 16 pacients N1 queden tots a la
-dreta del llindar (sensibilitat 100\,\%); dels 40 pacients N0, 23 queden a
-l'esquerra (especificitat 57{,}5\,\%).
+La Taula~\ref{tab:cm} mostra la matriu de confusió del model seleccionat al test
+($n\!=\!56$, $t^*\!=\!0{,}133$): VPP $=0{,}485$, VPN $=1{,}000$.
+
+\begin{table}[H]
+\centering
+\caption{Matriu de confusió del GAT Baseline seleccionat al test ($n\!=\!56$, $t^*\!=\!0{,}133$).}
+\label{tab:cm}
+\small
+\begin{tabular}{llcc}
+\toprule
+ & & \multicolumn{2}{c}{\textbf{Diagnòstic real}} \\
+ & & \textbf{N0} & \textbf{N1} \\
+\midrule
+\multirow{2}{*}{\textbf{Predicció}}
+  & \textbf{N0} & 23 & 0 \\
+  & \textbf{N1} & 17 & 16 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La Figura~\ref{fig:prob-dist} mostra la distribució de $P(\mathrm{N1})$ per a cada
+pacient del test, separada per etiqueta real. Els 16 N1 queden tots a la dreta de
+$t^*\!=\!0{,}133$; dels 40 N0, 23 queden a l'esquerra.
 
 \begin{figure}[H]
     \centering
