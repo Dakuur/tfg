@@ -566,6 +566,7 @@ estimació no esbiaixada del rendiment (sense \textit{data leakage}). El procedi
 
 \begin{figure}[h]
 \centering
+\scalebox{0.90}{%
 \begin{tikzpicture}[
   font=\sffamily\small,
   box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt, minimum height=8mm, minimum width=2.6cm},
@@ -585,7 +586,8 @@ estimació no esbiaixada del rendiment (sense \textit{data leakage}). El procedi
 \draw[arr] (cv) -- (retr);
 \draw[arr] (retr) -- (eval);
 \draw[arr, dashed, red!70!black] (test) |- (eval);
-\end{tikzpicture}
+\end{tikzpicture}%
+}% end scalebox
 \caption{Esquema de partició i avaluació. El test (15\%) s'aïlla des del principi i només s'usa
 al final (fletxa discontínua).}
 \label{fig:split-scheme}
@@ -882,10 +884,10 @@ des del primer dia d'universitat fins al darrer.
 \appendix
 \setcounter{section}{1}
 
-\subsection{Exemple d'anotació i màscara de segmentació}
+\subsection{Exemple d'imatge WSI i màscara de segmentació}
 \label{app:mask}
 
-\noindent\includegraphics[width=1.0\textwidth]{img/mascara.png}
+\noindent\includegraphics[width=0.80\textwidth]{img/mascara.png}
 \captionof{figure}{Exemple de WSI i la seva corresponent màscara de segmentació, amb les regions
 anotades per la patòloga codificades per color (vermell: infiltració, blau: displàsia,
 verd clar: combinada).}
@@ -1231,6 +1233,8 @@ $t^*$                                    & $0{,}133$                & $0{,}303$ 
 \bottomrule
 \end{tabular}
 \end{table}
+
+\newpage
 
 \subsection{Matriu de confusió i distribució de $P(\mathrm{N1})$}
 \label{app:prob-dist}
