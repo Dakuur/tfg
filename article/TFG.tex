@@ -274,6 +274,24 @@ A partir d'aquest objectiu general se'n deriven els objectius específics següe
     les prediccions de múltiples seccions histològiques.
 \end{itemize}
 
+\begin{table*}[!t]
+\centering
+\caption{Composició del dataset (26 hospitals). Cada graf correspon a una secció histològica.}
+\label{tab:dataset}
+\small
+\begin{tabular}{lrrr|rrr}
+\toprule
+ & \multicolumn{3}{c|}{\textbf{Pacients}} & \multicolumn{3}{c}{\textbf{Grafs (seccions)}} \\
+\textbf{Partició} & \textbf{N0} & \textbf{N1} & \textbf{Total} & \textbf{N0} & \textbf{N1} & \textbf{Total} \\
+\midrule
+Pool (train+val CV) & 224 &  87 & 311 & 1\,133 & 219 & 1\,352 \\
+Test                &  40 &  16 &  56 &   212  &  43 &   255  \\
+\midrule
+Total & 264 & 103 & 367 & 1\,345 & 262 & 1\,607 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
 \section{Dades i Preprocessament}
 
 Aquest projecte es realitza en col·laboració amb un equip de la UAB que cobreix des del preprocessament de dades, o
@@ -294,24 +312,6 @@ per diagnòstic indeterminat (NX), i dels 370 restants amb diagnòstic vàlid, 3
 d'embeddings UNI2 generats, deixant 367 pacients usables. Les mostres es divideixen en un pool d'entrenament+validació (85\%) i un
 conjunt de test fix (15\%), ambdós estratificats a nivell de pacient. Dins del pool s'aplica
 validació creuada 5-fold per a la cerca d'hiperparàmetres (Secció~\ref{sec:training-scheme}).
-
-\begin{table*}[t]
-\centering
-\caption{Composició del dataset (26 hospitals). Cada graf correspon a una secció histològica.}
-\label{tab:dataset}
-\small
-\begin{tabular}{lrrr|rrr}
-\toprule
- & \multicolumn{3}{c|}{\textbf{Pacients}} & \multicolumn{3}{c}{\textbf{Grafs (seccions)}} \\
-\textbf{Partició} & \textbf{N0} & \textbf{N1} & \textbf{Total} & \textbf{N0} & \textbf{N1} & \textbf{Total} \\
-\midrule
-Pool (train+val CV) & 224 &  87 & 311 & 1\,133 & 219 & 1\,352 \\
-Test                &  40 &  16 &  56 &   212  &  43 &   255  \\
-\midrule
-Total & 264 & 103 & 367 & 1\,345 & 262 & 1\,607 \\
-\bottomrule
-\end{tabular}
-\end{table*}
 
 \textbf{Anotacions i màscares.}
 \label{sec:anotacions-masques}
@@ -887,7 +887,9 @@ des del primer dia d'universitat fins al darrer.
 \subsection{Exemple d'imatge WSI i màscara de segmentació}
 \label{app:mask}
 
-\noindent\includegraphics[width=0.80\textwidth]{img/mascara.png}
+\begin{center}
+\includegraphics[width=0.80\textwidth]{img/mascara.png}
+\end{center}
 \captionof{figure}{Exemple de WSI i la seva corresponent màscara de segmentació, amb les regions
 anotades per la patòloga codificades per color (vermell: infiltració, blau: displàsia,
 verd clar: combinada).}
