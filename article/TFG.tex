@@ -1234,45 +1234,45 @@ $t^*$                                    & $0{,}133$                & $0{,}303$ 
 \end{tabular}
 \end{table}
 
-\newpage
-
-\subsection{Matriu de confusió i distribució de $P(\mathrm{N1})$}
-\label{app:prob-dist}
-
-La Taula~\ref{tab:cm} mostra la matriu de confusió del model seleccionat al test
-($n\!=\!56$, $t^*\!=\!0{,}133$): VPP $=0{,}485$, VPN $=1{,}000$.
-
-\begin{table}[H]
-\centering
-\caption{Matriu de confusió del GAT Baseline seleccionat al test ($n\!=\!56$, $t^*\!=\!0{,}133$).}
-\label{tab:cm}
-\small
-\begin{tabular}{llcc}
-\toprule
- & & \multicolumn{2}{c}{\textbf{Diagnòstic real}} \\
- & & \textbf{N0} & \textbf{N1} \\
-\midrule
-\multirow{2}{*}{\textbf{Predicció}}
-  & \textbf{N0} & 23 & 0 \\
-  & \textbf{N1} & 17 & 16 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-La Figura~\ref{fig:prob-dist} mostra la distribució de $P(\mathrm{N1})$ per a cada
-pacient del test, separada per etiqueta real. Els 16 N1 queden tots a la dreta de
-$t^*\!=\!0{,}133$; dels 40 N0, 23 queden a l'esquerra.
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.75\textwidth]{img/prob_dist.pdf}
-    \caption{Distribució de $P(\mathrm{N1})$ sobre el test ($n\!=\!56$)
-    per al GAT Baseline seleccionat. Blau: N0 ($n\!=\!40$);
-    vermell: N1 ($n\!=\!16$). Línia discontínua: $t^*\!=\!0{,}133$ (T2, TPR$=1$);
-    línia puntejada: $t\!=\!0{,}5$ (T1). Tots els N1 queden a la dreta de $t^*$.}
-    \label{fig:prob-dist}
-\end{figure}
-
+% \newpage
+%
+% \subsection{Matriu de confusió i distribució de $P(\mathrm{N1})$}
+% \label{app:prob-dist}
+%
+% La Taula~\ref{tab:cm} mostra la matriu de confusió del model seleccionat al test
+% ($n\!=\!56$, $t^*\!=\!0{,}133$): VPP $=0{,}485$, VPN $=1{,}000$.
+%
+% \begin{table}[H]
+% \centering
+% \caption{Matriu de confusió del GAT Baseline seleccionat al test ($n\!=\!56$, $t^*\!=\!0{,}133$).}
+% \label{tab:cm}
+% \small
+% \begin{tabular}{llcc}
+% \toprule
+%  & & \multicolumn{2}{c}{\textbf{Diagnòstic real}} \\
+%  & & \textbf{N0} & \textbf{N1} \\
+% \midrule
+% \multirow{2}{*}{\textbf{Predicció}}
+%   & \textbf{N0} & 23 & 0 \\
+%   & \textbf{N1} & 17 & 16 \\
+% \bottomrule
+% \end{tabular}
+% \end{table}
+%
+% La Figura~\ref{fig:prob-dist} mostra la distribució de $P(\mathrm{N1})$ per a cada
+% pacient del test, separada per etiqueta real. Els 16 N1 queden tots a la dreta de
+% $t^*\!=\!0{,}133$; dels 40 N0, 23 queden a l'esquerra.
+%
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.75\textwidth]{img/prob_dist.pdf}
+%     \caption{Distribució de $P(\mathrm{N1})$ sobre el test ($n\!=\!56$)
+%     per al GAT Baseline seleccionat. Blau: N0 ($n\!=\!40$);
+%     vermell: N1 ($n\!=\!16$). Línia discontínua: $t^*\!=\!0{,}133$ (T2, TPR$=1$);
+%     línia puntejada: $t\!=\!0{,}5$ (T1). Tots els N1 queden a la dreta de $t^*$.}
+%     \label{fig:prob-dist}
+% \end{figure}
+%
 \newpage
 
 \subsection{Espai de cerca de la cerca bayesiana}
