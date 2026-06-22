@@ -644,7 +644,7 @@ configuracions de cada branca (GAT Baseline i GAT+DiffPool) s'han re-avaluat seg
 procediment de la Secció~\ref{sec:training-scheme} (5-fold CV + retrain 90/10 + avaluació al
 test). La Taula~\ref{tab:configs-compare} en resumeix les més rellevants.
 
-\begin{table}[t]
+\begin{table*}[t]
 \centering
 \caption{Millors configuracions per arquitectura, comparades per AUC en validació creuada
 5-\textit{fold}. \textbf{Fila ressaltada}: model seleccionat.}
@@ -660,7 +660,7 @@ DiffPool (millor)       & DiffPool & mean\_max/mean & $128/2/0{,}44$ & $0{,}847\
 \bottomrule
 \end{tabular}\\[2pt]
 \footnotesize{Readout: att = attention; mean\_max = mitjana+màxim. MIL: mean = mitjana.}
-\end{table}
+\end{table*}
 
 \textbf{Lectura dels resultats.} El \textbf{GAT Baseline supera clarament el GAT+DiffPool}
 en aquest dataset: el millor DiffPool arriba a AUC test $0{,}786$, $9$ punts per sota del
