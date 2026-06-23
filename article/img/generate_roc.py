@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-OUT_IMG    = SCRIPT_DIR / "img" / "roc_top5.pdf"
+OUT_IMG    = SCRIPT_DIR / "roc_top5.pdf"
 
 # ── Configuració dels models GAT ────────────────────────────────────────────
 # name: (dir_configs, label_llegenda, color, t_star, linestyle)

@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, roc_auc_score
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-OUT_IMG = SCRIPT_DIR / "img" / "cv_roc.pdf"
+OUT_IMG = SCRIPT_DIR / "cv_roc.pdf"
 
 FOLD_COLORS = ["#4e79a7", "#f28e2b", "#59a14f", "#b07aa1", "#e15759"]
 

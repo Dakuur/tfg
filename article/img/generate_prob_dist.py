@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-OUT_IMG = SCRIPT_DIR / "img" / "prob_dist.pdf"
+OUT_IMG = SCRIPT_DIR / "prob_dist.pdf"
 
 
 def main():

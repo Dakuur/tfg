@@ -17,7 +17,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-OUT_IMG    = SCRIPT_DIR / "img" / "hist_nodes.pdf"
+OUT_IMG    = SCRIPT_DIR / "hist_nodes.pdf"
 DEFAULT_GRAPHS = Path.home() / "outputs" / "graphs" / "per-section"
 
 
