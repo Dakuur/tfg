@@ -1294,34 +1294,38 @@ Estimació de temps en una NVIDIA L40s: 60--150\,h per 1000 \textit{trials} tota
 \label{tab:sweep-config}
 \small
 \renewcommand{\arraystretch}{1.05}
-\begin{tabular}{p{2.8cm}p{2.4cm}p{5.6cm}p{3.2cm}}
+\begin{tabular}{p{3.8cm}p{6.5cm}p{3.0cm}}
 \toprule
-\textbf{Eix} & \textbf{Branca} & \textbf{Valors / rang} & \textbf{Tipus mostreig} \\
+\textbf{Eix} & \textbf{Valors / rang} & \textbf{Tipus mostreig} \\
 \midrule
-\multicolumn{4}{l}{\textit{Arquitectura del model}} \\[2pt]
-$L$ (capes GAT)         & només baseline     & 2, 3, 4                                         & enter \\
-$L_{\text{DP}}$ (blocs DiffPool) & només DiffPool & 1, 2, 3                                  & enter \\
-$K_{\text{top}}$ (super-nodes 1r nivell) & només DiffPool & 10, 25, 50               & categòric \\
-$K_{\text{bot}}$ (super-nodes últim nivell) & només DiffPool & 3, 5, 10             & categòric \\
-\multicolumn{4}{l}{\quad\footnotesize(Nivells intermedis: $K = \lfloor\sqrt{K_{\text{top}} \cdot K_{\text{bot}}}\rfloor$; amb clamp $K_{\text{bot}} < K_{\text{top}}$)} \\[2pt]
-$\lambda_{\text{aux}}$ (pes aux. DiffPool) & només DiffPool & $[0{,}1,\,10]$         & log-uniforme \\
-\textit{Readout} (final del graf) & ambdues (indep.) & mean, max, mean\_max, attention            & categòric \\
-$h$ (dimensió oculta)   & ambdues (indep.)   & 64, 128, 256                                    & categòric \\
-$H$ (caps d'atenció)    & ambdues (indep.)   & 2, 4                                            & categòric \\
-\textit{Dropout}        & ambdues (indep.)   & $[0{,}05,\,0{,}5]$                              & uniforme \\
+\multicolumn{3}{l}{\textit{Arquitectura del model --- Baseline}} \\[2pt]
+$L$ (capes GAT)                             & 2, 3, 4                                    & enter \\
+\textit{Readout}                            & mean, max, mean\_max, attention            & categòric \\
+$h$ (dimensió oculta)                       & 64, 128, 256                               & categòric \\
+$H$ (caps d'atenció)                        & 2, 4                                       & categòric \\
+\textit{Dropout}                            & $[0{,}05,\,0{,}5]$                         & uniforme \\
 \midrule
-\multicolumn{4}{l}{\textit{Agregació a nivell de pacient (MIL)}} \\[2pt]
-Agregació MIL           & ambdues (indep.)   & mean, max, noisy-OR, attention                  & categòric \\
+\multicolumn{3}{l}{\textit{Arquitectura del model --- DiffPool}} \\[2pt]
+$L_{\text{DP}}$ (blocs DiffPool)            & 1, 2, 3                                    & enter \\
+$K_{\text{top}}$ (super-nodes 1r nivell)    & 10, 25, 50                                 & categòric \\
+$K_{\text{bot}}$ (super-nodes últim nivell) & 3, 5, 10                                   & categòric \\
+\multicolumn{3}{l}{\quad\footnotesize(Intermedis: $K = \lfloor\sqrt{K_{\text{top}} \cdot K_{\text{bot}}}\rfloor$; clamp $K_{\text{bot}} < K_{\text{top}}$)} \\[2pt]
+$\lambda_{\text{aux}}$ (pes aux.)           & $[0{,}1,\,10]$                             & log-uniforme \\
+\textit{Readout}                            & mean, max, mean\_max, attention            & categòric \\
+$h$ (dimensió oculta)                       & 64, 128, 256                               & categòric \\
+$H$ (caps d'atenció)                        & 2, 4                                       & categòric \\
+\textit{Dropout}                            & $[0{,}05,\,0{,}5]$                         & uniforme \\
 \midrule
-\multicolumn{4}{l}{\textit{Optimitzador i regularització}} \\[2pt]
-\textit{Optimizer}      & ambdues (indep.)   & Adam, AdamW                                     & categòric \\
-\textit{Scheduler}      & ambdues (indep.)   & ReduceLROnPlateau, CosineAnnealingLR            & categòric \\
-Taxa aprenentatge       & ambdues (indep.)   & $[5\cdot10^{-5},\,5\cdot10^{-3}]$              & log-uniforme \\
-\textit{Weight decay}   & ambdues (indep.)   & $[10^{-5},\,10^{-2}]$                           & log-uniforme \\
-\textit{Grad. clipping} & ambdues (indep.)   & 0, 1, 5                                         & categòric \\
+\multicolumn{3}{l}{\textit{Agregació MIL --- ambdues arquitectures (optimitzada independentment)}} \\[2pt]
+Agregació MIL                               & mean, max, noisy-OR, attention             & categòric \\
 \midrule
-\multicolumn{4}{l}{\textit{Tractament del desbalanceig}} \\[2pt]
-Pes de la classe N1 ($w_+$) & ambdues (indep.) & $[1{,}5,\,8{,}0]$ (continu)                & uniforme \\
+\multicolumn{3}{l}{\textit{Optimitzador i regularització --- ambdues (independentment)}} \\[2pt]
+\textit{Optimizer}                          & Adam, AdamW                                & categòric \\
+\textit{Scheduler}                          & ReduceLROnPlateau, CosineAnnealingLR       & categòric \\
+Taxa aprenentatge                           & $[5\cdot10^{-5},\,5\cdot10^{-3}]$         & log-uniforme \\
+\textit{Weight decay}                       & $[10^{-5},\,10^{-2}]$                      & log-uniforme \\
+\textit{Grad. clipping}                     & 0, 1, 5                                    & categòric \\
+Pes classe N1 ($w_+$)                       & $[1{,}5,\,8{,}0]$                          & uniforme \\
 \bottomrule
 \end{tabular}
 \end{table}
