@@ -925,38 +925,35 @@ verd clar: combinada).}
 };
 
 \node[mainblock, below=0.5cm of b1] (b2) {
-  \textbf{2.\ GNN --- 2 arquitectures configurables}\\[3pt]
+  \textbf{2.\ GNN --- 2 arquitectures}\\[3pt]
   \textsc{Baseline:}\;
-  $\text{GAT}_1\!\to\!\text{BN}\!\to\!\text{ELU}\!\to\!\text{Drop}\!\to\!\cdots\!\to\!\text{GAT}_L$
-  \hfill($L\!\in\!\{2,3,4\}$;\;
-         $h\!\in\!\{64,128,256\}$;\;
-         $H\!\in\!\{2,4\}$;\;
-         $p_{\text{drop}}\!\in\![0{,}05,\,0{,}5]$)\\[1pt]
+  $\mathbf{X}\!\in\!\mathbb{R}^{N\times 1536}
+  \xrightarrow{\;\text{GAT}_1\to\text{BN}\to\text{ELU}\to\text{Drop}\to\cdots\to\text{GAT}_L\;}
+  \mathbf{X}'\!\in\!\mathbb{R}^{N\times h}$\\[1pt]
   \textsc{DiffPool:}\;
-  $\text{GAT}_1\!\to\!\text{DP}_1(N{\to}K_1)\!\to\!\cdots\!\to\!\text{GAT}_{L_{\text{DP}}+1}$
-  \hfill($L_{\text{DP}}\!\in\!\{1,2,3\}$;\;
-         $K_{\text{top}}\!\in\!\{10,25,50\}$;\;
-         $K_{\text{bot}}\!\in\!\{3,5,10\}$)
+  $\mathbf{X}\!\in\!\mathbb{R}^{N\times 1536}
+  \xrightarrow{\;\text{GAT}_1\to\text{DP}_1(N\to K_1)\to\cdots\to\text{GAT}_{L_{\text{DP}}+1}\;}
+  \mathbf{X}'\!\in\!\mathbb{R}^{K_{L_{\text{DP}}}\times h}$
 };
 
 \node[mainblock, below=0.5cm of b2] (b3) {
   \textbf{3.\ Readout: embedding per secció}\\[2pt]
   \textsc{Baseline:}\;
-  readout global sobre els $N$ nodes finals
-  $\;\to\;\mathbf{h}_s \in \mathbb{R}^{h}$
-  \hfill(\textit{mean} / \textit{max} / \textit{mean\_max} / \textit{attention})\\[1pt]
+  agregació sobre els $N$ nodes de $\mathbf{X}'\!\in\!\mathbb{R}^{N\times h}$
+  $\;\to\;\mathbf{h}_s \in \mathbb{R}^{h}$ per secció\\[1pt]
   \textsc{DiffPool:}\;
-  readout sobre els $K_{L_{\text{DP}}}$ super-nodes del darrer nivell
-  $\;\to\;\mathbf{h}_s \in \mathbb{R}^{h}$
-  \hfill(\textit{mean} / \textit{max} / \textit{mean\_max} / \textit{attention})
+  agregació sobre els $K_{L_{\text{DP}}}$ super-nodes de $\mathbf{X}'\!\in\!\mathbb{R}^{K_{L_{\text{DP}}}\times h}$
+  $\;\to\;\mathbf{h}_s \in \mathbb{R}^{h}$ per secció
 };
 
 \node[mainblock, below=0.5cm of b3] (b4) {
   \textbf{4.\ Agregació MIL a nivell de pacient}\\[2pt]
-  $S$ seccions del pacient:\;
-  $\bigl\{\mathbf{h}_s\bigr\}_{s=1}^{S}
+  $S$ seccions:\;
+  $\bigl\{\mathbf{h}_s \in \mathbb{R}^{h}\bigr\}_{s=1}^{S}
   \;\xrightarrow{\text{\scriptsize mean / max / noisy-OR / attention}}\;
-  P(\mathrm{N1})$ per pacient
+  \mathbf{h}_p \in \mathbb{R}^{h}
+  \;\xrightarrow{\;\text{MLP}\;}
+  P(\mathrm{N1}) \in [0,1]$
 };
 
 \node[mainblock, below=0.5cm of b4] (b5) {
