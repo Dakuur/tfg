@@ -113,24 +113,24 @@ def main():
               f"sens={op_tpr:.3f}, spec={1-op_fpr:.3f}")
         ax.scatter(op_fpr, op_tpr,
                    color=m["color"], s=140, zorder=6,
-                   edgecolors="black", linewidths=1.2)
+                   edgecolors="black", linewidths=1.2,
+                   label=f"{m['label']} T2 ($t^*\\!=\\!{t_star:.3f}$)")
 
-        # Punt operatiu T1 (t=0.5) — només per al Baseline
-        if m["config"] == "grid1":
-            probs_t  = np.load(configs_dir / f"config_{m['config']}/test_probs.npy").astype(np.float64)
-            labels_t = np.load(configs_dir / f"config_{m['config']}/test_labels.npy").astype(np.int64)
-            pred_t1  = (probs_t >= 0.5).astype(int)
-            tp_ = int(((pred_t1 == 1) & (labels_t == 1)).sum())
-            fp_ = int(((pred_t1 == 1) & (labels_t == 0)).sum())
-            fn_ = int(((pred_t1 == 0) & (labels_t == 1)).sum())
-            tn_ = int(((pred_t1 == 0) & (labels_t == 0)).sum())
-            sens_t1 = tp_ / (tp_ + fn_) if (tp_ + fn_) > 0 else 0.0
-            spec_t1 = tn_ / (tn_ + fp_) if (tn_ + fp_) > 0 else 0.0
-            print(f"  {m['config']}: T1 t=0.5 → sens={sens_t1:.3f}, spec={spec_t1:.3f}")
-            ax.scatter(1 - spec_t1, sens_t1,
-                       color=m["color"], s=120, zorder=7,
-                       marker="^", edgecolors="black", linewidths=1.2,
-                       label=f"GAT Baseline T1 ($t\\!=\\!0{{,}}5$)")
+        # Punt operatiu T1 (t=0.5) — tots els models
+        probs_t  = np.load(configs_dir / f"config_{m['config']}/test_probs.npy").astype(np.float64)
+        labels_t = np.load(configs_dir / f"config_{m['config']}/test_labels.npy").astype(np.int64)
+        pred_t1  = (probs_t >= 0.5).astype(int)
+        tp_ = int(((pred_t1 == 1) & (labels_t == 1)).sum())
+        fp_ = int(((pred_t1 == 1) & (labels_t == 0)).sum())
+        fn_ = int(((pred_t1 == 0) & (labels_t == 1)).sum())
+        tn_ = int(((pred_t1 == 0) & (labels_t == 0)).sum())
+        sens_t1 = tp_ / (tp_ + fn_) if (tp_ + fn_) > 0 else 0.0
+        spec_t1 = tn_ / (tn_ + fp_) if (tn_ + fp_) > 0 else 0.0
+        print(f"  {m['config']}: T1 t=0.5 → sens={sens_t1:.3f}, spec={spec_t1:.3f}")
+        ax.scatter(1 - spec_t1, sens_t1,
+                   color=m["color"], s=120, zorder=7,
+                   marker="^", edgecolors="black", linewidths=1.2,
+                   label=f"{m['label']} T1 ($t\\!=\\!0{{,}}5$)")
 
     # ── Punts de referència ─────────────────────────────────────────────────
     for p in REFERENCE_POINTS:
