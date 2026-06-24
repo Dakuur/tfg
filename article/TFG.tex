@@ -76,16 +76,16 @@ Graph Attention Networks}}
 \textbf{Resum--}
 Es presenta un sistema de classificació N0/N1 per a la detecció de metàstasi en ganglis limfàtics
 en càncer colorrectal pT1 a partir de \textit{Whole Slide Images}. El teixit es representa com un
-\textbf{graf espacial} sobre les coordenades dels \textit{patches},
+graf espacial sobre les coordenades dels \textit{patches},
 de manera que es preserva la topologia real del teixit.
 Cada node és un \textit{patch} de 2048$\times$2048 px representat per l'embedding
 CLS (vector de forma $[1, 1536]$) del model UNI2. Es comparen dues arquitectures configurables: un GAT de referència
-amb \textit{readout} pla (mean, max, mean\_max o attention) i un GAT amb \textbf{DiffPool jeràrquic}
+amb \textit{readout} pla (mean, max, mean\_max o attention) i un GAT amb DiffPool jeràrquic
 intercalat per obtenir representacions a múltiples escales.
 El diagnòstic per pacient s'obté per agregació MIL sobre les seccions histològiques.
 La cerca d'hiperparàmetres combina dos estudis Optuna
 (5-fold CV + retrain 90/10 de les millors configuracions obtingudes).
-El millor model és el \textbf{GAT de referència}, que obté AUC test $=0{,}875$, sensibilitat $100\%$ i
+El millor model és el GAT de referència, que obté AUC test $=0{,}875$, sensibilitat $100\%$ i
 especificitat $57{,}5\%$.
 \\
 \\
@@ -96,16 +96,16 @@ DiffPool jeràrquic, Graf espacial de Delaunay, MIL, Desbalanceig de classes.\\
 \\
 \textbf{Abstract--}
 We present an N0/N1 classification system for lymph node metastasis prediction in pT1 colorectal
-cancer from Whole Slide Images. Tissue is represented as a \textbf{spatial graph} over patch coordinates,
+cancer from Whole Slide Images. Tissue is represented as a spatial graph over patch coordinates,
 preserving the real spatial topology of the tissue.
 Each node is a 2048$\times$2048 px patch represented by a
 CLS embedding of shape $[1, 1536]$ from the UNI2 model. Two configurable architectures are compared: a
-\textbf{GAT baseline} with flat readout (mean, max, mean\_max or attention) and a \textbf{GAT+DiffPool} model
+GAT baseline with flat readout (mean, max, mean\_max or attention) and a GAT+DiffPool model
 with $L_{\text{DP}}$ DiffPool blocks interleaved between GAT layers for
 multi-scale representations. Patient-level diagnosis is obtained via MIL aggregation over
 histological sections. Hyperparameter search combines two Optuna studies
 (5-fold CV + 90/10 retraining of the best configurations).
-The best model is the \textbf{GAT baseline}, achieving test
+The best model is the GAT baseline, achieving test
 AUC $=0.875$, sensitivity $100\%$ and specificity $57.5\%$.
 \\
 \\
@@ -150,7 +150,7 @@ de làmina sencera, i des de mitjans de la dècada de 2010 s'hi apliquen models
 d'aprenentatge profund per ajudar el patòleg \cite{bejnordi2017camelyon}. Aquest treball,
 desenvolupat al CVC~\cite{cvc} sota la supervisió de la Dra.\ Debora Gil, aborda la
 classificació N0/N1 a partir de les \textit{Whole Slide Images} (WSI) modelant cada secció
-de teixit com un \textbf{graf espacial}. Es compara un GAT de referència amb \textit{readout}
+de teixit com un graf espacial. Es compara un GAT de referència amb \textit{readout}
 pla contra un model amb \textit{pooling} jeràrquic (DiffPool) intercalat, i es proposen
 diferents estratègies d'agregació MIL (\textit{Multiple Instance Learning}, aprenentatge per
 múltiples instàncies) per al diagnòstic per pacient.
@@ -229,7 +229,7 @@ que agrupa nodes en super-nodes de manera progressiva.
 
 Una decisió clau en la construcció d'aquests grafs és el criteri de les arestes: alguns
 treballs les basen en la \textit{similitud de característiques} entre \textit{patches},
-mentre que d'altres opten per la \textbf{proximitat espacial} entre regions del teixit.
+mentre que d'altres opten per la proximitat espacial entre regions del teixit.
 Aquest treball segueix la segona via i connecta els \textit{patches} mitjançant una
 triangulació sobre les coordenades del teixit, de manera que nodes i arestes
 preserven la topologia real en lloc de relacions purament semàntiques.
@@ -260,15 +260,15 @@ perspectiva MIL per pacient.
 
 L'objectiu general d'aquest treball és \textbf{classificar l'estat ganglionar N0/N1} en
 càncer colorrectal pT1 a partir de WSI reals, utilitzant els embeddings CLS del model UNI2
-i representant cada secció de teixit com un \textbf{graf espacial} (triangulació de Delaunay
+i representant cada secció de teixit com un graf espacial (triangulació de Delaunay
 sobre les coordenades del teixit).
 
 A partir d'aquest objectiu general se'n deriven els objectius específics següents:
 \begin{itemize}
     \item Construir un \textit{pipeline} complet, des de la generació dels grafs espacials a
     partir dels embeddings CLS fins a l'entrenament i avaluació del model.
-    \item \textbf{Comparar un GAT de referència} amb \textit{readout} pla contra un model amb
-    \textbf{DiffPool jeràrquic} intercalat entre capes GAT, avaluant si la reducció
+    \item Comparar un GAT de referència amb \textit{readout} pla contra un model amb
+    DiffPool jeràrquic intercalat entre capes GAT, avaluant si la reducció
     progressiva del graf aporta millores de representació intra-secció.
     \item Implementar i comparar estratègies d'agregació MIL a nivell de pacient per integrar
     les prediccions de múltiples seccions histològiques.
@@ -276,9 +276,9 @@ A partir d'aquest objectiu general se'n deriven els objectius específics següe
 
 \section{Dades i Preprocessament}
 
-Aquest projecte es realitza en col·laboració amb un equip de la UAB que cobreix des del preprocessament de dades, o
-la creació d'autoencoders alternatius per a l'extracció de característiques, per una posterior classificació amb
-diversos models.
+Aquest projecte es realitza en col·laboració amb un equip de la UAB que cobreix des del preprocessament
+de les dades fins a la creació d'autoencoders alternatius per a l'extracció de característiques, amb una
+posterior classificació mitjançant diversos models.
 
 \subsection{Dades d'entrada}
 
@@ -287,8 +287,8 @@ tintades amb hematoxilina-eosina, emmagatzemades en format MIRAX (\textit{.mrxs}
 els 30.000 i els 150.000 píxels per costat, amb una quantitat significativa d'espai buit o artefactes que
 requereixen tractament previ.
 
-El conjunt de dades efectiu comprèn \textbf{1.607 grafs} (un per secció histològica), provinents de
-\textbf{367 pacients} distribuits de forma desequilibrada entre les dues classes
+El conjunt de dades efectiu comprèn 1.607 grafs (un per secció histològica), provinents de
+367 pacients distribuits de forma desequilibrada entre les dues classes
 (Taula~\ref{tab:dataset}). D'un total de 606 pacients a la base de dades clínica, 236 es descarten
 per diagnòstic indeterminat (NX), i dels 370 restants amb diagnòstic vàlid, 3 no disposen
 d'embeddings UNI2 generats, deixant 367 pacients usables. Les mostres es divideixen en un pool d'entrenament+validació (85\%) i un
@@ -458,7 +458,7 @@ informació espacial es manté fins al \textit{readout} final.
 \cite{ying2019hierarchicalgraphrepresentationlearning} entre les capes GAT. La idea és
 agrupar els nodes en \textit{super-nodes} i substituir el graf per un de més petit; repetint-ho
 diverses vegades s'obté una representació del teixit a múltiples escales. Cada bloc aprèn, per a cada
-node, una \textbf{assignació suau} (\textit{soft assignment}) als $K$ super-nodes del nivell següent:
+node, una assignació suau (\textit{soft assignment}) als $K$ super-nodes del nivell següent:
 en comptes d'enviar cada node a un sol grup, en reparteix la pertinença entre tots els grups amb pesos
 que sumen 1 (la sortida d'un petit MLP per node seguida de \textit{softmax}). A partir d'aquesta
 assignació, les \textit{features} dels nodes s'agreguen com a mitjana ponderada per formar les dels
@@ -491,7 +491,7 @@ preferit DiffPool per la seva expressivitat contínua i la pèrdua auxiliar de r
 \label{subsec:readout}
 
 Sigui quina sigui l'arquitectura, l'últim pas abans de la classificació és el mateix: un
-\textbf{\textit{readout} global} que col·lapsa el conjunt final de nodes en un únic vector
+\textit{readout} global que col·lapsa el conjunt final de nodes en un únic vector
 $\mathbf{h}_s$ que representa tota la secció. L'única diferència és sobre quins nodes s'aplica: en el
 Baseline són els $N$ nodes de la darrera capa GAT, i en DiffPool són els
 $K_{L_{\text{DP}}}$ super-nodes finals. L'operació de \textit{readout} és, doncs, un eix
@@ -515,7 +515,7 @@ Per evitar aquest problema, s'utilitza el paradigma d'\textbf{aprenentatge per m
 làmines comparteixen la mateixa etiqueta. El model aprèn a classificar el pacient a partir de les
 seves seccions, sense necessitat d'etiquetes individuals per làmina.
 
-En tots els casos, el capçal \textbf{MLP} té la mateixa estructura:
+En tots els casos, el capçal MLP té la mateixa estructura:
 \textit{Linear}($h$)~$\to$~ReLU~$\to$~\textit{Dropout}~$\to$~\textit{Linear}($2$), on
 $h$ és la dimensió oculta (hiperparàmetre del sweep) i la sortida és un parell de logits (N0/N1);
 els pesos s'aprenen per retropropagació. La diferència entre estratègies és \emph{quan} s'aplica:
@@ -533,7 +533,8 @@ els pesos s'aprenen per retropropagació. La diferència entre estratègies és 
     Ilse et al.~\cite{ilse2018attentionbaseddeepmultipleinstance}): els embeddings de les
     $S$ seccions ($\mathbb{R}^{h}$ cadascun) s'agreguen primer en un únic vector de pacient
     mitjançant pesos d'atenció apresos (suma ponderada dels embeddings); el MLP s'aplica
-    \textbf{una sola vegada} sobre aquest vector per obtenir els logits N0/N1.
+    \textbf{una sola vegada} sobre aquest vector per obtenir els logits N0/N1. La dimensió
+    interna del mòdul d'atenció és fixa ($128$) i no forma part de la cerca d'hiperparàmetres.
 \end{itemize}
 
 \section{Disseny Experimental}
@@ -541,7 +542,7 @@ els pesos s'aprenen per retropropagació. La diferència entre estratègies és 
 \subsection{Esquema de dades i avaluació}
 \label{sec:training-scheme}
 
-El dataset es divideix en un \textbf{pool del 85\%} i un \textbf{test del 15\%}, estratificats a
+El dataset es divideix en un pool del 85\% i un test del 15\%, estratificats a
 nivell de pacient (Figura~\ref{fig:split-scheme}). Tota la cerca (selecció d'hiperparàmetres i
 llindar) es fa només sobre el pool, de manera que el test no intervé en cap decisió i n'obtenim una
 estimació no esbiaixada del rendiment (sense \textit{data leakage}). El procediment té tres etapes:
@@ -611,7 +612,7 @@ sense perdre cap N1. S'apliquen tres mecanismes complementaris:
 
 \subsection{Mètriques d'avaluació}
 
-Les mètriques principals són l'\textbf{AUC-ROC} (ordenació global independent del llindar) i les
+Les mètriques principals són l'AUC-ROC (ordenació global independent del llindar) i les
 mètriques clíniques al llindar operatiu: sensibilitat ($\text{VP}/(\text{VP}+\text{FN})$),
 especificitat ($\text{VN}/(\text{VN}+\text{FP})$), valor predictiu positiu
 (VPP, $\text{VP}/(\text{VP}+\text{FP})$) i valor predictiu negatiu
@@ -619,11 +620,10 @@ especificitat ($\text{VN}/(\text{VN}+\text{FP})$), valor predictiu positiu
 negatius.
 
 \textbf{Interpretació clínica.} Si la sortida del model s'usés per decidir la cirurgia (operar els
-casos predits com a N1), la \textbf{sensibilitat} és el percentatge de pacients N1 que rebrien
+casos predits com a N1), la sensibilitat és el percentatge de pacients N1 que rebrien
 tractament (una sensibilitat del $100\%$ vol dir que cap pacient amb metàstasi quedaria sense
-tractar), i l'\textbf{especificitat} és $1$ menys el percentatge de pacients N0 operats
-innecessàriament. Per això, en aquest context un fals negatiu (no tractar un N1) és més greu que un
-fals positiu, i l'objectiu és maximitzar l'especificitat mantenint la sensibilitat propera al $100\%$.
+tractar), i l'especificitat és $1$ menys el percentatge de pacients N0 operats
+innecessàriament.
 
 \subsection{Eines i reproductibilitat}
 
@@ -631,7 +631,7 @@ La implementació segueix un disseny modular: la construcció de grafs, el model
 d'entrenament i el \textit{sweep} bayesià estan desacoblats, i la configuració es gestiona via
 fitxers YAML. La cerca s'orquestra amb \textit{Optuna}, amb \textit{storage} \textit{SQLite}
 persistent i reprenible (cap \textit{trial} es perd si el procés s'interromp). Per garantir la
-\textbf{reproductibilitat}, tots els mostratges del \textit{sampler}, els \textit{folds} de CV i la
+reproductibilitat, tots els mostratges del \textit{sampler}, els \textit{folds} de CV i la
 inicialització de pesos usen una \textit{seed} fixa. El codi és accessible a~\cite{morillo2026codi}.
 
 \section{Resultats}
@@ -665,7 +665,7 @@ Baseline seleccionat ($0{,}875$). Les seccions tenen pocs centenars de \textit{p
 la reducció jeràrquica a super-nodes elimina més informació de la que sintetitza. A més,
 només el Baseline manté sens.\ $=100\%$ al test amb el llindar $t^*$ derivat del val.
 
-\textbf{Model seleccionat.} El model definitiu és un \textbf{GAT Baseline} amb \textit{readout}
+\textbf{Model seleccionat.} El model definitiu és un GAT Baseline amb \textit{readout}
 \textit{attention}, MIL \textit{mean}, $h=256$, $H=4$, \textit{dropout} $0{,}3$,
 $\lambda_{\text{wd}}=10^{-4}$, $\eta=3\!\cdot\!10^{-4}$ i Adam amb \textit{ReduceLROnPlateau}.
 Obté AUC CV $0{,}862\pm 0{,}038$, AUC test $0{,}875$, sensibilitat $100\%$ (16/16 N1) i
@@ -675,7 +675,7 @@ especificitat $57{,}5\%$ al llindar $t^*\!=\!0{,}133$.
 \label{sec:main-effects}
 
 L'anàlisi d'importància \textit{fANOVA} de cada estudi (taula completa a
-l'Annex~\ref{app:main-effects}) mostra que l'\textbf{agregació MIL} és l'eix més
+l'Annex~\ref{app:main-effects}) mostra que l'agregació MIL és l'eix més
 determinant del rendiment al Baseline ($I=0{,}64$; cap altre supera el $10\%$),
 mentre que al DiffPool la importància es reparteix entre MIL ($0{,}22$), el pes
 auxiliar $\lambda_{\text{aux}}$ ($0{,}14$) i el \textit{learning rate} ($0{,}13$).
@@ -683,7 +683,7 @@ auxiliar $\lambda_{\text{aux}}$ ($0{,}14$) i el \textit{learning rate} ($0{,}13$
 \subsection{Comparació amb guies clíniques i SOTA}
 \label{sec:resultats-comparacio}
 
-La Taula~\ref{tab:comparison} situa el \textbf{model seleccionat} davant de les guies
+La Taula~\ref{tab:comparison} situa el model seleccionat davant de les guies
 clíniques de referència (Secció~\ref{sec:guidelines-sota}) i de dos models d'IA (un sobre
 variables clíniques i un altre sobre imatge WSI).
 Les xifres de les guies provenen de~\cite{tanino2024comparative} ($n\!=\!560$),
@@ -731,8 +731,7 @@ Song et al.\ \cite{song2024lnm}                     & Imatge WSI & $92{,}9\%$ & 
 \footnotesize{$^{\dagger}$\,$t^*$ és la mediana dels llindars màxims amb TPR$=1$ als 5 \textit{val sets}, aplicat al test sense reajustar.}
 \end{table*}
 
-En detecció de metàstasi, un fals negatiu (no tractar un N1) és inacceptable, mentre que un fals
-positiu (cirurgia innecessària) és recuperable. Per això \textbf{T2 és l'única opció clínicament
+Com que un fals negatiu (no tractar un N1) és clínicament inacceptable, \textbf{T2 és l'única opció
 acceptable}: T1 ($t\!=\!0{,}5$) deixa $7$ de $16$ pacients N1 sense detectar (\textbf{FN$=7$}),
 mentre que T2 ($t^*\!=\!0{,}133$, TPR$=1$) garanteix zero falsos negatius
 (\textbf{sens.$=100\%$}, \textbf{VPN$=1{,}000$}). L'especificitat resultant ($57{,}5\%$) supera
@@ -1278,7 +1277,7 @@ $t^*$                                    & $0{,}133$                & $0{,}303$ 
 %
 \newpage
 
-\subsection{Espai de cerca de la cerca bayesiana}
+\subsection{Espai de cerca bayesiana}
 \label{app:sweep-config}
 
 La Taula~\ref{tab:sweep-config} llista els eixos d'optimització, els seus rangs i la branca
@@ -1338,5 +1337,29 @@ sobre els 5 \textit{val sets}, calculades amb el llindar $t^*$ derivat de cada \
 els paràmetres del següent \textit{trial}. La penalització $\times 10$ fa que el TPE prioritzi
 sensibilitat del $100\%$; qualsevol pèrdua de sensibilitat s'ha de compensar
 amb un guany d'especificitat molt superior (10 punts per cada punt de sensibilitat perdut).
+
+\subsection{Matriu de confusió del model seleccionat}
+\label{app:cm}
+
+La Taula~\ref{tab:cm} mostra la matriu de confusió del GAT Baseline seleccionat al test
+($n\!=\!56$, $t^*\!=\!0{,}133$): els 16 N1 es detecten tots (FN$=0$, VPN$=1{,}000$) i, dels
+40 N0, 23 es classifiquen correctament (17 FP, VPP$=0{,}485$).
+
+\begin{table}[H]
+\centering
+\caption{Matriu de confusió del GAT Baseline seleccionat al test ($n\!=\!56$, $t^*\!=\!0{,}133$).}
+\label{tab:cm}
+\small
+\begin{tabular}{llcc}
+\toprule
+ & & \multicolumn{2}{c}{\textbf{Diagnòstic real}} \\
+ & & \textbf{N0} & \textbf{N1} \\
+\midrule
+\multirow{2}{*}{\textbf{Predicció}}
+  & \textbf{N0} & 23 & 0 \\
+  & \textbf{N1} & 17 & 16 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \end{document}
