@@ -553,11 +553,11 @@ els pesos s'aprenen per retropropagació. La diferència entre estratègies és 
 El dataset es divideix en un pool del 85\% i un test del 15\%, estratificats a
 nivell de pacient (Figura~\ref{fig:split-scheme}). Tota la cerca (selecció d'hiperparàmetres i
 llindar) es fa només sobre el pool, de manera que el test no intervé en cap decisió i n'obtenim una
-estimació no esbiaixada del rendiment (sense \textit{data leakage}). El procediment té tres etapes:
+estimació no esbiaixada del rendiment. El procediment té tres etapes:
 
 \begin{enumerate}\itemsep1pt
-  \item \textbf{Test (15\%, 56 pacients):} es separa des de la construcció dels grafs i \textbf{mai
-        s'usa} per a selecció d'hiperparàmetres ni \textit{early stopping}.
+  \item \textbf{Test (15\%, 56 pacients):} es separa des de la construcció dels grafs i es reserva
+        per a l'avaluació dels millors models per arquitectura.
   \item \textbf{Cerca bayesiana + CV 5-\textit{fold} sobre el pool (85\%, 311 pacients):} cada
         configuració s'avalua amb \textit{Stratified K-Fold} per pacient i \textit{early stopping}
         (\textit{patience}$=\!20$), de forma independent per a cada arquitectura. La cerca usa el
@@ -604,7 +604,7 @@ al final (fletxa discontínua).}
 
 \subsection{Desbalanceig de classes i llindar operatiu}
 
-El conjunt presenta un fort desbalanceig (N0/N1 $\approx$ 72/28). En detecció de metàstasi, un
+El conjunt presenta un fort desbalanceig (aproximadament $72\%$ N0 i $28\%$ N1). En detecció de metàstasi, un
 fals negatiu és més greu que un fals positiu: l'objectiu clínic és maximitzar
 l'especificitat mantenint sensibilitat $\approx$ 100\%, per reduir les cirurgies innecessàries
 sense perdre cap N1. S'apliquen tres mecanismes complementaris:
@@ -652,24 +652,23 @@ test). La Taula~\ref{tab:configs-compare} en resumeix les més rellevants.
 \begin{table*}[t]
 \centering
 \caption{Millors configuracions per arquitectura, comparades per AUC en validació creuada
-5-\textit{fold}. \textbf{Fila ressaltada}: model seleccionat.}
+5-\textit{fold}.}
 \label{tab:configs-compare}
 \small
 \begin{tabular}{lccc}
 \toprule
 \textbf{Arquitectura} & \textbf{Readout/MIL}
-  & \textbf{$h$/$H$/drop} & \textbf{AUC CV} \\
+  & \textbf{$h$/$H$/dropout} & \textbf{AUC CV} \\
 \midrule
-\textbf{Baseline}  & \textbf{att/mean}      & $\mathbf{256/4/0{,}3}$ & $\mathbf{0{,}862\!\pm\!0{,}038}$ \\
+\textbf{Baseline}  & \textbf{attention/mean}      & $\mathbf{256/4/0{,}3}$ & $\mathbf{0{,}862\!\pm\!0{,}038}$ \\
 DiffPool           & mean\_max/mean         & $128/2/0{,}44$         & $0{,}847\!\pm\!0{,}048$ \\
 \bottomrule
-\end{tabular}\\[2pt]
-\footnotesize{Readout: att = attention; mean\_max = mitjana+màxim. MIL: mean = mitjana.}
+\end{tabular}
 \end{table*}
 
 \textbf{Lectura dels resultats.} El \textbf{GAT Baseline supera clarament el GAT+DiffPool}
 en aquest dataset: el millor DiffPool arriba a AUC test $0{,}786$, $9$ punts per sota del
-Baseline seleccionat ($0{,}875$). Les seccions tenen pocs centenars de \textit{patches} i
+Baseline ($0{,}875$). Les seccions tenen pocs centenars de \textit{patches} i
 la reducció jeràrquica a super-nodes elimina més informació de la que sintetitza. A més,
 només el Baseline manté sens.\ $=100\%$ al test amb el llindar $t^*$ derivat del val.
 
@@ -766,10 +765,8 @@ Song et al.~\cite{song2024lnm} (triangle).}
 detectats, $\text{VPN}\!=\!1{,}000$), amb espec.\ $57{,}5\%$. La literatura estima que el
 $80$–$90\%$ de les cirurgies actuals en pT1 són innecessàries~\cite{MartinezDeJuan2024},
 coherent amb les especificitats del $19$–$52\%$ de les guies. Mantenint sens.\ $=100\%$, el
-GAT redueix les cirurgies innecessàries de $\sim\!81$ (JSCCR) o $\sim\!49$ (NCCN/ESMO) a
-$\sim\!42{,}5$ per cada $100$ pacients N0. En concret, si s'apliqués aquest model per
-decidir la cirurgia sobre els $40$ pacients N0 del test, se n'operarien innecessàriament
-$17$ enlloc dels $\sim\!32$ que indicaria JSCCR: és a dir, \textbf{un $\sim\!47\%$ menys de
+GAT operaria innecessàriament el $\sim\!42{,}5\%$ dels pacients N0, davant del $\sim\!81\%$
+(JSCCR) o el $\sim\!49\%$ (NCCN/ESMO). Això representa \textbf{un $\sim\!47\%$ menys de
 cirurgies innecessàries} respecte a JSCCR (i un $\sim\!13\%$ menys respecte a NCCN/ESMO),
 \textbf{sense deixar cap pacient N1 sense tractar} (sens.\ $=100\%$). Al llindar $0{,}5$ la
 sensibilitat és inferior ($56{,}2\%$); $t^*$ és el que fa el model clínicament útil.
@@ -818,7 +815,7 @@ espacial és, doncs, com a mínim competitiu amb l'MIL pla sobre \textit{patches
 
 \textbf{(1) Mida del test.}
 Amb $56$ pacients al test (només $16$ N1), els intervals de confiança al $95\%$ de l'AUC
-són amplis ($\pm\!0{,}07$–$0{,}10$). L'AUC CV del model seleccionat ($0{,}862\!\pm\!0{,}038$)
+són amplis, amb un marge d'aproximadament $\pm0{,}07$ a $\pm0{,}10$ a cada costat de l'estimació. L'AUC CV del model seleccionat ($0{,}862\!\pm\!0{,}038$)
 i l'AUC test ($0{,}875$) són consistents, però la variància de l'especificitat al CV és alta
 (mitjana $0{,}369\!\pm\!0{,}198$ amb el llindar $t^*$), reflectint la inestabilitat
 entre folds. Caldria un test més gran per a conclusions clíniques robustes.
@@ -867,11 +864,12 @@ derivat del val set. Se'n destaquen tres observacions:
   $0{,}786$ AUC test, lluny del Baseline.
   \item \textbf{Predicció només a partir de la imatge.} El model diagnostica N0/N1
   exclusivament des del WSI, sense cap variable clinicopatològica anotada (a diferència de
-  models com el de Piao et al.); pot, doncs, executar-se just després d'escanejar la làmina,
-  sense esperar el report del patòleg.
+  models com el de Piao et al.); el processament és automàtic a partir del WSI escanejat
+  (extracció de \textit{patches}, embeddings CLS i construcció del graf), sense necessitat
+  del report ni de la puntuació manual del patòleg.
   \item \textbf{Utilitat com a filtre de descartament}. Al llindar $t^*$ el model manté
   sens.\ $=100\%$ al test ($\text{VPN}\!=\!1{,}000$): un resultat negatiu permetria evitar
-  la cirurgia amb seguretat sobre la mostra avaluada.
+  la cirurgia amb certa seguretat sobre la mostra avaluada.
 \end{itemize}
 
 
