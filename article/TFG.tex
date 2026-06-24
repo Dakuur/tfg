@@ -328,10 +328,11 @@ clar (combinada); la Figura~\ref{fig-mask} (Annex~\ref{app:mask}) en mostra un e
 
 \subsection{Construcció del graf}
 
-\textbf{De \textit{patch} a node.} S'aplica una finestra lliscant (\textit{sliding window}) sense solapament per dividir cada làmina en
+\textbf{De \textit{patch} a node.} S'aplica una finestra lliscant (\textit{sliding window}) sense solapament
+per dividir cada làmina en
 \textit{patches} de $2048 \times 2048$ píxels a resolució completa. Per cada finestra, es comprova el
-percentatge de teixit a la corresponent regió de la màscara binària anotada
-(\S\ref{sec:anotacions-masques}); les finestres sense cap píxel de teixit (\textit{tissue\_percentage}~$= 0$)
+percentatge de teixit a la corresponent regió de la màscara binària anotada;
+les finestres sense cap píxel de teixit (\textit{tissue\_percentage}~$= 0$)
 es descarten. El model UNI2~\cite{chen2024uni2} processa cada \textit{patch} individualment i extreu el token
 \textit{CLS} de la seva sortida, obtenint un vector de forma $[1, 1536]$ que condensa la
 informació morfològica i textural del patch. Cada vector CLS esdevé un node del graf,
@@ -394,11 +395,11 @@ obtenir la classificació binària N0/N1.
   arr/.style={-{Latex[length=2.2mm]}, thick},
   node distance=6mm
 ]
-\node[block, fill=blue!6]  (pre)  {\textbf{1. Preprocessament}\\[1pt]\scriptsize\textit{patches} 2048$\times$2048 $\to$ embedding CLS $[1,1536]$ (UNI2) $\to$ graf de Delaunay};
-\node[block, fill=orange!8, below=of pre]  (arch) {\textbf{2. Arquitectura}\\[1pt]\scriptsize capes GAT: variant \textit{baseline} (plana) o amb DiffPool jeràrquic};
-\node[block, fill=green!8, below=of arch]  (read) {\textbf{3. Readout}\\[1pt]\scriptsize lectura final del graf (mean, max, mean\_max, attention), idèntica per a les dues variants};
-\node[block, fill=red!6, below=of read]    (mil)  {\textbf{4. MIL}\\[1pt]\scriptsize agregació per pacient (mean, max, noisy-OR, attention) $\to$ $P(\text{N1})$};
-\node[block, fill=gray!8, below=of mil]    (thr)  {\textbf{5. Decisió}\\[1pt]\scriptsize llindar $t^*$ derivat del \textit{val} $\to$ classificació N0\,/\,N1};
+\node[block, fill=blue!6]  (pre)  {\textbf{1. Preprocessament}\\[1pt]\scriptsize WSI $\to$ \textit{patches} $\to$ embedding CLS (UNI2) $\to$ graf de Delaunay};
+\node[block, fill=orange!8, below=of pre]  (arch) {\textbf{2. Arquitectura}\\[1pt]\scriptsize capes GAT: variant Baseline o DiffPool jeràrquic};
+\node[block, fill=green!8, below=of arch]  (read) {\textbf{3. Readout}\\[1pt]\scriptsize lectura final del graf $\to$ embedding per secció};
+\node[block, fill=red!6, below=of read]    (mil)  {\textbf{4. MIL}\\[1pt]\scriptsize agregació de les seccions del pacient $\to$ $P(\text{N1})$};
+\node[block, fill=gray!8, below=of mil]    (thr)  {\textbf{5. Decisió}\\[1pt]\scriptsize llindar $t^*$ $\to$ N0\,/\,N1};
 \draw[arr] (pre) -- (arch);
 \draw[arr] (arch) -- (read);
 \draw[arr] (read) -- (mil);
@@ -912,11 +913,11 @@ codificades per color (vegeu la Secció~\ref{sec:anotacions-masques}).}
     node distance=0.5cm,
     mainblock/.style={
         rectangle, rounded corners=4pt,
-        draw=blue!55!black, fill=blue!5, line width=1.0pt,
+        draw=black, fill=blue!6, line width=1.0pt,
         minimum width=13cm, text width=12.4cm,
         inner sep=8pt, align=flush left, font=\small
     },
-    arr/.style={->, >=stealth, line width=1.4pt, color=blue!60!black},
+    arr/.style={->, >=stealth, line width=1.4pt, color=black},
 ]
 
 \node[mainblock] (b1) {
@@ -929,7 +930,7 @@ codificades per color (vegeu la Secció~\ref{sec:anotacions-masques}).}
   \textbf{graf} $\mathcal{G}=(\mathbf{X},\mathbf{A})$,\; $N$ nodes $\times\,1536$ atributs
 };
 
-\node[mainblock, below=0.5cm of b1] (b2) {
+\node[mainblock, fill=orange!8, below=0.5cm of b1] (b2) {
   \textbf{2.\ GNN --- 2 arquitectures}\\[3pt]
   \textsc{Baseline:}\;
   $\mathbf{X}\!\in\!\mathbb{R}^{N\times 1536}
@@ -941,7 +942,7 @@ codificades per color (vegeu la Secció~\ref{sec:anotacions-masques}).}
   \mathbf{X}'\!\in\!\mathbb{R}^{K_{L_{\text{DP}}}\times h}$
 };
 
-\node[mainblock, below=0.5cm of b2] (b3) {
+\node[mainblock, fill=green!8, below=0.5cm of b2] (b3) {
   \textbf{3.\ Readout: embedding per secció}\\[2pt]
   \textsc{Baseline:}\;
   agregació sobre els $N$ nodes de $\mathbf{X}'\!\in\!\mathbb{R}^{N\times h}$
@@ -951,7 +952,7 @@ codificades per color (vegeu la Secció~\ref{sec:anotacions-masques}).}
   $\;\to\;\mathbf{h}_s \in \mathbb{R}^{h}$ per secció
 };
 
-\node[mainblock, below=0.5cm of b3] (b4) {
+\node[mainblock, fill=red!6, below=0.5cm of b3] (b4) {
   \textbf{4.\ Agregació MIL a nivell de pacient}\\[2pt]
   $S$ seccions:\;
   $\bigl\{\mathbf{h}_s \in \mathbb{R}^{h}\bigr\}_{s=1}^{S}
@@ -961,7 +962,7 @@ codificades per color (vegeu la Secció~\ref{sec:anotacions-masques}).}
   P(\mathrm{N1}) \in [0,1]$
 };
 
-\node[mainblock, below=0.5cm of b4] (b5) {
+\node[mainblock, fill=gray!8, below=0.5cm of b4] (b5) {
   \textbf{5.\ Llindar operatiu $t^*$}\\[2pt]
   $P(\mathrm{N1}) \geq t^*\;\Rightarrow\;\mathbf{N1}$ (metàstasi)\qquad
   $P(\mathrm{N1}) < t^*\;\Rightarrow\;\mathbf{N0}$ (sense metàstasi)\\
