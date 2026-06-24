@@ -141,7 +141,7 @@ Quan hi ha criteris de mal pronòstic (invasió submucosa $\geq\!1000\,\mu$m,
 invasió vascular o limfàtica, histologia indiferenciada, \textit{tumor budding} de
 grau~$\geq\!2$ o marge vertical positiu \cite{jsccr2019,dawson2024budding}), el risc puja
 al voltant del $10\%$, fet que porta les guies clíniques (JSCCR \cite{jsccr2019}, NCCN i
-ESMO \cite{esge2022}) a recomanar cirurgia radical addicional. Com que la majoria de tumors
+ESMO) a recomanar cirurgia radical addicional. Com que la majoria de tumors
 pT1 no desenvolupa LNM real, s'estima que fins un $80\%$ d'aquestes cirurgies són
 innecessàries \cite{zaffalon2023,MartinezDeJuan2024}.
 
@@ -167,7 +167,7 @@ que vull explorar dins de l'Enginyeria de Dades.
 \label{sec:guidelines-sota}
 
 Les guies clíniques de referència (JSCCR \cite{jsccr2019}, NCCN i
-ESMO \cite{esge2022}) recomanen cirurgia addicional quan el pacient
+ESMO) recomanen cirurgia addicional quan el pacient
 presenta un o més dels criteris de risc histopatològics esmentats a la
 Introducció. Malgrat la seva sensibilitat elevada, la seva especificitat
 és baixa: en un estudi comparatiu sobre $560$ pacients
@@ -247,8 +247,8 @@ preentrenats en el mateix domini i capturen informació morfològica rellevant.
 
 \subsection{Treball Previ al CVC sobre pT1 CRC}
 
-Aquest treball s'integra dins una línia de recerca del grup IAM del CVC. Martí et
-al.~\cite{ddd.uab.cat:317556} van comparar CNNs, ViTs i GNNs sobre el mateix conjunt
+Aquest treball s'integra dins una línia de recerca del grup IAM del CVC.
+Martí~\cite{ddd.uab.cat:317556} va comparar CNNs, ViTs i GNNs sobre el mateix conjunt
 pT1 CRC per a la classificació de \textit{patches} individuals, amb millor AUC
 ($0{,}954 \pm 0{,}077$) per una arquitectura híbrida ViT+NN. El treball, però,
 opera a nivell de \textit{patch} i no té en compte la topologia espacial del teixit
@@ -695,16 +695,10 @@ cautela (Secció~\ref{sec:limitacions}).
 
 \begin{table*}[h]
 \centering
-\caption{Comparació de rendiment entre el model proposat, les guies clíniques i l'estat
-de l'art. \textbf{Guies:} Tanino et al.~\cite{tanino2024comparative} ($n\!=\!560$, Hiroshima).
-\textbf{IBC Score:} Dawson et al.~\cite{dawson2024budding} ($n\!=\!565$, multicèntric).
-\textbf{LightGBM:} Piao et al.~\cite{piao2023ai} ($n\!=\!105$ test, variables clinicopat.).
-\textbf{Song et al.:} model MIL d'atenció sobre WSI H\&E~\cite{song2024lnm} ($n\!=\!1281$, $2604$ WSIs).
-\textbf{GAT:} aquest treball ($n\!=\!56$ test).
-Estudis i poblacions independents; el PPV no és directament comparable
-(prevalença N1 diferent entre estudis).
-Bal.Acc. $= (S\!+\!E)/2$; calculada per a les guies i l'IBC Score a partir de Sens./Espec.
-reportades.} % [NEW: comparison]
+\caption{Comparació de rendiment entre el model proposat, les guies clíniques i l'estat de l'art.
+Cada sistema prové d'un estudi i població independents
+(Tanino $n\!=\!560$; IBC Score $n\!=\!565$; LightGBM $n\!=\!105$; Song $n\!=\!1281$; GAT $n\!=\!56$),
+per la qual cosa el PPV no és directament comparable. Bal.Acc.~$=(S\!+\!E)/2$.}
 \label{tab:comparison}
 \small
 \begin{tabular}{llrrrr}
@@ -714,7 +708,7 @@ reportades.} % [NEW: comparison]
 \multicolumn{6}{l}{\textit{Guies i puntuació clínica}} \\[2pt]
 JSCCR \cite{jsccr2019}        & Guia clínica  & $100\%$ & $19\%$  & $0{,}596$ & $59{,}5\%$ \\
 NCCN                           & Guia clínica  & $98\%$  & $52\%$  & $0{,}749$ & $75{,}0\%$ \\
-ESMO \cite{esge2022}           & Guia clínica  & $98\%$  & $50\%$  & $0{,}743$ & $74{,}0\%$ \\
+ESMO \cite{tanino2024comparative} & Guia clínica  & $98\%$  & $50\%$  & $0{,}743$ & $74{,}0\%$ \\
 IBC Score \cite{dawson2024budding} & Puntuació histopat. & $90\%$ & $26\%$ & $0{,}68$ & $58{,}0\%$ \\
 \midrule
 \multicolumn{6}{l}{\textit{Models d'IA}} \\[2pt]
@@ -752,14 +746,11 @@ marca el llindar màxim amb TPR$=1$ del seu \textit{fold}; la mediana dels 5 lli
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.48\textwidth]{img/roc_top5.pdf}
-\caption{Corbes ROC al conjunt de test ($n\!=\!56$) del \textbf{GAT Baseline} (model
-seleccionat; AUC $=0{,}875$) i del \textbf{GAT+DiffPool} (millor configuració; AUC
-$=0{,}786$). Els cercles marquen els llindars $t^*$ de cada model (derivats del val
-set): $t^*\!=\!0{,}133$ per al Baseline
-(sens.~$=\!100\%$, espec.~$=\!57{,}5\%$) i $t^*\!=\!0{,}303$ per al DiffPool
-(sens.~$=\!62{,}5\%$, espec.~$=\!70{,}0\%$). Es superposen els punts operatius de
-JSCCR, NCCN i ESMO (quadrats), \textit{LightGBM}~\cite{piao2023ai} (diamant)
-i Song et al.~\cite{song2024lnm} (triangle).}
+\caption{Corbes ROC al conjunt de test ($n\!=\!56$) del GAT Baseline (model seleccionat;
+AUC $=0{,}875$) i del GAT+DiffPool (millor configuració; AUC $=0{,}786$). Els cercles marquen
+els llindars $t^*$ de cada model (derivats del val set). Es superposen els punts operatius de
+JSCCR, NCCN i ESMO (quadrats), \textit{LightGBM}~\cite{piao2023ai} (diamant) i
+Song et al.~\cite{song2024lnm} (triangle).}
 \label{fig:roc-top5}
 \end{figure}
 
@@ -842,6 +833,14 @@ lleugerament optimista; idealment, hauria de fixar-se sobre un val set extern. L
 llindar entre folds és alta ($\sigma_{t^*}\!\approx\!0{,}08$, folds: $0{,}03$--$0{,}29$),
 reflectint la sensibilitat del procediment a la divisió de dades.
 
+\textbf{(5) Comparació amb mètodes avaluats en altres conjunts.}
+Les guies clíniques i els models d'IA de la Taula~\ref{tab:comparison} s'han avaluat sobre
+cohorts i poblacions diferents de la nostra, amb prevalences N1 i mides de mostra dispars, i
+no s'han aplicat al nostre conjunt de test. La comparació és, doncs, orientativa i no
+una avaluació en igualtat de condicions: sensibilitat i especificitat, independents de la
+prevalença, són les més robustes per contrastar, però les diferències absolutes s'han
+d'interpretar amb cautela.
+
 \subsection{Conclusions}
 
 En aquest TFG s'ha construït un sistema complet de classificació N0/N1 per a càncer
@@ -896,9 +895,8 @@ des del primer dia d'universitat fins al darrer.
 \begin{center}
 \includegraphics[width=0.70\textwidth]{img/mascara.png}
 \end{center}
-\captionof{figure}{Exemple de WSI i la seva corresponent màscara de segmentació, amb les regions
-anotades per la patòloga codificades per color (vermell: infiltració, blau: displàsia,
-verd clar: combinada).}
+\captionof{figure}{Exemple de WSI i la seva màscara de segmentació, amb les regions anotades
+codificades per color (vegeu la Secció~\ref{sec:anotacions-masques}).}
 \label{fig-mask}
 
 \subsection{Diagrama de flux detallat del \textit{pipeline}}
@@ -971,12 +969,8 @@ verd clar: combinada).}
   \draw[arr] (\a.south) -- (\b.north);
 
 \end{tikzpicture}
-\caption{Diagrama de flux del \textit{pipeline} complet. Cada bloc és una etapa del procés:
-(1) preprocessament i construcció del graf a partir de la WSI;
-(2) processament del graf amb la GNN (dues arquitectures configurables);
-(3) \textit{readout} que comprimeix el graf en un vector $\mathbf{h}_s$ per secció;
-(4) agregació MIL de les $S$ seccions d'un pacient fins a obtenir $P(\mathrm{N1})$;
-(5) decisió binaria via el llindar operatiu $t^*$ derivat del \textit{val set}.}
+\caption{Diagrama de flux del \textit{pipeline} complet, de la WSI a la decisió N0/N1. Els cinc
+blocs es descriuen a la Secció~\ref{sec:pipeline-overview}.}
 \label{fig:pipeline-full}
 \end{figure}
 
@@ -1132,20 +1126,13 @@ d'optimització configurables.
 \draw[arr] (conv) -- (outbox.north);
 
 \end{tikzpicture}
-\caption{Variants d'arquitectura del \textit{GATClassifier}: el mateix graf
-$\mathcal{G}$ es pot processar per dues branques configurables
-(\textsc{Baseline} o \textsc{DiffPool}). Totes dues convergeixen en un
-\textit{readout} unificat que produeix l'embedding
-$\mathbf{h}_s \in \mathbb{R}^{h}$ per secció; l'opció de \textit{readout}
-s'optimitza de forma independent per a cada branca.
-L'agregació MIL bifurca de nou: \textbf{mean/max/noisy-OR} apliquen el MLP
-per secció i n'agreguen els \emph{escalars}; \textbf{attention (gated)} agrega
-primer els \emph{vectors} $\mathbf{h}_s$ amb pesos d'atenció \textbf{apresos}
-i aplica el MLP \emph{una sola vegada} sobre l'embedding agregat.
-$L$: capes GAT; $h$: dim.\ oculta; $H$: caps d'atenció;
-$L_{\text{DP}}$: blocs DiffPool; $K_\ell$: super-nodes per nivell;
-$\lambda_{\text{aux}}$: pes pèrdua auxiliar DiffPool;
-$t^*$: llindar derivat del val set (Secció~\ref{sec:training-scheme}).}
+\caption{Variants d'arquitectura del \textit{GATClassifier}: el mateix graf $\mathcal{G}$ es
+processa per dues branques (\textsc{Baseline} o \textsc{DiffPool}) que convergeixen en un
+\textit{readout} unificat ($\mathbf{h}_s \in \mathbb{R}^{h}$ per secció) i, després, en
+l'agregació MIL (Secció~\ref{sec:mil}).
+Símbols: $L$ capes GAT; $h$ dim.\ oculta; $H$ caps d'atenció;
+$L_{\text{DP}}$ blocs DiffPool; $K_\ell$ super-nodes per nivell;
+$\lambda_{\text{aux}}$ pes de la pèrdua auxiliar; $t^*$ llindar del val set.}
 \label{fig:gat-variants}
 \end{figure}
 
@@ -1162,10 +1149,8 @@ apareixen buits a l'altra columna. Tots els valors provenen de l'anàlisi fANOVA
 
 \begin{table}[H]
 \centering
-\caption{Importància fANOVA per arquitectura. \textbf{Baseline}: 304 \textit{trials}
-complets. \textbf{DiffPool}: 195 \textit{trials} complets. Valors entre 0 (cap
-influència) i 1 (l'eix explica tota la variància). Les cel·les buides indiquen que l'eix
-no és aplicable a aquella branca.}
+\caption{Importància fANOVA per arquitectura (Baseline: 304 \textit{trials} complets;
+DiffPool: 195). Les cel·les buides indiquen que l'eix no és aplicable a la branca.}
 \label{tab:main-effects}
 \small
 \begin{tabular}{lcc}
@@ -1288,8 +1273,7 @@ arquitectura no es barregen, i els eixos comuns s'optimitzen de forma independen
 
 \begin{table}[H]
 \centering
-\caption{Eixos del \textit{sweep} bayesià (dos estudis Optuna aïllats, un per arquitectura).
-Estimació de temps en una NVIDIA L40s: 60--150\,h per 1000 \textit{trials} totals.}
+\caption{Eixos del \textit{sweep} bayesià (dos estudis Optuna aïllats, un per arquitectura).}
 \label{tab:sweep-config}
 \small
 \renewcommand{\arraystretch}{1.05}
