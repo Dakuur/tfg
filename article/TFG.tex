@@ -194,7 +194,7 @@ estructurades ni puntuació manual d'un patòleg.
 
 \subsection{Classificació de WSI amb MIL}
 
-Les \textit{Whole Slide Images} tenen resolucions de fins a $150\,000 \times 150\,000$
+Les \textit{Whole Slide Images} tenen resolucions de fins a $150.000 \times 150.000$
 píxels i no es poden processar directament amb xarxes convencionals. L'enfocament habitual
 és dividir la làmina en \textit{patches} petits i treballar amb MIL, on el model ha
 d'inferir l'etiqueta global (N0/N1) a partir de fragments sense
@@ -309,10 +309,10 @@ validació creuada 5-fold per a la cerca d'hiperparàmetres (Secció~\ref{sec:tr
  & \multicolumn{3}{c|}{\textbf{Pacients}} & \multicolumn{3}{c}{\textbf{Grafs (seccions)}} \\
 \textbf{Partició} & \textbf{N0} & \textbf{N1} & \textbf{Total} & \textbf{N0} & \textbf{N1} & \textbf{Total} \\
 \midrule
-Pool (train+val CV) & 224 &  87 & 311 & 1\,133 & 219 & 1\,352 \\
+Pool (train+val CV) & 224 &  87 & 311 & 1133 & 219 & 1352 \\
 Test                &  40 &  16 &  56 &   212  &  43 &   255  \\
 \midrule
-Total & 264 & 103 & 367 & 1\,345 & 262 & 1\,607 \\
+Total & 264 & 103 & 367 & 1345 & 262 & 1607 \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -332,8 +332,8 @@ clar (combinada); la Figura~\ref{fig-mask} (Annex~\ref{app:mask}) en mostra un e
 per dividir cada làmina en
 \textit{patches} de $2048 \times 2048$ píxels a resolució completa. Per cada finestra, es comprova el
 percentatge de teixit a la corresponent regió de la màscara binària anotada;
-les finestres sense cap píxel de teixit (\textit{tissue\_percentage}~$= 0$)
-es descarten. El model UNI2~\cite{chen2024uni2} processa cada \textit{patch} individualment i extreu el token
+les finestres sense cap píxel de teixit es descarten.
+El model UNI2~\cite{chen2024uni2} processa cada \textit{patch} individualment i extreu el token
 \textit{CLS} de la seva sortida, obtenint un vector de forma $[1, 1536]$ que condensa la
 informació morfològica i textural del patch. Cada vector CLS esdevé un node del graf,
 conservant les coordenades del patch per a la construcció de les arestes.
@@ -343,7 +343,7 @@ conservant les coordenades del patch per a la construcció de les arestes.
 Formalment, cada secció histològica es representa com un graf
 $\mathcal{G} = (\mathbf{X},\,\mathbf{A})$, on $\mathbf{X} \in \mathbb{R}^{N \times 1536}$ és la matriu
 de característiques dels $N$ nodes (\textit{patches}) i $\mathbf{A} \in \{0,1\}^{N \times N}$ la matriu
-d'adjacència construïda per triangulació de Delaunay i posterior poda d'arestes llargues. Cada secció
+d'adjacència construïda per triangulació de Delaunay i posterior poda d'arestes. Cada secció
 genera un graf independent; les $S$ seccions d'un pacient es processen per separat i les probabilitats
 $\{P(\text{N1}_i)\}_{i=1}^{S}$ s'agreguen via MIL (Secció~\ref{sec:mil}). Com a alternativa es va explorar
 un \textit{mega-graf} per pacient (bloc-diagonal de totes les seccions, sense arestes entre elles), però
@@ -351,10 +351,11 @@ va donar resultats inferiors, probablement per forçar un únic \textit{pooling}
 físicament inconnexos.
 
 \textbf{Connectivitat de Delaunay.} Els centres dels \textit{patches} formen una quadrícula regular, però connectar-los amb una reixeta
-fixa no és suficient: la màscara deixa forats de teixit irregulars que en trenquen la simetria. Per això
-es connecten els nodes amb una \textbf{triangulació de Delaunay} sobre les seves coordenades, que
+fixa no és suficient: la màscara deixa forats de teixit irregulars i no connecta regions properes en angles
+diferents a 90º.
+Per això es connecten els nodes amb una \textbf{triangulació de Delaunay} sobre les seves coordenades, que
 s'adapta a qualsevol distribució. Després es poden les arestes en dos passos: s'eliminen les que
-travessen píxels de fons (màscara $=0$), per no unir regions separades per espai buit, i les que
+travessen píxels de fons (màscara amb valor RGB $=0$), per no unir regions separades per espai buit, i les que
 superen el doble de la longitud mitjana, per evitar connexions massa llargues. El resultat
 (Figura~\ref{fig:preprocess}, amb les arestes podades en vermell) és una malla local entre
 \textit{patches} veïns.
@@ -476,7 +477,9 @@ cada un (total $L_{\text{DP}}+1$ capes GAT).
 l'assignació apresa: un que empeny a agrupar junts els nodes veïns i un altre (d'entropia) que fa que
 cada node s'assigni de manera neta a pocs grups. La pèrdua total és la \textit{cross-entropy} de
 classificació més $\lambda_{\text{aux}}$ vegades aquests termes, amb $\lambda_{\text{aux}}$ com a eix
-d'optimització. Com a alternativa, SAGPool~\cite{lee2019selfattentiongraphpooling} selecciona els $K$
+d'optimització.
+
+Com a alternativa a Diffpool, SAGPool~\cite{lee2019selfattentiongraphpooling} selecciona els $K$
 nodes més rellevants via puntuacions d'auto-atenció (selecció discreta, no assignació suau); s'ha
 preferit DiffPool per la seva expressivitat contínua i la pèrdua auxiliar de regularització.
 
@@ -516,13 +519,13 @@ apreciable. Si s'entrena a nivell de làmina, les seccions N1 de pacients N1 que
 reben un senyal de supervisió incorrecte (N0), contaminant l'entrenament.
 
 Per evitar aquest problema, s'utilitza el paradigma d'\textbf{aprenentatge per múltiples instàncies}
-(\textit{Multiple Instance Learning}, MIL): cada pacient es tracta com un \textit{bag} i totes les seves
+(\textit{Multiple Instance Learning}, MIL~\cite{dietterich1997mil}): cada pacient es tracta com un \textit{bag} i totes les seves
 làmines comparteixen la mateixa etiqueta. El model aprèn a classificar el pacient a partir de les
 seves seccions, sense necessitat d'etiquetes individuals per làmina.
 
 En tots els casos, el capçal MLP té la mateixa estructura:
 \textit{Linear}($h$)~$\to$~ReLU~$\to$~\textit{Dropout}~$\to$~\textit{Linear}($2$), on
-$h$ és la dimensió oculta (hiperparàmetre del sweep) i la sortida és un parell de logits (N0/N1);
+$h$ és la dimensió oculta (hiperparàmetre) i la sortida és un parell de logits (N0/N1);
 els pesos s'aprenen per retropropagació. La diferència entre estratègies és \emph{quan} s'aplica:
 
 \begin{itemize}
@@ -804,10 +807,10 @@ al.~\cite{piao2023ai} obté millors xifres (Espec.\ $85{,}8\%$, AUC $0{,}960$), 
 $\sim\!10\!\times$ més dades i, sobretot, a partir de \textbf{variables clinicopatològiques ja
 anotades per un patòleg}; el nostre GAT usa només la imatge WSI i pot córrer just després de
 l'escaneig. La comparació més justa, a la mateixa modalitat (WSI sense variables clíniques), és la de Song et
-al.~\cite{song2024lnm} (MIL d'atenció sobre WSI, sense variables clíniques): sobre $1\,281$
+al.~\cite{song2024lnm} (MIL d'atenció sobre WSI, sense variables clíniques): sobre $1281$
 pacients obté AUC $0{,}781$ i, a una especificitat pràcticament idèntica ($57{,}6\%$ vs
 $57{,}5\%$), sens.\ $92{,}9\%$, per sota del $100\%$ del nostre model, tot i que la seva
-avaluació és molt més robusta ($1\,281$ vs $56$ pacients). Representar la secció com a graf
+avaluació és molt més robusta ($1281$ vs $56$ pacients). Representar la secció com a graf
 espacial és, doncs, com a mínim competitiu amb l'MIL pla sobre \textit{patches}.
 
 \subsection{Limitacions}
