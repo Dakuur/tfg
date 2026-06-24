@@ -174,9 +174,9 @@ Introducció. Malgrat la seva sensibilitat elevada, la seva especificitat
 \cite{tanino2024comparative}, les AUC reportades són $0{,}596$ (JSCCR),
 $0{,}749$ (NCCN) i $0{,}743$ (ESMO)\footnote{En ser classificadors binaris, l'AUC
 d'una guia equival a $(\text{sens}+\text{espec})/2$ (\textit{balanced accuracy}).},
-amb especificitats del $19\%$, $52\%$
-i $50\%$ respectivament, la qual cosa implica que més del $80\%$ dels
-pacients operats no tenien LNM real \cite{tanino2024comparative,zaffalon2023}.
+amb especificitats del $19\%$ (JSCCR), $52\%$ (NCCN) i $50\%$ (ESMO):
+seguint la JSCCR, més del $80\%$ dels pacients operats no tenien LNM
+real \cite{tanino2024comparative,zaffalon2023}.
 
 Paral·lelament, Piao et al.~\cite{piao2023ai} van proposar un model
 d'IA sobre variables clinicopatológiques ($n\!=\!546$ entrenament,
@@ -201,7 +201,10 @@ d'inferir l'etiqueta global (N0/N1) a partir de fragments sense
 etiqueta individual. Ilse et al.~\cite{ilse2018attentionbaseddeepmultipleinstance} van
 proposar l'agregació per atenció (\textit{attention-based MIL}), que aprèn quins
 \textit{patches} són més rellevants per al diagnòstic. Lu et al.~\cite{lu2020dataefficientweaklysupervised}
-van aplicar aquest mètode a conjunts de dades clínics reals (CLAM), i Li et
+van aplicar aquest mètode (CLAM) a la detecció de metàstasi ganglionar al repte CAMELYON
+(càncer de mama, AUC $\sim\!0{,}95$); aquella tasca, però, detecta la metàstasi \emph{present}
+a la làmina del propi gangli, mentre que aquí es prediu l'estat ganglionar a partir del tumor
+primari, de manera que els resultats no són directament comparables. Li et
 al.~\cite{li2021dualstreammultipleinstancelearning} van proposar DSMIL, que combina dues
 branques, a nivell de \textit{patch} i de làmina, amb aprenentatge contrastiu. La
 predicció de metàstasi ganglionar a partir d'histopatologia s'ha estudiat en altres càncers:
@@ -210,7 +213,8 @@ làmines de càncer gàstric, amb resultats prometedors.
 
 \subsection{Grafs i GNN en Patologia Digital}
 
-Les GNN permeten tractar el teixit com una estructura on les
+Les xarxes neuronals sobre grafs (GNN) permeten
+tractar el teixit com una estructura on les
 regions estan connectades segons la seva proximitat, capturant relacions espacials que les
 xarxes neuronals convolucionals (CNN) no modelen directament. Jaume et al.~\cite{jaume2021histocartographytoolkitgraphanalytics}
 van presentar HistoCartography, un entorn de treball per a l'anàlisi de grafs en patologia
@@ -249,12 +253,12 @@ preentrenats en el mateix domini i capturen informació morfològica rellevant.
 
 Aquest treball s'integra dins una línia de recerca del grup IAM del CVC.
 Martí~\cite{ddd.uab.cat:317556} va comparar CNNs, ViTs i GNNs sobre el mateix conjunt
-pT1 CRC per a la classificació de \textit{patches} individuals, amb millor AUC
-($0{,}954 \pm 0{,}077$) per una arquitectura híbrida ViT+NN. El treball, però,
-opera a nivell de \textit{patch} i no té en compte la topologia espacial del teixit
-ni el diagnòstic per pacient. Aquest TFG parteix dels embeddings CLS del model UNI2
-per construir grafs espacials de les seccions i aborda el problema des d'una
-perspectiva MIL per pacient.
+pT1 CRC per classificar \textit{patches} individuals segons el percentatge d'infiltració
+tumoral, amb millor AUC ($0{,}954 \pm 0{,}077$) per una arquitectura híbrida ViT+NN.
+Aquella tasca, però, és de classificació de teixit a nivell de \textit{patch}, sense
+topologia espacial ni diagnòstic per pacient, i no prediu l'estat ganglionar; aquest TFG
+parteix dels embeddings CLS del model UNI2 per construir grafs espacials de les seccions
+i predir l'estat N0/N1 des d'una perspectiva MIL per pacient.
 
 \section{Objectius}
 
@@ -277,7 +281,7 @@ A partir d'aquest objectiu general se'n deriven els objectius específics següe
 \section{Dades i Preprocessament}
 
 Aquest projecte es realitza en col·laboració amb un equip de la UAB que cobreix des del preprocessament
-de les dades fins a la creació d'autoencoders alternatius per a l'extracció de característiques, amb una
+de les dades fins a la creació d'autoencoders alternatius per a l'extracció de característiques, per a una
 posterior classificació mitjançant diversos models.
 
 \subsection{Dades d'entrada}
