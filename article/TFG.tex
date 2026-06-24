@@ -720,10 +720,10 @@ IBC Score \cite{dawson2024budding} & Puntuació histopat. & $90\%$ & $26\%$ & $0
 \multicolumn{6}{l}{\textit{Models d'IA}} \\[2pt]
 LightGBM \cite{piao2023ai}                          & Var.\ clinicopatol. & $100\%$  & $85{,}8\%$ & $0{,}960$ & $92{,}9\%$ \\
 Song et al.\ \cite{song2024lnm}                     & Imatge WSI & $92{,}9\%$ & $57{,}6\%$ & $0{,}781$ & $75{,}3\%$ \\
-\multicolumn{6}{l}{\textit{\quad GAT Baseline (AUC $= 0{,}875$)}} \\[1pt]
+\multicolumn{6}{l}{\textit{GAT Baseline (AUC $= 0{,}875$)}} \\[1pt]
 \quad T1 ($t\!=\!0{,}5$)                                        & Imatge WSI & $56{,}2\%$ & $92{,}5\%$ & $0{,}875$ & $74{,}4\%$ \\
 \textbf{\quad T2 ($t^*\!=\!0{,}133$, TPR$=1$)$^{\dagger}$}     & \textbf{Imatge WSI} & $\mathbf{100\%}$ & $\mathbf{57{,}5\%}$ & $\mathbf{0{,}875}$ & $\mathbf{78{,}8\%}$ \\[2pt]
-\multicolumn{6}{l}{\textit{\quad GAT+DiffPool (AUC $= 0{,}786$)}} \\[1pt]
+\multicolumn{6}{l}{\textit{GAT+DiffPool (AUC $= 0{,}786$)}} \\[1pt]
 \quad T1 ($t\!=\!0{,}5$)                                        & Imatge WSI & $50{,}0\%$ & $82{,}5\%$ & $0{,}786$ & $66{,}3\%$ \\
 \quad T2 ($t^*\!=\!0{,}303$)$^{\dagger}$                       & Imatge WSI & $62{,}5\%$ & $70{,}0\%$ & $0{,}786$ & $66{,}3\%$ \\
 \bottomrule
@@ -1136,7 +1136,7 @@ d'optimització configurables.
 \caption{Variants d'arquitectura del \textit{GATClassifier}: el mateix graf
 $\mathcal{G}$ es pot processar per dues branques configurables
 (\textsc{Baseline} o \textsc{DiffPool}). Totes dues convergeixen en un
-\textit{readout} unificat (caixes portocalles) que produeix l'embedding
+\textit{readout} unificat que produeix l'embedding
 $\mathbf{h}_s \in \mathbb{R}^{h}$ per secció; l'opció de \textit{readout}
 s'optimitza de forma independent per a cada branca.
 L'agregació MIL bifurca de nou: \textbf{mean/max/noisy-OR} apliquen el MLP
@@ -1294,7 +1294,7 @@ Estimació de temps en una NVIDIA L40s: 60--150\,h per 1000 \textit{trials} tota
 \label{tab:sweep-config}
 \small
 \renewcommand{\arraystretch}{1.05}
-\begin{tabular}{p{3.8cm}p{6.5cm}p{3.0cm}}
+\begin{tabular}{p{3.8cm}>{\raggedleft\arraybackslash}p{6.5cm}>{\raggedleft\arraybackslash}p{3.0cm}}
 \toprule
 \textbf{Eix} & \textbf{Valors / rang} & \textbf{Tipus mostreig} \\
 \midrule
