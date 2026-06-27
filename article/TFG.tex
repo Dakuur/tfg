@@ -74,7 +74,7 @@ en Càncer Colorectal usant Graph Attention Networks}}
 {\sffamily
 \textbf{Resum--}
 Es presenta un sistema de classificació N0/N1 per a la detecció de metàstasi en ganglis limfàtics
-en càncer colorrectal pT1 a partir de \textit{Whole Slide Images}. El teixit es representa com un
+en càncer colorectal pT1 a partir de \textit{Whole Slide Images}. El teixit es representa com un
 graf espacial sobre les coordenades dels \textit{patches},
 de manera que es preserva la topologia real del teixit.
 Cada node és un \textit{patch} de 2048$\times$2048 px representat per l'embedding
@@ -88,7 +88,7 @@ El millor model és el GAT de referència, que obté AUC test $=0{,}875$, sensib
 especificitat $57{,}5\%$.
 \\
 \\
-\textbf{Paraules clau-- } Càncer colorrectal pT1, Histopatologia digital, Graph Attention Networks,
+\textbf{Paraules clau-- } Càncer colorectal pT1, Histopatologia digital, Graph Attention Networks,
 DiffPool jeràrquic, Graf espacial de Delaunay, MIL, Desbalanceig de classes.\\
 \\
 \bigskip
@@ -128,7 +128,7 @@ Hierarchical DiffPool, Spatial Delaunay graph, Multiple Instance Learning, Class
 
 \section{Introducció}
 
-\lettrine[lines=3]{E}{l} càncer colorrectal (CCR) és un dels reptes de salut pública més greus del nostre
+\lettrine[lines=3]{E}{l} càncer colorectal (CCR) és un dels reptes de salut pública més greus del nostre
 entorn. A Espanya, la SEOM preveu per al 2026 uns 44.132 nous diagnòstics, fet que el converteix en el tumor
 més freqüent i en la segona causa de mort per càncer, amb 14.629 defuncions \cite{seom2026}.
 
@@ -261,7 +261,7 @@ i predir l'estat N0/N1 des d'una perspectiva MIL per pacient.
 \section{Objectius}
 
 L'objectiu general d'aquest treball és \textbf{classificar l'estat ganglionar N0/N1} en
-càncer colorrectal pT1 a partir de WSI reals, utilitzant els embeddings CLS del model UNI2
+càncer colorectal pT1 a partir de WSI reals, utilitzant els embeddings CLS del model UNI2
 i representant cada secció de teixit com un graf espacial (triangulació de Delaunay
 sobre les coordenades del teixit).
 
@@ -847,7 +847,7 @@ d'interpretar amb cautela.
 \subsection{Conclusions}
 
 En aquest TFG s'ha construït un sistema complet de classificació N0/N1 per a càncer
-colorrectal pT1 a partir de WSI: generació de grafs espacials de Delaunay, optimització
+colorectal pT1 a partir de WSI: generació de grafs espacials de Delaunay, optimització
 del model GAT amb cerca bayesiana TPE, i avaluació final sobre un test fix (56 pacients).
 La pregunta central \textbf{«GAT Baseline o GAT+DiffPool?»} es respon clarament:
 \textbf{el GAT Baseline} (\textit{attention pooling}, MIL \textit{mean}, $h\!=\!256$,
