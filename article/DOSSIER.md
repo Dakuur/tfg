@@ -1,6 +1,6 @@
 # Dossier del TFG
 
-## Predicció de Metàstasi en Histopatologia en Càncer Colorectal usant Graph Attention Networks
+## Predicció de Metàstasi en Càncer Colorectal amb Whole Slide Images usant Graph Attention Networks
 
 **Autor:** David Morillo Massagué
 
@@ -160,7 +160,7 @@ Aquest apartat recull les decisions preses per implementar i avaluar el sistema 
 
 ## 7. Llista de canvis
 
-Aquesta secció resumeix els canvis introduïts al llarg del treball: (7.1) l'evolució global vista al repositori i (7.2) els canvis derivats de les reunions amb la tutora.
+Aquesta secció resumeix els canvis introduïts al llarg del treball: (7.1) l'evolució global vista al repositori, (7.2) els canvis tècnics més importants i (7.3) els canvis derivats de les reunions amb la tutora.
 
 ### 7.1. Evolució del projecte (repositori)
 
@@ -196,7 +196,36 @@ Cal destacar que **l'informe final s'ha treballat des d'etapes molt anteriors al
 
 *Commits per setmana al repositori principal. Inclou tant la feina pròpia com els commits automàtics de compilació del PDF.*
 
-### 7.2. Canvis derivats de les reunions amb la tutora
+### 7.2. Canvis tècnics més importants
+
+Més enllà dels retocs derivats del *feedback* de la tutora, aquests són els canvis tècnics que han marcat el desenvolupament, agrupats segons l'entrega en què es van fer:
+
+**Fins a l'informe inicial (9 març)**
+- Recerca i experimentació prèvies amb PyTorch Geometric (en local).
+- Posada en marxa i desplegament al servidor del CVC, amb les primeres proves del model GAT.
+
+**Entre l'informe inicial i el Progrés I (fins al 19 abril)**
+- CI/CD: *workflow* que recompila i publica el PDF de l'informe automàticament a cada canvi.
+- Pipeline de dades: construcció dels grafs espacials de Delaunay a partir dels `.npz` i l'Excel d'etiquetes (amb *join*, poda d'arestes i separació física del test).
+- Model: implementació del `GATClassifier` i refactor modular (capes GAT, *readout* i agregació separats i configurables).
+- Segona arquitectura: DiffPool jeràrquic intercalat entre capes GAT.
+- Predicció a nivell de pacient (MIL) i primer frontend web de visualització.
+
+**Entre el Progrés I i el Progrés II (fins al 24 maig)**
+- Adaptació al dataset real (xifres definitives) i migració del codi al submòdul compartit `pt1diagnosis`.
+- Gestió del desbalanceig: particions estratificades, pesos de classe i llindar operatiu derivat de validació.
+- Validació creuada 5-*fold* estratificada per a la cerca d'hiperparàmetres.
+- Adaptació al clúster: cerca automàtica del *batch size* màxim i reintents per als errors de memòria de la GPU (L40s).
+
+**Entre el Progrés II i la proposta d'informe final (fins al 14 juny)**
+- Cerca bayesiana amb Optuna/TPE i dos estudis aïllats per arquitectura.
+- Procediment d'avaluació final: reentrenament 90/10, test únic i re-avaluació de configuracions per triar el model definitiu.
+- Frontend: pàgina de visualització del *sweep* i monitoratge amb Weights & Biases.
+
+**Fins al lliurament final (28 juny)**
+- Polit final de l'informe, figures i annexos, i preparació de la presentació i el dossier.
+
+### 7.3. Canvis derivats de les reunions amb la tutora
 
 A partir del *feedback* sobre la proposta d'informe, els canvis principals van ser, a grans trets:
 
@@ -211,21 +240,21 @@ A partir del *feedback* sobre la proposta d'informe, els canvis principals van s
 
 ## 8. Declaració d'ús d'eines d'intel·ligència artificial
 
-Tal com demana la normativa de l'assignatura, aquí s'indica quines eines d'IA s'han fet servir, per a què i fins a quin punt. En tots els casos han estat un suport formal o una ajuda tècnica puntual; les decisions de fons (plantejaments, mètodes, anàlisi i conclusions) són feina de l'alumne, juntament amb la tutora.
+Tal com demana la normativa de l'assignatura, aquí s'indica quines eines d'IA s'han fet servir, per a què i fins a quin punt. En tots els casos han estat un suport formal o una ajuda tècnica puntual, sempre sota la supervisió i la revisió de l'alumne: les decisions de fons (plantejaments, mètodes, disseny i execució dels experiments, anàlisi i conclusions) són feina de l'alumne, juntament amb la tutora.
 
 **Google Gemini (assistent de recerca, etapes inicials).** Es va fer servir al començament del projecte per documentar-se, aprofitant que està connectat a cerques de Google i que explora molta informació de forma ràpida. En concret, per a:
 
-- Buscar articles relacionats amb l'objectiu i els mètodes del treball.
-- Conèixer les mètriques actuals del diagnòstic del càncer colorectal (CRC).
+- Ajudar a buscar articles relacionats amb l'objectiu i els mètodes del treball (després verificats i redactats per l'alumne).
+- Orientar sobre les mètriques actuals del diagnòstic del càncer colorectal (CRC).
 - Fer una primera introducció als conceptes de les Graph Attention Networks (GAT).
 
 **Claude Code (ajuda tècnica).** Es va fer servir com a suport durant la implementació, per a:
 
-- Donar format al codi.
-- Donar format a taules, figures i altres elements de LaTeX de l'informe.
-- Muntar els primers experiments de model *end-to-end* i fer una primera revisió de si el codi funcionava, detectant *bugs*.
-- Corregir errors puntuals (*bug fixing*).
-- Crear el frontend web (JavaScript).
+- Ajudar a donar format al codi.
+- Ajudar a donar format a taules, figures i altres elements de LaTeX de l'informe.
+- Ajudar a programar i revisar el codi dels primers experiments *end-to-end* (el disseny i l'execució van ser de l'alumne), detectant *bugs*.
+- Ajudar a corregir errors puntuals (*bug fixing*).
+- Ajudar a programar el frontend web (JavaScript), una eina auxiliar de visualització que no forma part del contingut avaluat.
 
 **Usos que no s'han fet.** No s'ha fet servir cap eina d'IA per a les parts que són el nucli del treball:
 
