@@ -1148,9 +1148,17 @@ $\lambda_{\text{aux}}$ pes de la pèrdua auxiliar; $t^*$ llindar del val set.}
 
 La Taula~\ref{tab:main-effects} mostra la \textbf{importància fANOVA} de cada eix
 d'optimització, calculada de manera independent per a cada estudi Optuna (Baseline i
-DiffPool). La importància és una descomposició funcional de la variància de l'objectiu CV
-explicada per cada hiperparàmetre, en el rang $[0, 1]$. Els eixos específics d'una branca
-apareixen buits a l'altra columna. Tots els valors provenen de l'anàlisi fANOVA calculada per Optuna sobre els \textit{trials} complets de cada estudi.
+DiffPool).
+
+\textbf{Què contrasta.} La variable analitzada és l'objectiu de validació creuada de cada
+\textit{trial} ($\overline{\text{spec}}_{\text{CV}} - 10\cdot\max(0,
+1-\overline{\text{sens}}_{\text{CV}})$, el que el \textit{sweep} maximitza). El
+\textit{functional ANOVA} ajusta un model substitut (\textit{random forest}) sobre tots els
+\textit{trials} i descompon la variància d'aquest objectiu en la contribució de cada eix. La
+importància reportada és la fracció de variància que explica l'eix per si sol (efecte
+principal, en $[0, 1]$): com més alta, més pesa aquell hiperparàmetre en el rendiment. No
+sumen $1$ perquè no s'hi inclouen les interaccions. Els eixos específics d'una branca
+apareixen buits a l'altra columna.
 
 \begin{table}[H]
 \centering
