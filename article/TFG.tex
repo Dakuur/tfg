@@ -28,8 +28,8 @@
 \usetikzlibrary{arrows.meta,positioning,calc}
 
 \author{\LARGE\sffamily David Morillo Massagué}
-\title{\Huge{\sffamily Predicció de Metàstasi en Histopatologia\\
-en Càncer Colorectal\\
+\title{\Huge{\sffamily Predicció de Metàstasi en Càncer Colorectal\\
+a partir d'Imatges Histopatològiques\\
 usant Graph Attention Networks}}
 
 \date{}
@@ -89,8 +89,8 @@ El millor model és el GAT de referència, que obté AUC test $=0{,}875$, sensib
 especificitat $57{,}5\%$.
 \\
 \\
-\textbf{Paraules clau-- } Càncer colorectal pT1, Histopatologia digital, Graph Attention Networks,
-DiffPool jeràrquic, Graf espacial de Delaunay, MIL, Desbalanceig de classes.\\
+\textbf{Paraules clau-- } Càncer colorectal pT1, Metàstasi ganglionar, Histopatologia digital,
+Graph Attention Networks, DiffPool jeràrquic, Graf espacial de Delaunay, MIL.\\
 \\
 \bigskip
 \\
@@ -101,7 +101,7 @@ preserving the real spatial topology of the tissue.
 Each node is a 2048$\times$2048 px patch represented by a
 CLS embedding of shape $[1, 1536]$ from the UNI2 model. Two configurable architectures are compared: a
 GAT baseline with flat readout (mean, max, mean\_max or attention) and a GAT+DiffPool model
-with $L_{\text{DP}}$ DiffPool blocks interleaved between GAT layers for
+with hierarchical DiffPool interleaved between GAT layers for
 multi-scale representations. Patient-level diagnosis is obtained via MIL aggregation over
 histological sections. Hyperparameter search combines two Optuna studies
 (5-fold CV + 90/10 retraining of the best configurations).
@@ -109,8 +109,8 @@ The best model is the GAT baseline, achieving test
 AUC $=0.875$, sensitivity $100\%$ and specificity $57.5\%$.
 \\
 \\
-\textbf{Keywords-- } pT1 colorectal cancer, Digital histopathology, Graph Attention Networks,
-Hierarchical DiffPool, Spatial Delaunay graph, Multiple Instance Learning, Class imbalance.\\
+\textbf{Keywords-- } pT1 colorectal cancer, Lymph node metastasis, Digital histopathology,
+Graph Attention Networks, Hierarchical DiffPool, Spatial Delaunay graph, Multiple Instance Learning.\\
 }
 
 \bigskip
