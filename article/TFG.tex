@@ -656,13 +656,13 @@ test). La Taula~\ref{tab:configs-compare} en resumeix les més rellevants.
 5-\textit{fold}.}
 \label{tab:configs-compare}
 \small
-\begin{tabular}{lccc}
+\begin{tabular}{lcccccc}
 \toprule
-\textbf{Arquitectura} & \textbf{Readout/MIL}
-  & \textbf{$h$/$H$/dropout} & \textbf{AUC CV} \\
+\textbf{Arquitectura} & \textbf{Readout} & \textbf{MIL}
+  & \textbf{$h$} & \textbf{$H$} & \textbf{dropout} & \textbf{AUC CV} \\
 \midrule
-\textbf{Baseline}  & \textbf{attention/mean}      & $\mathbf{256/4/0{,}3}$ & $\mathbf{0{,}862\!\pm\!0{,}038}$ \\
-DiffPool           & mean\_max/mean         & $128/2/0{,}44$         & $0{,}847\!\pm\!0{,}048$ \\
+\textbf{Baseline}  & \textbf{attention} & \textbf{mean} & $\mathbf{256}$ & $\mathbf{4}$ & $\mathbf{0{,}3}$ & $\mathbf{0{,}862\!\pm\!0{,}038}$ \\
+DiffPool           & mean\_max          & mean          & $128$          & $2$          & $0{,}44$         & $0{,}847\!\pm\!0{,}048$ \\
 \bottomrule
 \end{tabular}
 \end{table*}
