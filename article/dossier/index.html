@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dossier del TFG · David Morillo</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="top">
+  <h1>Dossier del TFG</h1>
+  <p class="subtitle">Predicció de Metàstasi en Càncer Colorectal amb Whole Slide Images usant Graph Attention Networks</p>
+  <p class="meta">David Morillo Massagué · Tutora: Debora Gil Resina (DCC) · Escola d'Enginyeria (UAB) · Curs 2025/26 · Col·laboració amb el CVC</p>
+</header>
+
+<div class="layout">
+
+<nav class="toc">
+  <a href="#resum">Resum</a>
+  <a href="#dades">Dades de partida</a>
+  <a href="#viabilitat">Viabilitat</a>
+  <a href="#codi">Codi i manual</a>
+  <a href="#entregues">Entregues</a>
+  <a href="#tutora">Reunions amb la tutora</a>
+  <a href="#ia">Ús d'IA</a>
+</nav>
+
+<main>
+
+  <p class="lead">Document de suport a l'informe. L'informe és el document de referència per als detalls científics; aquí es recull el procés, les eines, el manual i l'evolució del projecte a través de les entregues.</p>
+
+  <!-- RESUM -->
+  <section id="resum">
+    <h2>1. Resum del projecte</h2>
+    <p>El projecte construeix un sistema que, a partir d'una imatge de teixit (Whole Slide Image, WSI) d'un càncer de còlon en estadi inicial (pT1), prediu si el pacient té o no metàstasi als ganglis limfàtics (classificació N0/N1). En lloc de tractar la imatge com un conjunt de píxels, es divideix en trossos petits (<em>patches</em>), cada tros es representa amb un vector de característiques i es connecten segons la seva posició real al teixit, formant un graf; sobre aquest graf s'hi apliquen xarxes neuronals d'atenció (Graph Attention Networks). L'objectiu, a la llarga, és ajudar a evitar cirurgies innecessàries.</p>
+    <figure>
+      <img src="img/pipeline.png" alt="Visió general del pipeline" style="max-width:60%;">
+      <figcaption>Visió de conjunt del pipeline: preprocessament (WSI a graf), arquitectura (GAT), readout, agregació per pacient (MIL) i decisió N0/N1. El detall de cada bloc és a l'informe.</figcaption>
+    </figure>
+  </section>
+
+  <!-- DADES -->
+  <section id="dades">
+    <h2>2. Dades de partida i repartiment de feina</h2>
+    <p><strong>Repartiment dins l'equip.</strong> El projecte s'ha fet en col·laboració amb un equip de la UAB al CVC. La part prèvia (obtenció de les WSI, extracció dels <em>patches</em> i càlcul de les característiques amb el model de fundació) la van fer altres membres de l'equip. El punt de partida de l'alumne eren les característiques ja generades; a partir d'aquí construeix els grafs, el model i tota l'avaluació.</p>
+    <p><strong>De què es parteix.</strong> Per a cada hospital, un fitxer <code>.npz</code> amb les coordenades i el vector de característiques (<code>[1, 1536]</code>) de cada <em>patch</em>, i un full de càlcul (Excel) amb el diagnòstic de cada pacient (N0, N1 o NX). El codi fa un <em>join</em> d'aquestes dues fonts, descarta els casos NX i desa cada secció com un graf precomputat (<code>.pt</code> de PyTorch Geometric), llest per entrar a la xarxa.</p>
+    <p><strong>Privadesa.</strong> Totes les dades estaven anonimitzades (no contenien cap informació que permetés identificar els pacients) i s'han tractat dins el marc de col·laboració amb el CVC i els hospitals que van cedir les mostres.</p>
+  </section>
+
+  <!-- VIABILITAT -->
+  <section id="viabilitat">
+    <h2>3. Estudi de viabilitat</h2>
+    <p><strong>Tècnica.</strong> Viable amb programari lliure i la infraestructura del CVC. Les peces clau (model de fundació preentrenat, llibreries de grafs i d'optimització) són madures.</p>
+    <p><strong>Temporal.</strong> Feina repartida en fases (dades, grafs, model, cerca d'hiperparàmetres, redacció); el càlcul pesat es pot paral·lelitzar i reprendre sense perdre feina.</p>
+    <p><strong>De dades.</strong> Volum suficient per entrenar i avaluar, tot i que limitat per a conclusions clíniques definitives.</p>
+    <p><strong>Camí cap a un ús real.</strong> És una eina de recerca i de suport a la decisió, no un producte clínic: no es pot fer servir sobre pacients reals sense validació externa prèvia. A més, depèn que tots els passos anteriors a la diagnosi (extracció de <em>patches</em>, característiques, construcció del graf) es facin bé, i idealment hauria de tenir un sistema d'interpretabilitat per localitzar regions crítiques (no perfeccionat, perquè l'objectiu central era construir un model sòlid).</p>
+    <p><strong>Riscos i mitigació.</strong> Desbalanceig de classes (particions estratificades, pesos i llindar ajustat); test petit (validació creuada i limitacions reportades); cost de càlcul (infraestructura existent i cerca reprenible).</p>
+  </section>
+
+  <!-- CODI I MANUAL -->
+  <section id="codi">
+    <h2>4. Codi i manual d'usuari</h2>
+    <p><strong>Repositori principal (propi):</strong> <a href="https://github.com/Dakuur/tfg">github.com/Dakuur/tfg</a> — memòria (LaTeX), frontend de visualització i workflows de CI/CD.</p>
+    <p><strong>Submòdul (compartit):</strong> <code>github.com/IAM-CVC/PT1Diagnosis</code> (branca <code>DavidMorillo</code>) — codi fet conjuntament amb l'equip del CVC i que <strong>s'executa al servidor</strong> (grafs, model i cerca). És privat: cal demanar permís per consultar-lo.</p>
+    <h3>Manual d'execució</h3>
+    <p>S'assumeix accés al servidor del CVC, on hi ha les dades (<code>/mnt/iam/</code>) i la GPU.</p>
+    <pre><code># 1. Clonar amb submòduls
+git clone --recurse-submodules https://github.com/Dakuur/tfg
+
+# 2. Entorn i dependències (Python, PyTorch 2.5.1 + PyTorch Geometric)
+python -m venv .venv && source .venv/bin/activate
+pip install -r pt1diagnosis/sweep/requirements.txt
+
+# 3. Construir els grafs (un sol cop; genera el split i separa el test)
+python pt1diagnosis/scripts_david/build_dataset.py
+
+# 4. Cerca d'hiperparàmetres (Optuna; reprenible)
+cd pt1diagnosis && python -m sweep
+
+# 5. Reentrenar i avaluar el millor model sobre el test
+python -m sweep --finalize
+
+# 6. Explorar resultats amb el frontend web
+./frontend/start_frontend.sh      # http://localhost:8000</code></pre>
+    <p><strong>Disseny modular:</strong> construcció de grafs, model, entrenament i cerca separats; configuració per YAML; la cerca es pot aturar i reprendre.</p>
+    <p><strong>Monitoratge (W&amp;B):</strong> durant l'entrenament i la cerca s'usa Weights &amp; Biases per registrar mètriques en temps real (tant com del hardware com estadístiques del model) i comparar configuracions.</p>
+    <p><strong>Frontend web:</strong> interfície pròpia que mostra el WSI amb els <em>patches</em>, els grafs de Delaunay, un selector de model (carrega qualsevol <em>checkpoint</em> i n'infereix l'arquitectura) i una pestanya d'estadístiques (ROC/PR, matriu de confusió, mètriques).</p>
+  </section>
+
+  <!-- ENTREGUES -->
+  <section id="entregues">
+    <h2>5. Entregues i evolució</h2>
+    <p>Cada entrega té el seu <strong>PDF</strong>, el seu <strong>codi LaTeX</strong>, i els canvis realitzats al repositori des de l'entrega anterior, per a poder comparar els canvis. Fes clic a cada entrega per veure què s'hi va fer de nou.</p>
+
+    <div class="timeline">
+
+      <!-- seguiment1 -->
+      <div class="entrega">
+        <div class="entrega-head">
+          <span class="num">1</span>
+          <span class="title">Informe inicial <span class="date">· 1a sessió de seguiment</span></span>
+          <span class="date">9 març 2026</span>
+          <span class="chev">▶</span>
+        </div>
+        <div class="entrega-body">
+          <p>Punt de partida del projecte i primera versió de la memòria:</p>
+          <ul>
+            <li>Posada en marxa al servidor del CVC i primeres proves del model GAT (amb suport de GPU).</li>
+            <li>Primera versió de la memòria en LaTeX i workflow de CI/CD que compila el PDF automàticament.</li>
+            <li>Primera visualització del graf de Delaunay sobre el teixit.</li>
+          </ul>
+          <div class="links">
+            <a class="btn pdf" href="pdf/seguiment1.pdf" target="_blank">Obrir PDF</a>
+            <a class="btn tex" href="tex/seguiment1.tex" target="_blank">Veure LaTeX</a>
+            <a class="btn git" href="https://github.com/Dakuur/tfg/blob/590a2f8a8c0ad3403da2aff8e06f156f400a4013/article/TFG.tex" target="_blank">Veure a GitHub</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- seguiment2 -->
+      <div class="entrega">
+        <div class="entrega-head">
+          <span class="num">2</span>
+          <span class="title">Informe de progrés I <span class="date">· 2a sessió de seguiment</span></span>
+          <span class="date">19 abril 2026</span>
+          <span class="chev">▶</span>
+        </div>
+        <div class="entrega-body">
+          <p>Es construeix el nucli del sistema:</p>
+          <ul>
+            <li>Pipeline de dades complet: càrrega dels <code>.npz</code> + Excel i construcció dels grafs de Delaunay (triangulació + poda d'arestes).</li>
+            <li>Refactor modular del codi, pesos de classe i segona arquitectura: <strong>DiffPool jeràrquic</strong> entre capes GAT.</li>
+            <li>Predicció a nivell de pacient (<strong>MIL</strong>).</li>
+            <li>Primer <strong>frontend web</strong> de visualització (graf sobre el WSI, atenció, clic per veure el <em>patch</em>).</li>
+            <li>Primer <em>grid search</em> i integració amb Weights &amp; Biases.</li>
+            <li>Memòria ampliada: pipeline <em>patch</em>→CLS→graf, diagrames d'arquitectura i referències noves.</li>
+          </ul>
+          <div class="links">
+            <a class="btn pdf" href="pdf/seguiment2.pdf" target="_blank">Obrir PDF</a>
+            <a class="btn tex" href="tex/seguiment2.tex" target="_blank">Veure LaTeX</a>
+            <a class="btn git" href="https://github.com/Dakuur/tfg/compare/590a2f8a8c0ad3403da2aff8e06f156f400a4013...f217dd3bcc809035d6d7116419ac17e5ba010a2f#diff-1e764ff8be86b8c8725a7fbea37e716cd6d191dd3f89f1c858e2042c8ccc0d66" target="_blank">Comparar canvis (GitHub)</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- seguiment3 -->
+      <div class="entrega">
+        <div class="entrega-head">
+          <span class="num">3</span>
+          <span class="title">Informe de progrés II <span class="date">· 3a sessió de seguiment</span></span>
+          <span class="date">24 maig 2026</span>
+          <span class="chev">▶</span>
+        </div>
+        <div class="entrega-body">
+          <p>Es consolida la metodologia i els resultats:</p>
+          <ul>
+            <li>Adaptació al <strong>dataset real</strong> amb xifres definitives (367 pacients, 1607 grafs) i migració del codi al submòdul compartit <code>pt1diagnosis</code>.</li>
+            <li>Canvi a <strong>validació creuada 5-fold estratificada</strong> per a la cerca (en lloc de hold-out).</li>
+            <li>Llindar operatiu derivat del val (sensibilitat 100% sense <em>data leakage</em>), comparació amb les guies clíniques i figura ROC.</li>
+            <li>Frontend: AUC de CV amb desviació, boxplot de models, pestanya del dataset.</li>
+            <li>Memòria: taules d'efectes dels hiperparàmetres i format d'apèndix.</li>
+          </ul>
+          <div class="links">
+            <a class="btn pdf" href="pdf/seguiment3.pdf" target="_blank">Obrir PDF</a>
+            <a class="btn tex" href="tex/seguiment3.tex" target="_blank">Veure LaTeX</a>
+            <a class="btn git" href="https://github.com/Dakuur/tfg/compare/f217dd3bcc809035d6d7116419ac17e5ba010a2f...6ad95f920ad3e0628cef02552aed4b6acd399100#diff-1e764ff8be86b8c8725a7fbea37e716cd6d191dd3f89f1c858e2042c8ccc0d66" target="_blank">Comparar canvis (GitHub)</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- proposta -->
+      <div class="entrega">
+        <div class="entrega-head">
+          <span class="num">4</span>
+          <span class="title">Proposta d'informe final <span class="date">· 4a sessió de seguiment</span></span>
+          <span class="date">14 juny 2026</span>
+          <span class="chev">▶</span>
+        </div>
+        <div class="entrega-body">
+          <p>Cerca avançada i resultats finals:</p>
+          <ul>
+            <li>Pas del <em>grid search</em> a la <strong>cerca bayesiana amb Optuna/TPE</strong>, amb dos estudis aïllats (un per arquitectura).</li>
+            <li>Procediment d'avaluació final: reentrenament 90/10, test únic i re-avaluació de configuracions per triar el model definitiu.</li>
+            <li>Resultats reals del <em>sweep</em> (GAT Baseline vs DiffPool) i nova figura ROC.</li>
+            <li>Frontend: pàgina de visualització del <em>sweep</em> i atenció multi-capa.</li>
+            <li>Memòria: paràmetres configurables, esquema d'entrenament, diagrama de variants i annexos.</li>
+          </ul>
+          <div class="links">
+            <a class="btn pdf" href="pdf/proposta.pdf" target="_blank">Obrir PDF</a>
+            <a class="btn tex" href="tex/proposta.tex" target="_blank">Veure LaTeX</a>
+            <a class="btn git" href="https://github.com/Dakuur/tfg/compare/6ad95f920ad3e0628cef02552aed4b6acd399100...c6052a674fe0b844ef684770db304ebfe994823b#diff-1e764ff8be86b8c8725a7fbea37e716cd6d191dd3f89f1c858e2042c8ccc0d66" target="_blank">Comparar canvis (GitHub)</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- final -->
+      <div class="entrega">
+        <div class="entrega-head">
+          <span class="num">5</span>
+          <span class="title">Informe final <span class="date">· lliurament</span></span>
+          <span class="date">28 juny 2026</span>
+          <span class="chev">▶</span>
+        </div>
+        <div class="entrega-body">
+          <p>Polit i tancament del document:</p>
+          <ul>
+            <li>Correccions de redacció i unificació del relat.</li>
+            <li>Reestructuració del pipeline i dels annexos (bloc de decisió, MIL amb més detall, comparació de llindars operatius).</li>
+            <li>Ampliació de l'explicació de la importància dels hiperparàmetres (fANOVA).</li>
+            <li>Correccions d'estil: ortografia, títol, secció d'agraïments.</li>
+          </ul>
+          <div class="links">
+            <a class="btn pdf" href="pdf/final.pdf" target="_blank">Obrir PDF</a>
+            <a class="btn tex" href="tex/final.tex" target="_blank">Veure LaTeX</a>
+            <a class="btn git" href="https://github.com/Dakuur/tfg/compare/c6052a674fe0b844ef684770db304ebfe994823b...main#diff-1e764ff8be86b8c8725a7fbea37e716cd6d191dd3f89f1c858e2042c8ccc0d66" target="_blank">Comparar canvis (GitHub)</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <h3>Visió global del repositori</h3>
+    <p>El repositori acumula ~470 commits. D'aquests, ~130 (≈28%) els genera un bot de CI/CD que recompila i puja el PDF a cada canvi de l'informe. La taula resumeix on es va concentrar l'esforç entre entregues (●●● intens · ●● moderat · ● puntual · – cap). El recompte de la fase inicial és baix perquè la recerca i les proves prèvies amb PyTorch Geometric es van fer en local, sense repositori.</p>
+
+    <table>
+      <thead>
+        <tr><th>Tipus de canvi</th><th>Feb</th><th>Març</th><th>1a q. abr</th><th>abr-maig</th><th>1a q. juny</th><th>2a q. juny</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Construcció de grafs i dades</td><td>–</td><td>●●●</td><td>●●</td><td>●●</td><td>–</td><td>–</td></tr>
+        <tr><td>GAT (arquitectura base)</td><td>●</td><td>–</td><td>●●●</td><td>●</td><td>●</td><td>–</td></tr>
+        <tr><td>DiffPool jeràrquic</td><td>–</td><td>–</td><td>●●●</td><td>●</td><td>●●</td><td>–</td></tr>
+        <tr><td>Readout</td><td>–</td><td>–</td><td>●●</td><td>●●</td><td>●</td><td>–</td></tr>
+        <tr><td>MIL (agregació per pacient)</td><td>–</td><td>–</td><td>●●●</td><td>●</td><td>●</td><td>–</td></tr>
+        <tr><td>Cerca d'hiperparàmetres</td><td>–</td><td>–</td><td>●</td><td>●●●</td><td>●●●</td><td>●</td></tr>
+        <tr><td>Article / memòria</td><td>–</td><td>●●</td><td>●●●</td><td>●●●</td><td>●●●</td><td>●●●</td></tr>
+        <tr><td>Eines / frontend</td><td>–</td><td>●●</td><td>●●●</td><td>●●</td><td>●</td><td>–</td></tr>
+        <tr><td>Infraestructura / CI/CD</td><td>●●●</td><td>●●</td><td>●</td><td>●</td><td>●</td><td>–</td></tr>
+      </tbody>
+    </table>
+
+    <figure>
+      <img src="img/commits.png" alt="Commits per setmana">
+      <figcaption>Commits per setmana al repositori principal. Inclou la feina pròpia i els commits automàtics de compilació del PDF.</figcaption>
+    </figure>
+
+    <p class="hint">L'informe s'ha treballat des de molt aviat (ja al març), no només al final: per familiaritzar-se amb LaTeX, tenir l'estructura completa des del principi i que la tutora en pogués seguir l'evolució a cada reunió.</p>
+  </section>
+
+  <!-- TUTORA -->
+  <section id="tutora">
+    <h2>6. Canvis a l'informe final derivats de les reunions amb la tutora</h2>
+    <ul>
+      <li><strong>Estructura.</strong> L'estat de l'art passa abans dels objectius i es crea una secció de disseny experimental (desbalanceig de classes, divisió de dades, mètriques...). Seccions innecessàries eliminades, substituides per paràgrafs individuals en una sola secció.</li>
+      <li><strong>Objectius.</strong> Reordenació d'objectius, i menys repetició d'ells en la resta del document.</li>
+      <li><strong>Dades.</strong> Millor explicació de la partició i utiltizació de les dades per a la cerca de paràmetres i entrenament final.</li>
+      <li><strong>Estat de l'art.</strong> Reorganitzat en blocs (guies clíniques → MIL → grafs en histopatologia → models de fundació).</li>
+      <li><strong>Mètode i arquitectura.</strong> Pipeline reordenat (preprocessament → arquitectures → readout → agregació), acompanyat d'una figura auxiliar, i concepte de <em>readout</em> unificat per a totes dues arquitectures. Millor explicació de la cerca del millor llindar, amb figura de suport.</li>
+      <li><strong>Resultats i figures.</strong> A les taules es deixen només mètriques de validació; es revisen els gràfics i s'afegeix la corba ROC del millor model. Nous gràfics al cos per a agilitzar la comprensió.</li>
+      <li><strong>Conclusions.</strong> Estructurat com a "Discussió i conclusions", incloent-hi la subsecció de "limitacions".</li>
+      <li><strong>Estil i annexos.</strong> Es retiren negretes innecessàries i es reorganitzen els annexos per ajustar-se als límits de pàgines. Es seleccionen els annexos realment últls per al projecte.</li>
+    </ul>
+  </section>
+
+  <!-- IA -->
+  <section id="ia">
+    <h2>7. Declaració d'ús d'eines d'intel·ligència artificial</h2>
+    <p>Tal com demana la <a href="https://apps.uab.cat/guies/public/html/2025/assignatura/106544/ca" target="_blank">normativa de l'assignatura</a>, s'indica quines eines d'IA s'han fet servir, per a què i fins a quin punt. En tots els casos han estat un suport formal o una ajuda tècnica puntual, sempre sota la supervisió i la revisió de l'alumne: les decisions de fons (plantejaments, mètodes, disseny i execució dels experiments, anàlisi i conclusions) són feina de l'alumne, juntament amb la tutora.</p>
+    <h3>Google Gemini (assistent de recerca, etapes inicials)</h3>
+    <ul>
+      <li>Ajudar a buscar articles relacionats amb l'objectiu i els mètodes (després verificats i redactats per l'alumne).</li>
+      <li>Orientar sobre les mètriques actuals del diagnòstic del càncer colorectal (CRC).</li>
+      <li>Fer una primera introducció als conceptes de les Graph Attention Networks (GAT).</li>
+    </ul>
+    <h3>Claude Code (ajuda tècnica)</h3>
+    <ul>
+      <li>Ajudar a donar format al codi i a taules, figures i altres elements de LaTeX de l'informe.</li>
+      <li>Ajudar a programar i revisar el codi dels primers experiments <em>end-to-end</em> (el disseny i l'execució van ser de l'alumne), detectant <em>bugs</em>.</li>
+      <li>Ajudar a corregir errors puntuals (<em>bug fixing</em>).</li>
+      <li>Ajudar a programar el frontend web (JavaScript), una eina auxiliar de visualització que no forma part del contingut avaluat.</li>
+      <li>Maquetar aquesta pàgina del dossier (HTML + CSS). No tinc gaire experiència en disseny web i és una part purament de presentació: l'objectiu és que el dossier sigui visualment agradable i s'entengui bé. El contingut, el text i el raonament del dossier s'ha escrit amb el criteri propi de l'alumne.</li>
+    </ul>
+    <h3>Usos que no s'han fet</h3>
+    <ul>
+      <li>Treure conclusions o interpretar els resultats.</li>
+      <li>Proposar mètodes (MIL, <em>readout</em>, llindar, etc.) sense haver-ho consultat abans en articles o amb la tutora.</li>
+      <li>Els plantejaments del treball.</li>
+    </ul>
+  </section>
+
+</main>
+
+</div><!-- /layout -->
+
+<footer>
+  Dossier del TFG · David Morillo Massagué · UAB, Curs 2025/26. Document de suport a l'informe.
+</footer>
+
+<script>
+  // Mesura l'alçada real de la capçalera fixa i l'aplica com a variable CSS
+  (function () {
+    var header = document.querySelector('header.top');
+    function setHeaderH() {
+      if (header) document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px');
+    }
+    setHeaderH();
+    window.addEventListener('resize', setHeaderH);
+  })();
+
+  // Acordió de les entregues
+  document.querySelectorAll('.entrega-head').forEach(function (h) {
+    h.addEventListener('click', function () {
+      h.parentElement.classList.toggle('open');
+    });
+  });
+
+  // Barra lateral: ressaltar la secció visible (scrollspy)
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+    var map = {};
+    links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+
+    function setActive(id) {
+      links.forEach(function (l) { l.classList.remove('active'); });
+      if (map[id]) map[id].classList.add('active');
+    }
+
+    var sections = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) setActive(e.target.id);
+      });
+    }, { rootMargin: '-45% 0px -50% 0px', threshold: 0 });
+
+    sections.forEach(function (s) { observer.observe(s); });
+    if (sections.length) setActive(sections[0].id);
+  })();
+</script>
+
+</body>
+</html>
